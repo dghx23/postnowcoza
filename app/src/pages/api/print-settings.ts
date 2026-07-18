@@ -1,8 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getSessionUser } from "@/lib/session";
-import { getPrintProvider, setPrintProvider } from "@/lib/printSettings";
+import { getPrintSettings, updatePrintSettings } from "@/lib/printSettings";
 
-const VALID_PROVIDERS = new Set(["EPSON", "LINUX_AGENT"]);
+const VALID_PROVIDERS = new Set(["EPSON", "EPSON_DIRECT"]);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const user = await getSessionUser(req, res);
@@ -11,17 +11,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "GET") {
-    const provider = await getPrintProvider();
-    return res.status(200).json({ provider });
+    const settings = await getPrintSettings();
+    return res.status(200).json(settings);
   }
 
   if (req.method === "PATCH") {
-    const { provider } = req.body ?? {};
-    if (typeof provider !== "string" || !VALID_PROVIDERS.has(provider)) {
-      return res.status(400).json({ error: "provider must be EPSON or LINUX_AGENT" });
+    const { provider, epsonDirectEmail } = req.body ?? {};
+    if (provider !== undefined && !VALID_PROVIDERS.has(provider)) {
+      return res.status(400).json({ error: "provider must be EPSON or EPSON_DIRECT" });
     }
-    const updated = await setPrintProvider(provider as "EPSON" | "LINUX_AGENT");
-    return res.status(200).json({ provider: updated });
+    if (epsonDirectEmail !== undefined && epsonDirectEmail !== null && typeof epsonDirectEmail !== "string") {
+      return res.status(400).json({ error: "epsonDirectEmail must be a string or null" });
+    }
+
+    const settings = await updatePrintSettings({
+      ...(provider !== undefined ? { provider } : {}),
+      ...(epsonDirectEmail !== undefined ? { epsonDirectEmail } : {}),
+    });
+    return res.status(200).json(settings);
   }
 
   res.setHeader("Allow", "GET, PATCH");

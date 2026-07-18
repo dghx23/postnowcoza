@@ -59,9 +59,11 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   const [data, setData] = useState<DetailsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
-  const [provider, setProvider] = useState<"EPSON" | "LINUX_AGENT" | null>(null);
+  const [provider, setProvider] = useState<"EPSON" | "EPSON_DIRECT" | null>(null);
   const [providerSaving, setProviderSaving] = useState(false);
   const [providerError, setProviderError] = useState<string | null>(null);
+  const [epsonDirectEmail, setEpsonDirectEmail] = useState("");
+  const [emailSaved, setEmailSaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,11 +85,14 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   useEffect(() => {
     fetch("/api/print-settings")
       .then((res) => res.json())
-      .then((json) => setProvider(json.provider ?? "EPSON"))
+      .then((json) => {
+        setProvider(json.provider ?? "EPSON");
+        setEpsonDirectEmail(json.epsonDirectEmail ?? "");
+      })
       .catch(() => setProvider("EPSON"));
   }, []);
 
-  async function updateProvider(next: "EPSON" | "LINUX_AGENT") {
+  async function updateProvider(next: "EPSON" | "EPSON_DIRECT") {
     setProviderSaving(true);
     setProviderError(null);
     try {
@@ -99,6 +104,29 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to update printing method");
       setProvider(json.provider);
+    } catch (err) {
+      setProviderError((err as Error).message);
+    } finally {
+      setProviderSaving(false);
+    }
+  }
+
+  async function saveEpsonDirectEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setProviderSaving(true);
+    setProviderError(null);
+    setEmailSaved(false);
+    try {
+      const res = await fetch("/api/print-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ epsonDirectEmail: epsonDirectEmail.trim() || null }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to save printer email");
+      setEpsonDirectEmail(json.epsonDirectEmail ?? "");
+      setEmailSaved(true);
+      setTimeout(() => setEmailSaved(false), 2000);
     } catch (err) {
       setProviderError((err as Error).message);
     } finally {
@@ -135,17 +163,36 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               </button>
               <button
                 type="button"
-                className={provider === "LINUX_AGENT" ? "btn btn-primary" : "btn btn-secondary"}
+                className={provider === "EPSON_DIRECT" ? "btn btn-primary" : "btn btn-secondary"}
                 disabled={providerSaving || provider === null}
-                onClick={() => updateProvider("LINUX_AGENT")}
+                onClick={() => updateProvider("EPSON_DIRECT")}
               >
-                🐧 Linux Print Agent
+                📧 Epson Direct (Email Print)
               </button>
             </div>
-            {provider === "LINUX_AGENT" && (
+            {provider === "EPSON_DIRECT" && (
+              <form
+                onSubmit={saveEpsonDirectEmail}
+                style={{ display: "flex", gap: 12, alignItems: "flex-end", marginTop: 16, flexWrap: "wrap" }}
+              >
+                <div className="field" style={{ flex: "1 1 280px" }}>
+                  <label>Printer's Epson Email Print address</label>
+                  <input
+                    type="email"
+                    placeholder="e.g. abc123xyz@print.epsonconnect.com"
+                    value={epsonDirectEmail}
+                    onChange={(e) => setEpsonDirectEmail(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="btn btn-secondary" disabled={providerSaving}>
+                  {emailSaved ? "✓ Saved" : "Save address"}
+                </button>
+              </form>
+            )}
+            {provider === "EPSON_DIRECT" && (
               <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 12 }}>
-                Documents sent to print will be queued for your Ubuntu machine's print agent to pick up and print
-                locally via CUPS. See <code>agent/README.md</code> in the repo for setup instructions.
+                Sending a document to print emails the PDF straight to this address — enable Email Print on the
+                printer itself (Epson Connect setup) to find its assigned address. No OAuth connection needed.
               </div>
             )}
             {providerError && <div className="form-error" style={{ marginTop: 8 }}>{providerError}</div>}

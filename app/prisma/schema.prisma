@@ -65,15 +65,13 @@ enum FeatureStatus {
   IMPLEMENTED
 }
 
+// EPSON is the OAuth-based Epson Connect cloud API (src/lib/epson.ts).
+// EPSON_DIRECT is Epson's "Email Print" feature - printing by emailing a
+// PDF straight to the printer's own assigned address, with no OAuth app
+// registration required at all.
 enum PrintProvider {
   EPSON
-  LINUX_AGENT
-}
-
-enum LinuxPrintJobStatus {
-  PENDING
-  PRINTED
-  FAILED
+  EPSON_DIRECT
 }
 
 model User {
@@ -125,7 +123,6 @@ model Document {
   bobgoShipments   BobgoShipment[]
   payments         Payment[]
   epsonPrintJobs   EpsonPrintJob[]
-  linuxPrintJobs   LinuxPrintJob[]
 }
 
 // Append-only chain-of-custody log. Rows are never updated or deleted from
@@ -202,30 +199,13 @@ model EpsonPrintJob {
 
 // Singleton row (id is always the fixed string "singleton") holding the
 // staff-configurable choice of which print backend the print queue's
-// "Print (API)" button uses. Read/written via /api/print-settings.
+// "Print (API)" button uses, plus the destination address for EPSON_DIRECT.
+// Read/written via /api/print-settings.
 model PrintSettings {
-  id        String        @id @default("singleton")
-  provider  PrintProvider @default(EPSON)
-  updatedAt DateTime      @updatedAt
-}
-
-// A job queued for the Linux print agent - a pull-based unattended script
-// (see agent/linux-print-agent.py) running on a machine with a physically
-// connected printer. The agent polls for PENDING jobs, downloads the file,
-// prints via CUPS, then reports success/failure through a static bearer
-// token (PRINT_AGENT_TOKEN) rather than a browser session, since there's
-// no user logged in on that machine.
-model LinuxPrintJob {
-  id         String              @id @default(cuid())
-  documentId String
-  document   Document            @relation(fields: [documentId], references: [id])
-  status     LinuxPrintJobStatus @default(PENDING)
-  error      String?
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
-
-  @@index([documentId])
-  @@index([status])
+  id               String        @id @default("singleton")
+  provider         PrintProvider @default(EPSON)
+  epsonDirectEmail String?
+  updatedAt        DateTime      @updatedAt
 }
 
 // A Bob Pay payment intent for a document's dispatch fee.

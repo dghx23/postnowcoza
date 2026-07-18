@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 import { appendAuditEvent } from "@/lib/audit";
 import { getSessionUser } from "@/lib/session";
 import { getDocumentDownloadUrl } from "@/lib/storage";
-import { getPrintProvider } from "@/lib/printSettings";
+import { getPrintSettings } from "@/lib/printSettings";
+import { sendPrintEmail } from "@/lib/emailPrint";
 import {
   buildAuthorizeUrl,
   printPdf,
@@ -42,24 +43,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(409).json({ error: `Cannot print a document in status ${document.status}` });
   }
 
-  const provider = await getPrintProvider();
-  if (provider === "LINUX_AGENT") {
-    const existing = await prisma.linuxPrintJob.findFirst({
-      where: { documentId: id, status: "PENDING" },
-    });
-    if (existing) {
-      return res.status(409).json({ error: "Already queued for the Linux print agent" });
+  const { provider, epsonDirectEmail } = await getPrintSettings();
+
+  if (provider === "EPSON_DIRECT") {
+    if (!epsonDirectEmail) {
+      return res.status(400).json({
+        error: "No printer email address configured. Set it on the Printing Method card on /printer first.",
+      });
     }
 
-    const job = await prisma.linuxPrintJob.create({ data: { documentId: id } });
+    const downloadUrl = await getDocumentDownloadUrl(document.storageKey);
+    const fileRes = await axios.get<ArrayBuffer>(downloadUrl, { responseType: "arraybuffer" });
+    const pdfBuffer = Buffer.from(fileRes.data);
+
+    try {
+      await sendPrintEmail(epsonDirectEmail, pdfBuffer, `${document.id}.pdf`, `PostNow document ${document.id}`);
+    } catch (err) {
+      await appendAuditEvent({
+        documentId: id,
+        actorId: user.id,
+        action: "email_print_failed",
+        metadata: { via: "epson_direct", to: epsonDirectEmail, error: (err as Error).message },
+        ip: req.socket.remoteAddress ?? undefined,
+      });
+      return res.status(502).json({ error: "Failed to send print email" });
+    }
+
+    const updated = await prisma.document.update({ where: { id }, data: { status: "PRINTED" } });
     await appendAuditEvent({
       documentId: id,
       actorId: user.id,
-      action: "linux_agent_print_queued",
-      metadata: { via: "linux_agent", jobId: job.id },
+      action: `status_changed:${document.status}->PRINTED`,
+      metadata: { via: "epson_direct", to: epsonDirectEmail },
       ip: req.socket.remoteAddress ?? undefined,
     });
-    return res.status(200).json({ id: document.id, status: document.status, queuedForLinuxAgent: true });
+    return res.status(200).json({ id: updated.id, status: updated.status });
   }
 
   const cookies = parse(req.headers.cookie ?? "");

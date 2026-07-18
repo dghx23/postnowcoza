@@ -74,8 +74,7 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
   const [search, setSearch] = useState("");
   const [returnFilter, setReturnFilter] = useState<"ALL" | "DIRECT" | "MANAGED">("ALL");
   const [sortKey, setSortKey] = useState<"oldest" | "newest" | "recipient">("oldest");
-  const [printProvider, setPrintProvider] = useState<"EPSON" | "LINUX_AGENT" | null>(null);
-  const [linuxQueuedIds, setLinuxQueuedIds] = useState<Set<string>>(new Set());
+  const [printProvider, setPrintProvider] = useState<"EPSON" | "EPSON_DIRECT" | null>(null);
 
   useEffect(() => {
     fetch("/api/print-settings")
@@ -131,11 +130,7 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
       }
       if (!res.ok) throw new Error(data.error ?? "Print failed");
 
-      if (data.queuedForLinuxAgent) {
-        setLinuxQueuedIds((prev) => new Set(prev).add(id));
-      } else {
-        setDocuments((prev) => prev.filter((d) => d.id !== id));
-      }
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
     } catch (err) {
       setErrorId({ id, message: (err as Error).message });
     } finally {
@@ -278,22 +273,18 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
                       <button className="btn btn-secondary" onClick={() => handleDownload(doc.id)}>
                         📄 Download
                       </button>
-                      {linuxQueuedIds.has(doc.id) ? (
-                        <Badge tone="teal">⏳ Queued for Linux printer</Badge>
-                      ) : (
-                        <button
-                          className="btn btn-secondary"
-                          disabled={busyId === doc.id}
-                          onClick={() => handlePrintApi(doc.id)}
-                        >
-                          🖨️{" "}
-                          {busyId === doc.id
-                            ? "Sending…"
-                            : printProvider === "LINUX_AGENT"
-                              ? "Send to Linux Printer"
-                              : "Print (API)"}
-                        </button>
-                      )}
+                      <button
+                        className="btn btn-secondary"
+                        disabled={busyId === doc.id}
+                        onClick={() => handlePrintApi(doc.id)}
+                      >
+                        {printProvider === "EPSON_DIRECT" ? "📧" : "🖨️"}{" "}
+                        {busyId === doc.id
+                          ? "Sending…"
+                          : printProvider === "EPSON_DIRECT"
+                            ? "Email to Printer"
+                            : "Print (API)"}
+                      </button>
                       <button
                         className="btn btn-primary"
                         disabled={busyId === doc.id}
