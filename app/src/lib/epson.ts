@@ -100,11 +100,12 @@ function epsonHeaders(accessToken: string) {
   };
 }
 
-// Device info/job-listing endpoint shapes below are a best-effort
-// reconstruction from the same conventions as the verified job-creation
-// endpoint (/printing/printers/{deviceId}/...) - unlike the print flow
-// itself, these two weren't directly confirmed by a source, so treat their
-// response shape as a guess until checked against a live account.
+// Device info/job-listing don't take a device ID in the path - the OAuth
+// token is already scoped to exactly one device (that's what subject_id
+// identifies), so "my device's info"/"my device's jobs" is unambiguous
+// without it. Unlike the earlier printer-scoped-path guess, this shape
+// matches the documented response fields (productName, serialNumber,
+// connected) directly.
 export interface EpsonDeviceInfo {
   connected?: boolean;
   productName?: string;
@@ -112,8 +113,8 @@ export interface EpsonDeviceInfo {
   [key: string]: unknown;
 }
 
-export async function getDeviceInfo(accessToken: string, deviceId: string): Promise<EpsonDeviceInfo> {
-  const res = await axios.get<EpsonDeviceInfo>(`${API_BASE}/printing/printers/${deviceId}`, {
+export async function getDeviceInfo(accessToken: string): Promise<EpsonDeviceInfo> {
+  const res = await axios.get<EpsonDeviceInfo>(`${API_BASE}/printing/devices/info`, {
     headers: epsonHeaders(accessToken),
   });
   return res.data;
@@ -124,8 +125,8 @@ export interface EpsonJob {
   [key: string]: unknown;
 }
 
-export async function getJobs(accessToken: string, deviceId: string): Promise<EpsonJob[]> {
-  const res = await axios.get<{ jobs?: EpsonJob[] }>(`${API_BASE}/printing/printers/${deviceId}/jobs`, {
+export async function getJobs(accessToken: string): Promise<EpsonJob[]> {
+  const res = await axios.get<{ jobs?: EpsonJob[] }>(`${API_BASE}/printing/jobs`, {
     headers: epsonHeaders(accessToken),
   });
   return res.data?.jobs ?? [];

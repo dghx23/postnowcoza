@@ -1,27 +1,26 @@
-// The Courier Guy's direct API (api-tcg.co.za) is built on the Shiplogic
-// platform - the same lineage as Bob Go (src/lib/bobgo.ts), confirmed via
-// search ("Ship Logic API documentation... also manages The Courier Guy
-// integrations"). That's why the request shape below mirrors bobgo.ts
-// closely (collection_address/delivery_address/parcels). Verified via web
-// search on 2026-07-18 (Epson-style: their docs sites block automated
-// fetches, so this is search-engine-indexed content, not a primary-source
-// read): production base URL, and that the API is Shiplogic-based. NOT
-// independently confirmed: whether the API key goes in an Authorization
-// header vs a query parameter (implemented as a Bearer header, matching
-// Bob Go's convention, since search results only said "authentication is
-// via an api_key parameter" without specifying placement) - confirm
-// against a real response before relying on this.
-const BASE_URL = process.env.COURIER_GUY_BASE_URL ?? "https://api-tcg.co.za";
+// The Courier Guy's own official Postman collection (uploaded 2026-07-18)
+// confirms this API is built on the Shiplogic platform - same lineage as
+// Bob Go (src/lib/bobgo.ts), which is why the request shape below mirrors
+// bobgo.ts closely. Confirmed directly from that collection: base URL
+// https://api.portal.thecourierguy.co.za (an earlier guess of api-tcg.co.za
+// was wrong - real requests to it 404'd), Bearer token auth exactly like
+// Bob Go ("Authorization": "Bearer <token>", per their Authentication
+// section), and the /rates endpoint + collection_address/delivery_address/
+// parcels shape.
+const BASE_URL = process.env.COURIER_GUY_BASE_URL ?? "https://api.portal.thecourierguy.co.za";
 const API_KEY = process.env.COURIER_GUY_API ?? "";
 
 interface CourierGuyAddress {
   company?: string;
+  type?: "residential" | "business" | "counter" | "locker";
   street_address: string;
   local_area: string;
   city: string;
   zone: string;
   country: string;
   code: string;
+  lat?: number;
+  lng?: number;
 }
 
 interface CourierGuyParcel {

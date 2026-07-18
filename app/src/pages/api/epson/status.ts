@@ -33,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const [device, jobs] = await Promise.all([getDeviceInfo(accessToken, deviceId), getJobs(accessToken, deviceId)]);
+    const [device, jobs] = await Promise.all([getDeviceInfo(accessToken), getJobs(accessToken)]);
     const pendingJobs = jobs.filter((j) => j.status === "pending" || j.status === "processing").length;
     const connected = device.connected === true;
 

@@ -8,10 +8,14 @@ export interface AddressSuggestion {
   city: string;
   zone: string;
   postalCode: string;
+  lat?: number;
+  lng?: number;
 }
 
 interface NominatimResult {
   display_name: string;
+  lat?: string;
+  lon?: string;
   address?: {
     road?: string;
     house_number?: string;
@@ -69,6 +73,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         city: a.city ?? a.town ?? a.village ?? a.county ?? "",
         zone: a.state ?? "",
         postalCode: a.postcode ?? "",
+        lat: r.lat ? Number(r.lat) : undefined,
+        lng: r.lon ? Number(r.lon) : undefined,
       };
     });
 

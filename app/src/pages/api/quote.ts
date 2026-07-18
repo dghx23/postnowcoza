@@ -11,6 +11,8 @@ interface QuoteRequestBody {
   postalCode: string;
   country?: string;
   weightKg?: number;
+  lat?: number;
+  lng?: number;
 }
 
 // Standalone quote lookup for the dashboard "quote tool" - always rates
@@ -40,6 +42,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     zone: body.zone,
     country: body.country ?? "ZA",
     code: body.postalCode,
+    // Courier Guy's docs recommend passing lat/lng when available for
+    // more accurate rating - the autocomplete already has these from
+    // Nominatim, so pass them through rather than making Courier Guy
+    // re-geocode the same address.
+    ...(body.lat !== undefined && body.lng !== undefined ? { lat: body.lat, lng: body.lng } : {}),
   };
 
   const parcel = body.weightKg

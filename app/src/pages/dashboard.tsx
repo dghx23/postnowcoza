@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
 import Link from "next/link";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
 import { AppHeader, MetricTile, Alert, Card, DataTable, StatusPill, PrinterStatus } from "@/components/ui";
+import type { AddressSuggestion } from "@/pages/api/geocode/autocomplete";
 
 interface QuoteRate {
   service_name?: string;
@@ -61,6 +62,44 @@ export default function Dashboard({ userLabel, isStaff, metrics, rows }: Dashboa
   const [postalCode, setPostalCode] = useState("");
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [coords, setCoords] = useState<{ lat?: number; lng?: number }>({});
+
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleStreetAddressChange(value: string) {
+    setStreetAddress(value);
+    setCoords({});
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (value.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/geocode/autocomplete?q=${encodeURIComponent(value)}`);
+        const data = await res.json();
+        setSuggestions(data.suggestions ?? []);
+        setShowSuggestions(true);
+      } catch {
+        setSuggestions([]);
+      }
+    }, 350);
+  }
+
+  function selectSuggestion(s: AddressSuggestion) {
+    setStreetAddress(s.streetAddress);
+    setLocalArea(s.localArea);
+    setCity(s.city);
+    setZone(s.zone);
+    setPostalCode(s.postalCode);
+    setCoords({ lat: s.lat, lng: s.lng });
+    setSuggestions([]);
+    setShowSuggestions(false);
+  }
   const [rates, setRates] = useState<QuoteRate[] | null>(null);
 
   async function handleGetQuote(e: React.FormEvent) {
@@ -72,7 +111,7 @@ export default function Dashboard({ userLabel, isStaff, metrics, rows }: Dashboa
       const res = await fetch("/api/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ streetAddress, localArea, city, zone, postalCode }),
+        body: JSON.stringify({ streetAddress, localArea, city, zone, postalCode, ...coords }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Quote request failed");
@@ -142,9 +181,27 @@ export default function Dashboard({ userLabel, isStaff, metrics, rows }: Dashboa
                 <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
                   Rates from our facility to a delivery address, via Courier Guy.
                 </div>
-                <div className="field">
+                <div className="field" style={{ position: "relative" }}>
                   <label>Street Address</label>
-                  <input value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} required />
+                  <input
+                    value={streetAddress}
+                    onChange={(e) => handleStreetAddressChange(e.target.value)}
+                    onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                    autoComplete="off"
+                    required
+                  />
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul className="address-suggestions">
+                      {suggestions.map((s, i) => (
+                        <li key={i}>
+                          <button type="button" onMouseDown={() => selectSuggestion(s)}>
+                            {s.displayName}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="field-row">
                   <div className="field">
