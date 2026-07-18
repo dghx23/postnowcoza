@@ -22,12 +22,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { code, error } = req.query;
   if (error || typeof code !== "string") {
+    console.error("Epson OAuth callback: provider returned an error", { error });
     return res.redirect(302, "/print-queue?epson=error");
   }
 
   try {
     const tokens = await exchangeCodeForTokens(code);
     if (!tokens.subject_id) {
+      console.error("Epson OAuth callback: token response had no subject_id", {
+        keys: Object.keys(tokens ?? {}),
+      });
       return res.redirect(302, "/print-queue?epson=error");
     }
 
@@ -38,7 +42,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ]);
 
     return res.redirect(302, "/print-queue?epson=connected");
-  } catch {
+  } catch (err) {
+    const axiosErr = err as { response?: { status?: number; data?: unknown }; message?: string };
+    console.error("Epson OAuth callback: token exchange failed", {
+      status: axiosErr.response?.status,
+      data: axiosErr.response?.data,
+      message: axiosErr.message,
+    });
     return res.redirect(302, "/print-queue?epson=error");
   }
 }
