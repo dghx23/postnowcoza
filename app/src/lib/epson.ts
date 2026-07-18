@@ -1,18 +1,21 @@
 import axios from "axios";
 
-// Verified against Epson's actual public docs/spec (docs.epsonconnect.com,
-// EpsonConnectAPI_Specification, third-party SDKs) via web search on
-// 2026-07-18 - Epson's own developer portal blocks automated fetches, so
-// this was pieced together from search-engine-indexed content rather than
-// read directly. Still worth a final check against a live account before
-// fully trusting it, but this replaces an earlier version that was pure
-// guesswork (wrong scope, wrong print flow shape, wrong field names).
-//
-// Print flow is three calls, not one:
-//   1. POST  {API_BASE}/printing/printers/{deviceId}/jobs        -> { id, upload_uri }
-//   2. POST  {upload_uri}                                        (raw file bytes)
-//   3. POST  {API_BASE}/printing/printers/{deviceId}/jobs/{id}/print
-//
+// Verified directly against Epson's official OpenAPI v2 spec (user-supplied
+// document, 2026-07-18) - this replaces an earlier "web search verified"
+// version that still had the print-job path/body/headers wrong. Key facts
+// confirmed straight from the spec:
+//   - Job creation/print/lookup have NO device ID in the path at all - the
+//     device token itself is already scoped to exactly one printer.
+//   - POST /printing/jobs         -> { jobId, uploadUri }   (uploadUri is a
+//     full URL on a *different* host, upload.epsonconnect.com, already
+//     carrying a `Key` query param - we only need to add `&File=`)
+//   - POST /printing/jobs/{jobId}/print   starts the print, no body
+//   - GET  /printing/jobs/{jobId}         is the ONLY job-lookup endpoint -
+//     there is no "list all jobs" endpoint, so pending-job tracking has to
+//     be done by polling job IDs we recorded ourselves (see EpsonPrintJob).
+//   - Every call requires BOTH `Authorization: Bearer <device token>` AND
+//     `x-api-key: <key>` headers together (per the spec's own code samples),
+//     not Bearer alone.
 // Epson Connect API v1 ("/api/1/") was discontinued 2026-04-01; this uses
 // v2 ("/api/2/") throughout.
 const AUTH_BASE = process.env.EPSON_AUTH_BASE_URL ?? "https://auth.epsonconnect.com";
@@ -21,7 +24,7 @@ const API_BASE = process.env.EPSON_API_BASE_URL ?? "https://api.epsonconnect.com
 const CLIENT_ID = process.env.EPSON_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.EPSON_CLIENT_SECRET ?? "";
 const REDIRECT_URI = process.env.EPSON_REDIRECT_URI ?? "";
-const API_KEY = process.env.EPSON_API_KEY;
+const API_KEY = process.env.EPSON_API_KEY ?? "";
 
 export const EPSON_ACCESS_COOKIE = "epson_access_token";
 export const EPSON_REFRESH_COOKIE = "epson_refresh_token";
@@ -93,19 +96,15 @@ export async function refreshTokens(refreshToken: string): Promise<EpsonTokens> 
   return res.data;
 }
 
+// Both headers are required together on every printing/* call per the
+// spec's securitySchemes (deviceToken + apiKey) - x-api-key is not optional.
 function epsonHeaders(accessToken: string) {
   return {
     Authorization: `Bearer ${accessToken}`,
-    ...(API_KEY ? { "x-api-key": API_KEY } : {}),
+    "x-api-key": API_KEY,
   };
 }
 
-// Device info/job-listing don't take a device ID in the path - the OAuth
-// token is already scoped to exactly one device (that's what subject_id
-// identifies), so "my device's info"/"my device's jobs" is unambiguous
-// without it. Unlike the earlier printer-scoped-path guess, this shape
-// matches the documented response fields (productName, serialNumber,
-// connected) directly.
 export interface EpsonDeviceInfo {
   connected?: boolean;
   productName?: string;
@@ -120,36 +119,63 @@ export async function getDeviceInfo(accessToken: string): Promise<EpsonDeviceInf
   return res.data;
 }
 
+// Epson's job status enum, straight from the spec - "pending"/"processing"
+// (among others) are what count as still-in-flight for our pending-jobs UI.
+export type EpsonJobStatus =
+  | "preparing"
+  | "reserved"
+  | "pending"
+  | "processing"
+  | "media_empty"
+  | "media_jam"
+  | "marker_supply_empty"
+  | "stopped_other"
+  | "canceled"
+  | "error_occurred"
+  | "completed"
+  | "expired";
+
 export interface EpsonJob {
-  status?: string;
-  [key: string]: unknown;
+  status: EpsonJobStatus;
+  jobName?: string;
+  totalPages?: number;
+  startDate?: string;
+  updateDate?: string;
 }
 
-export async function getJobs(accessToken: string): Promise<EpsonJob[]> {
-  const res = await axios.get<{ jobs?: EpsonJob[] }>(`${API_BASE}/printing/jobs`, {
+// There is no "list all jobs" endpoint in the Epson API - only lookup by ID.
+// Callers must track job IDs themselves (see EpsonPrintJob in the schema)
+// and poll each one through this.
+export async function getJobStatus(accessToken: string, jobId: string): Promise<EpsonJob> {
+  const res = await axios.get<EpsonJob>(`${API_BASE}/printing/jobs/${jobId}`, {
     headers: epsonHeaders(accessToken),
   });
-  return res.data?.jobs ?? [];
+  return res.data;
 }
 
-// Prints a single PDF, one copy, A4, mono, duplex (long-edge). Three
-// sequential calls per the verified flow above - not parameterized further
-// since the print queue only ever sends one kind of job today.
-export async function printPdf(accessToken: string, deviceId: string, pdfBuffer: Buffer, jobName: string) {
-  const createRes = await axios.post<{ id: string; upload_uri: string }>(
-    `${API_BASE}/printing/printers/${deviceId}/jobs`,
+interface CreateJobResponse {
+  jobId: string;
+  uploadUri: string;
+}
+
+// Prints a single PDF, one copy, A4, mono. Not parameterized further since
+// the print queue only ever sends one kind of job today. Field names and
+// enum values (ps_a4/pt_plainpaper/etc.) are camelCase per the spec, not the
+// snake_case previously guessed.
+export async function printPdf(accessToken: string, pdfBuffer: Buffer, jobName: string): Promise<string> {
+  const createRes = await axios.post<CreateJobResponse>(
+    `${API_BASE}/printing/jobs`,
     {
-      job_name: jobName,
-      print_mode: "document",
-      print_setting: {
-        media_size: "ms_a4",
-        media_type: "mt_plainpaper",
+      jobName,
+      printMode: "document",
+      printSettings: {
+        paperSize: "ps_a4",
+        paperType: "pt_plainpaper",
         borderless: false,
-        print_quality: "normal",
-        source: "auto",
-        color_mode: "mono",
-        two_sided: "long",
-        reverse_order: false,
+        printQuality: "normal",
+        paperSource: "auto",
+        colorMode: "mono",
+        doubleSided: "long",
         copies: 1,
         collate: true,
       },
@@ -157,18 +183,21 @@ export async function printPdf(accessToken: string, deviceId: string, pdfBuffer:
     { headers: { ...epsonHeaders(accessToken), "Content-Type": "application/json" } }
   );
 
-  const { id: jobId, upload_uri: uploadUri } = createRes.data;
+  const { jobId, uploadUri } = createRes.data;
 
-  await axios.post(uploadUri, pdfBuffer, {
+  // uploadUri already carries `?Key=...` - the /data endpoint also requires
+  // a `File` query param naming the extension being uploaded.
+  const separator = uploadUri.includes("?") ? "&" : "?";
+  await axios.post(`${uploadUri}${separator}File=1.pdf`, pdfBuffer, {
     headers: {
       "Content-Length": pdfBuffer.length,
       "Content-Type": "application/pdf",
     },
   });
 
-  return axios.post(
-    `${API_BASE}/printing/printers/${deviceId}/jobs/${jobId}/print`,
-    {},
-    { headers: epsonHeaders(accessToken) }
-  );
+  await axios.post(`${API_BASE}/printing/jobs/${jobId}/print`, undefined, {
+    headers: epsonHeaders(accessToken),
+  });
+
+  return jobId;
 }

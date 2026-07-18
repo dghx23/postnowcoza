@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { GetServerSideProps } from "next";
 import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, Badge, StatusPill, Alert, PrinterStatus, DataTable } from "@/components/ui";
+import { AppHeader, Card, Badge, StatusPill, Alert, PrinterStatus, DataTable, MetricTile } from "@/components/ui";
 import { FACILITY_ADDRESS } from "@/lib/facility";
 
 function timeAgo(iso: string): string {
@@ -70,6 +70,32 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<{ id: string; message: string } | null>(null);
   const [epsonBanner, setEpsonBanner] = useState<"connected" | "error" | null>(null);
+  const [search, setSearch] = useState("");
+  const [returnFilter, setReturnFilter] = useState<"ALL" | "DIRECT" | "MANAGED">("ALL");
+  const [sortKey, setSortKey] = useState<"oldest" | "newest" | "recipient">("oldest");
+
+  const visibleDocuments = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let rows = documents.filter((doc) => {
+      if (returnFilter !== "ALL" && doc.returnPreference !== returnFilter) return false;
+      if (!q) return true;
+      return (
+        doc.recipientName.toLowerCase().includes(q) ||
+        doc.city.toLowerCase().includes(q) ||
+        doc.id.toLowerCase().includes(q)
+      );
+    });
+    rows = [...rows].sort((a, b) => {
+      if (sortKey === "recipient") return a.recipientName.localeCompare(b.recipientName);
+      const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return sortKey === "oldest" ? diff : -diff;
+    });
+    return rows;
+  }, [documents, search, returnFilter, sortKey]);
+
+  const directCount = documents.filter((d) => d.returnPreference === "DIRECT").length;
+  const managedCount = documents.filter((d) => d.returnPreference === "MANAGED").length;
+  const oldestWait = documents.length > 0 ? timeAgo(documents[0].createdAt) : "—";
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -162,6 +188,15 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
             </Alert>
           )}
 
+          {documents.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+              <MetricTile label="Pending" value={String(documents.length)} tone="teal" />
+              <MetricTile label="Direct return" value={String(directCount)} tone="navy" />
+              <MetricTile label="Via PostNow" value={String(managedCount)} tone="gold" />
+              <MetricTile label="Oldest waiting" value={oldestWait} tone="navy" />
+            </div>
+          )}
+
           {documents.length === 0 ? (
             <Card>
               <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
@@ -170,9 +205,44 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
             </Card>
           ) : (
             <Card>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
+                <div className="field" style={{ flex: "1 1 240px" }}>
+                  <input
+                    placeholder="Search recipient, city, or request ID…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <div className="field" style={{ width: 180 }}>
+                  <select
+                    value={returnFilter}
+                    onChange={(e) => setReturnFilter(e.target.value as "ALL" | "DIRECT" | "MANAGED")}
+                  >
+                    <option value="ALL">All return types</option>
+                    <option value="DIRECT">Direct only</option>
+                    <option value="MANAGED">Via PostNow only</option>
+                  </select>
+                </div>
+                <div className="field" style={{ width: 180 }}>
+                  <select
+                    value={sortKey}
+                    onChange={(e) => setSortKey(e.target.value as "oldest" | "newest" | "recipient")}
+                  >
+                    <option value="oldest">Oldest first</option>
+                    <option value="newest">Newest first</option>
+                    <option value="recipient">Recipient A–Z</option>
+                  </select>
+                </div>
+              </div>
+
+              {visibleDocuments.length === 0 ? (
+                <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+                  No documents match your search or filter.
+                </div>
+              ) : (
               <DataTable
                 columns={["Request ID", "Recipient", "Uploaded", "Return", "Status", "Actions"]}
-                rows={documents.map((doc) => [
+                rows={visibleDocuments.map((doc) => [
                   <span
                     key={`${doc.id}-ref`}
                     style={{ fontFamily: "var(--font-mono, monospace)", fontWeight: 700 }}
@@ -212,6 +282,7 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
                   </div>,
                 ])}
               />
+              )}
             </Card>
           )}
         </div>

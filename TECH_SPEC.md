@@ -85,6 +85,9 @@ Payment   (Bob Pay payment intent for a document's dispatch fee)
 Feature   (internal staff roadmap tracker - unrelated to the product/audit trail)
   id, name, priority (HIGH|MEDIUM|LOW), status (NOT_STARTED|IN_PROGRESS|READY|IMPLEMENTED),
   comment?, checked, createdBy, createdAt, updatedAt
+
+EpsonPrintJob   (tracks Epson job IDs we create, since Epson has no "list jobs" endpoint)
+  id, documentId -> Document, jobId (unique, Epson's own job ID), status, createdAt, updatedAt
 ```
 
 Migrations are hand-generated via `prisma migrate diff` (schema-to-schema,
@@ -93,6 +96,7 @@ local database in this environment:
 - `20260101000000_init` — initial schema
 - `20260102000000_return_preference` — adds `Document.returnPreference`
 - `20260103000000_add_feature_tracker` — adds the `Feature` model
+- `20260104000000_epson_print_jobs` — adds the `EpsonPrintJob` model
 
 `npm run build` runs `prisma generate && prisma migrate deploy && npm run seed
 && next build` — migrations and seeding both happen automatically on every
@@ -106,8 +110,8 @@ production build.
 | `/dashboard` | Live metrics (active dispatches, in-transit, delivered, exceptions) + recent documents table + staff Quote Tool (see 6.4) | session required |
 | `/dispatch/new` | Upload form: file + recipient/address fields (with address autocomplete, see 6.5) + return preference (Direct/Fully Managed) | session required |
 | `/roadmap` | Internal feature/task tracker for staff — not customer-facing, not part of the audit trail | STAFF/ADMIN |
-| `/tracking/[id]` | Real status timeline + chain-of-custody log + compliance badges for one document | session required, owner or staff |
-| `/print-queue` | Staff print queue: documents in `UPLOADED`/`QUEUED_FOR_PRINT`, download original file, mark as printed, one-click print via Epson Connect, live printer status | STAFF/ADMIN |
+| `/tracking/[id]` | Status timeline + live courier tracking card (polled, see 6.3.1) + chain-of-custody log + compliance badges for one document | session required, owner or staff |
+| `/print-queue` | Staff print queue: search/filter/sort, documents in `UPLOADED`/`QUEUED_FOR_PRINT`, download original file, mark as printed, one-click print via Epson Connect, live printer status with drill-down | STAFF/ADMIN |
 | `/api/documents/upload` | POST — encrypts & stores file to S3/R2, creates `Document`, first `uploaded` audit event | session required |
 | `/api/documents/[id]/status` | PATCH — staff-only manual status transitions (`UPLOADED→QUEUED_FOR_PRINT`, `UPLOADED→PRINTED`, `QUEUED_FOR_PRINT→PRINTED`, etc.) | STAFF/ADMIN |
 | `/api/documents/[id]/download` | GET — presigned R2 download URL for the original file, audit-logs the download | owner or staff |
@@ -123,8 +127,9 @@ production build.
 | `/api/auth/[...nextauth]` | NextAuth handler | — |
 | `/api/quote` | POST — Courier Guy rate lookup from the facility to a given address, dashboard-only tool, doesn't touch any `Document` (see 6.4) | STAFF/ADMIN |
 | `/api/geocode/autocomplete` | GET — proxies OpenStreetMap Nominatim for address suggestions on the dispatch form (see 6.5) | session required |
-| `/api/features` | GET/POST — list/create roadmap items | STAFF/ADMIN |
+| `/api/features` | GET/POST — list/create roadmap items (add is via a modal popup on `/roadmap`) | STAFF/ADMIN |
 | `/api/features/[id]` | PATCH/DELETE — update or remove a roadmap item | STAFF/ADMIN |
+| `/api/documents/[id]/live-tracking` | GET — live Bob Go tracking status/checkpoints for a document's most recent shipment (see 6.3.1) | owner or STAFF/ADMIN |
 
 ## 6. Third-party integrations
 
@@ -171,38 +176,51 @@ production build.
 
 ### 6.3 Epson Connect (printing)
 
-Initially built from two conflicting provided specs (pure guesswork on
-endpoint shapes), then corrected against Epson's actual documented API,
-pieced together via web search on 2026-07-18 since Epson's own developer
-portal (developer.epsonconnect.com, docs.epsonconnect.com) blocks automated
-fetches — sourced from search-engine-indexed content and third-party SDK
-READMEs rather than reading the primary docs directly, so still worth a
-final check against a live account, but this is materially more trustworthy
-than the original guess.
+Initially built from two conflicting provided specs (pure guesswork), then
+"corrected" via web search (which turned out to still be wrong in several
+places), then finally corrected for real against Epson's **official OpenAPI
+v2 spec** (user-supplied document, 2026-07-18) — this is the first version
+of this integration built from a primary source rather than search-engine
+inference, and every path/field/header below is read directly from that
+spec rather than reconstructed by analogy.
 
-**Verified/well-corroborated:**
-- OAuth: `GET {AUTH_BASE}/auth/authorize?response_type=code&client_id=...&redirect_uri=...&scope=device`
-  (scope is `device`, not `printing` as first guessed), token exchange/refresh
-  at `POST {AUTH_BASE}/auth/token`.
-- The device ID (needed for every subsequent call) comes from `subject_id` on
-  the token response — not a separate lookup.
-- Printing is **three sequential calls**, not one: create a job (`POST
-  .../printing/printers/{deviceId}/jobs` with `job_name`, `print_mode`,
-  `print_setting` — note singular, with fields `media_size` (e.g. `ms_a4`),
-  `media_type`, `color_mode`, `two_sided`, `copies`, etc., not the
-  `print_settings`/`duplex`/plain `A4` shape either original spec used) →
-  upload the raw file bytes to the `upload_uri` it returns → execute the
-  print via `POST .../jobs/{jobId}/print`.
+**Confirmed facts (from the official spec):**
+- OAuth: `GET {AUTH_BASE}/auth/authorize?response_type=code&client_id=...&redirect_uri=...&scope=device`,
+  token exchange/refresh at `POST {AUTH_BASE}/auth/token`. The device ID
+  comes from `subject_id` on the token response, not a separate lookup.
+- Every `printing/*` call requires **both** `Authorization: Bearer <device
+  token>` **and** `x-api-key: <key>` headers together — confirmed from the
+  spec's own code samples. An earlier version treated `x-api-key` as
+  optional; it is not.
+- **No device ID appears in any path.** The device token itself is already
+  scoped to exactly one printer, so `printing/devices/info`,
+  `printing/jobs`, and `printing/jobs/{jobId}` are all unqualified — the
+  previously "verified via web search" `printing/printers/{deviceId}/...`
+  path prefix does not exist in the real API.
+- Job creation: `POST /printing/jobs` with a **camelCase** body — `jobName`,
+  `printMode` (`document`/`photo`), `printSettings` (`paperSize` e.g.
+  `ps_a4`, `paperType` e.g. `pt_plainpaper`, `borderless`, `printQuality`,
+  `paperSource`, `colorMode`, plus optional `doubleSided`/`copies`/etc.) —
+  not the snake_case `print_setting`/`media_size` shape used previously.
+  Response: `{ jobId, uploadUri }`.
+- File upload happens on a **separate host**, `upload.epsonconnect.com`:
+  `POST {uploadUri}&File=1.pdf` (the returned `uploadUri` already carries a
+  `Key` query param; `File` naming the extension must be appended), body is
+  the raw file bytes with a matching `Content-Type` (e.g. `application/pdf`).
+- Execute: `POST /printing/jobs/{jobId}/print`, no body.
+- **There is no "list all jobs" endpoint** — only `GET /printing/jobs/{jobId}`
+  (single job by ID) exists. The previous `getJobs()` called an endpoint
+  that doesn't exist in the real API. Pending-job tracking is now done by
+  recording every job ID we create in a new `EpsonPrintJob` table
+  (`documentId`, `jobId`, `status`) and polling each individually
+  (`src/pages/api/epson/status.ts`'s `pollPendingJobs()`) — jobs expire on
+  Epson's side after 3 days regardless, so this list is self-bounding.
 - API v1 (`/api/1/`) was discontinued 2026-04-01; v2 (`/api/2/`) is current
   and is what's implemented.
 
-**Still a guess** (no source confirmed these): the device-info and
-job-listing endpoint paths/response shapes used by `getDeviceInfo()` and
-`getJobs()` (`src/pages/api/epson/status.ts`) — reconstructed by convention
-from the verified job-creation path, not confirmed directly.
-
 - `src/lib/epson.ts` — OAuth authorize URL, token exchange/refresh,
-  `printPdf()` (3-step flow above), `getDeviceInfo()`, `getJobs()`.
+  `printPdf()` (create → upload → print, returns the `jobId`),
+  `getDeviceInfo()`, `getJobStatus(jobId)`.
 - `src/pages/api/epson/callback.ts` — OAuth redirect target
   (`EPSON_REDIRECT_URI`), stores access/refresh tokens and the device ID
   (from `subject_id`) in HTTP-only cookies. Staff/admin only, checked via
@@ -213,43 +231,71 @@ from the verified job-creation path, not confirmed directly.
   `session.user.role` is always `undefined` at runtime.
 - `src/pages/api/documents/[id]/print.ts` — validates the document is in a
   printable status, downloads the PDF from R2, sends it to Epson, retries
-  once via refresh token on a 401, then updates `Document.status` to
-  `PRINTED` and appends an audit event through the existing
-  `appendAuditEvent()` hash-chain helper (an originally supplied spec instead
-  wrote a raw `prisma.auditEvent.create` with a literal `hash: 'pending'`
-  string, which would have broken the tamper-evident audit chain that's the
-  whole point of this table — not used).
+  once via refresh token on a 401, records the returned `jobId` in
+  `EpsonPrintJob`, then updates `Document.status` to `PRINTED` and appends an
+  audit event through the existing `appendAuditEvent()` hash-chain helper (an
+  originally supplied spec instead wrote a raw `prisma.auditEvent.create`
+  with a literal `hash: 'pending'` string, which would have broken the
+  tamper-evident audit chain that's the whole point of this table — not
+  used). Print failures also append an `epson_print_failed` audit event so
+  the printer drill-down (below) has real failure history to show.
 - `src/pages/api/epson/status.ts` + `PrinterStatus` component
   (`src/components/ui.tsx`) — polls printer online/busy/offline + pending
-  job count every 30s, shown on the print queue and dashboard headers,
-  staff only.
+  job count every 30s. Clicking the status line opens a drill-down panel
+  (printer identity/serial/status, pending-jobs count, today's print
+  success rate, a recent-print-jobs table sourced from our own audit trail,
+  and a raw-API-response toggle for debugging) — shown on the print queue
+  and dashboard headers, staff only.
+
+### 6.3.1 Live courier tracking on the tracking page
+
+- `src/lib/bobgo.ts`'s `getTrackingEvents(trackingReference)` calls Bob Go's
+  `GET /tracking?tracking_reference=...` at view time (not just relying on
+  webhook-delivered status cached on `BobgoShipment`, which can lag or be
+  missed).
+- `src/pages/api/documents/[id]/live-tracking.ts` — session-gated (owner or
+  staff), looks up the most recent `BobgoShipment` for the document and
+  returns its live status + checkpoint events, or 404 if no shipment has
+  been booked yet.
+- `src/pages/tracking/[id].tsx` — polls this endpoint on mount and every 60s,
+  rendering a "Live Courier Tracking" card (reference, live status, a
+  Date/Status/Location/Message table of checkpoints) above the existing
+  chain-of-custody log, distinct loading/not-booked/error states.
 
 ### 6.4 Courier Guy Quote Tool
 
 - `src/lib/courierguy.ts` — `getRates()` only (no shipment creation — this is
-  a rate-check tool for the dashboard, not a dispatch mechanism). Modeled
-  closely on `bobgo.ts`'s request shape because The Courier Guy's direct API
-  (`api-tcg.co.za`) is confirmed (via web search — their own docs sites
-  block automated fetches) to be built on the **Shiplogic** platform, the
-  same lineage as Bob Go, which is why the field names match
-  (`collection_address`/`delivery_address`/`parcels`). **Not confirmed**:
-  whether the API key belongs in an `Authorization: Bearer` header (used
-  here, matching Bob Go's convention) or a query parameter — search results
-  only said "authentication is via an api_key parameter" without specifying
-  placement.
+  a rate-check tool for the dashboard, not a dispatch mechanism). Base URL
+  confirmed via a user-supplied real Postman collection to be
+  `https://api.portal.thecourierguy.co.za` — an earlier web-search-derived
+  guess (`api-tcg.co.za`) was wrong (confirmed both by a live 404 in
+  production and by this sandbox's network policy blocking that host
+  outright at the CONNECT level). Bearer-token auth
+  (`Authorization: Bearer <API key>`) is confirmed directly from the
+  collection's own auth documentation. Modeled closely on `bobgo.ts`'s
+  request shape since The Courier Guy's API is built on the same
+  **Shiplogic** platform as Bob Go, which is why the field names match
+  (`collection_address`/`delivery_address`/`parcels`). `CourierGuyAddress`
+  also accepts optional `type` (`residential`/`business`/`counter`/`locker`)
+  and `lat`/`lng` per their docs' accuracy recommendation.
 - `src/pages/api/quote.ts` — always rates from the facility address (the
   only collection point this business dispatches from) to a staff-entered
-  delivery address. Purely a quote lookup, doesn't create or touch any
+  delivery address, optionally with `lat`/`lng` from address autocomplete.
+  Purely a quote lookup, doesn't create or touch any
   `Document`/`BobgoShipment`.
-- UI: a "Quote Tool" card on `/dashboard`, staff only.
+- UI: a "Quote Tool" card on `/dashboard`, staff only, with the same address
+  autocomplete as the dispatch form (see 6.5).
 
 ### 6.5 Address autocomplete
 
 - `src/pages/api/geocode/autocomplete.ts` — proxies OpenStreetMap's free
-  Nominatim geocoder (no API key required) for the "Physical Address" field
-  on `/dispatch/new`. Constrained to South Africa (`countrycodes=za`),
-  debounced client-side (350ms), returns up to 5 suggestions that populate
-  street/suburb/city/province/postal code on selection.
+  Nominatim geocoder (no API key required), used on both the "Physical
+  Address" field on `/dispatch/new` and the Quote Tool's delivery-address
+  field on `/dashboard` (the latter also captures `lat`/`lng` for more
+  accurate Courier Guy rating). Constrained to South Africa
+  (`countrycodes=za`), debounced client-side (350ms), returns up to 5
+  suggestions that populate street/suburb/city/province/postal code (and
+  lat/lng, where used) on selection.
 - Chosen over a paid provider (Google Places, etc.) since no such API key
   was provided/requested — this works immediately with no account setup,
   at the cost of address-matching quality being noticeably rougher than a
@@ -315,10 +361,22 @@ blank before assuming a code bug.
   completely unverified against a real Epson account/printer (see 6.3).
 - Print queue enriched: table layout (Request ID/Recipient/Uploaded/Return/
   Status/Actions), real facility address in the header, relative
-  "uploaded X ago" timestamps.
+  "uploaded X ago" timestamps, plus search/return-type filter/sort controls
+  and pending/direct/managed/oldest-waiting summary tiles.
 - Courier Guy Quote Tool, address autocomplete, and the staff Feature
-  Roadmap tracker all built and type-checked; none yet exercised against a
-  live deployment (pending the next deploy).
+  Roadmap tracker (add-feature now via a modal popup) all built and
+  type-checked; none yet exercised against a live deployment (pending the
+  next deploy).
+- Epson Connect rewritten against the official OpenAPI v2 spec (job
+  creation/print/lookup paths, camelCase fields, required `x-api-key`,
+  separate upload host, `EpsonPrintJob`-based pending-job tracking since no
+  job-list endpoint exists) — type-checked, still unverified against a real
+  Epson account/printer.
+- Printer status drill-down redesigned as a card-based dashboard (printer
+  identity, pending jobs, today's success rate, recent print jobs table
+  sourced from our own audit trail, raw-response toggle).
+- Live courier tracking added to `/tracking/[id]` — polls Bob Go directly at
+  view time rather than relying solely on cached webhook status.
 
 ## 10. Outstanding work
 
@@ -339,15 +397,16 @@ blank before assuming a code bug.
 9. **Print queue verification** — confirm the `20260102000000_return_preference`
    migration applies cleanly on the next production deploy, then test
    download + mark-as-printed against a real uploaded document.
-10. **Epson Connect live test** — the OAuth flow and 3-step print endpoint
-    are now built against corroborated (not guessed) API details, but still
-    need an actual run against a live account/printer to confirm; the
-    device-info/job-listing endpoints in `status.ts` remain an unconfirmed
-    guess by convention (see 6.3).
-11. **Courier Guy Quote Tool live test** — `getRates()` is modeled on Bob
-    Go's shape by strong analogy (confirmed shared Shiplogic lineage) but
-    never called against the real `COURIER_GUY_API` credential; the
-    Bearer-header auth placement specifically is a guess (see 6.4).
+10. **Epson Connect live test** — the OAuth flow and print endpoints are now
+    built directly against the official OpenAPI spec (paths, camelCase
+    fields, required headers, and the separate upload host are all
+    spec-confirmed, not guessed), but still need an actual run against a
+    live account/printer to confirm nothing was misread from the spec
+    (see 6.3).
+11. **Courier Guy Quote Tool live test** — base URL and Bearer-header auth
+    are now confirmed from a real Postman collection (see 6.4), but
+    `getRates()` has still never been called against the real
+    `COURIER_GUY_API` credential end-to-end.
 12. **Deliberately not built** — a later prompt asked for: a `labelStatus`
     field on `Document`, a home-grown courier label generator (a Python
     agent using `reportlab` to draw a label PDF with its own fabricated

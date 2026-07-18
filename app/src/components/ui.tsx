@@ -145,18 +145,34 @@ export function TrackingTimeline({ events }: { events: TimelineEvent[] }) {
   );
 }
 
+interface RecentJob {
+  documentId: string;
+  recipientName: string;
+  status: "success" | "failed";
+  time: string;
+}
+
 interface PrinterStatusData {
   status: "online" | "busy" | "offline" | "not_connected" | "unknown";
   message: string;
   pendingJobs: number;
   productName?: string;
+  serialNumber?: string;
+  recentJobs?: RecentJob[];
+  today?: { success: number; failed: number };
   raw?: unknown;
 }
 
 // Polls /api/epson/status every 30s. Staff-facing only — mounted on pages
-// already gated to STAFF/ADMIN, so no extra auth check needed here.
+// already gated to STAFF/ADMIN, so no extra auth check needed here. Click
+// the summary line to open a small dashboard panel: printer identity,
+// pending/today counters, and real print history from our own audit trail
+// (not just Epson's own job list, which only knows about jobs it still has
+// on record).
 export function PrinterStatus() {
   const [data, setData] = useState<PrinterStatusData | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,7 +181,10 @@ export function PrinterStatus() {
       try {
         const res = await fetch("/api/epson/status");
         const json = await res.json();
-        if (!cancelled) setData(json);
+        if (!cancelled) {
+          setData(json);
+          setLastUpdated(new Date());
+        }
       } catch {
         if (!cancelled) setData({ status: "unknown", message: "Unable to reach printer", pendingJobs: 0 });
       }
@@ -188,6 +207,9 @@ export function PrinterStatus() {
     );
   }
 
+  const todayTotal = (data.today?.success ?? 0) + (data.today?.failed ?? 0);
+  const successRate = todayTotal === 0 ? null : Math.round(((data.today?.success ?? 0) / todayTotal) * 100);
+
   return (
     <details className="printer-status-details">
       <summary className="printer-status">
@@ -195,10 +217,102 @@ export function PrinterStatus() {
         {data.message}
         {data.productName && ` · ${data.productName}`}
       </summary>
-      {data.raw !== undefined && (
-        <pre className="printer-status-raw">{JSON.stringify(data.raw, null, 2)}</pre>
-      )}
+
+      <div className="printer-panel">
+        <div className="printer-panel-grid">
+          <div className="printer-mini-card">
+            <div className="printer-mini-title">🖨️ Printer</div>
+            <div className="printer-mini-value">{data.productName ?? "Not connected"}</div>
+            {data.serialNumber && <div className="printer-mini-sub">SN: {data.serialNumber}</div>}
+            <Badge tone={data.status === "online" || data.status === "busy" ? "success" : "navy"}>
+              {data.status === "online" ? "● Online" : data.status === "busy" ? "● Busy" : "● Offline"}
+            </Badge>
+          </div>
+          <div className="printer-mini-card">
+            <div className="printer-mini-title">📄 Pending Jobs</div>
+            <div className="printer-mini-value">{data.pendingJobs}</div>
+            <div className="printer-mini-sub">Waiting in queue</div>
+          </div>
+          <div className="printer-mini-card">
+            <div className="printer-mini-title">📊 Today's Prints</div>
+            <div className="printer-mini-value">{todayTotal}</div>
+            <div className="printer-mini-sub">
+              {successRate === null ? "No prints yet" : `Success rate: ${successRate}%`}
+            </div>
+          </div>
+        </div>
+
+        <div className="printer-jobs-title">Recent Print Jobs</div>
+        {!data.recentJobs || data.recentJobs.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>No print jobs recorded yet.</div>
+        ) : (
+          <table className="data-table printer-jobs-table">
+            <thead>
+              <tr>
+                <th>Document</th>
+                <th>Time</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.recentJobs.map((job, i) => (
+                <tr key={i}>
+                  <td>
+                    <div>{job.recipientName}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      #{job.documentId.slice(0, 8).toUpperCase()}
+                    </div>
+                  </td>
+                  <td>{new Date(job.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                  <td>
+                    <Badge tone={job.status === "success" ? "success" : "navy"}>
+                      {job.status === "success" ? "Success" : "Failed"}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div className="printer-panel-footnote">
+          <span>ⓘ Ink &amp; paper levels aren't available via the Epson API — rely on the printer's own low-ink alerts.</span>
+          <span>
+            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : ""} · refreshes every 30s
+          </span>
+          <button type="button" className="printer-panel-raw-toggle" onClick={() => setShowRaw((v) => !v)}>
+            {showRaw ? "Hide" : "View"} raw API response
+          </button>
+        </div>
+        {showRaw && data.raw !== undefined && (
+          <pre className="printer-status-raw">{JSON.stringify(data.raw, null, 2)}</pre>
+        )}
+      </div>
     </details>
+  );
+}
+
+export function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">{title}</div>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
 

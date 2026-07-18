@@ -3,7 +3,7 @@ import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, Badge, MetricTile } from "@/components/ui";
+import { AppHeader, Card, Badge, MetricTile, Modal } from "@/components/ui";
 
 type Priority = "HIGH" | "MEDIUM" | "LOW";
 type Status = "NOT_STARTED" | "IN_PROGRESS" | "READY" | "IMPLEMENTED";
@@ -74,6 +74,7 @@ export default function Roadmap({ userLabel, initialFeatures }: RoadmapProps) {
   const [newPriority, setNewPriority] = useState<Priority>("MEDIUM");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const stats = {
     total: features.length,
@@ -125,6 +126,8 @@ export default function Roadmap({ userLabel, initialFeatures }: RoadmapProps) {
       const created = (await res.json()) as Feature;
       setFeatures((prev) => [created, ...prev].sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]));
       setNewName("");
+      setNewPriority("MEDIUM");
+      setShowAddModal(false);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -137,9 +140,14 @@ export default function Roadmap({ userLabel, initialFeatures }: RoadmapProps) {
       <AppHeader active="dashboard" userLabel={userLabel} showPrintQueue showRoadmap />
       <main className="app-main">
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div>
-            <div className="page-title">Feature Roadmap</div>
-            <div className="page-subtitle">Internal tracker for planned improvements — staff only.</div>
+          <div className="page-head">
+            <div>
+              <div className="page-title">Feature Roadmap</div>
+              <div className="page-subtitle">Internal tracker for planned improvements — staff only.</div>
+            </div>
+            <button type="button" className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+              + Add Feature
+            </button>
           </div>
 
           <div style={{ display: "flex", gap: 16 }}>
@@ -149,30 +157,28 @@ export default function Roadmap({ userLabel, initialFeatures }: RoadmapProps) {
             <MetricTile label="Implemented" value={String(stats.implemented)} tone="teal" />
           </div>
 
-          <Card>
-            <form onSubmit={handleAdd} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-              <div className="field" style={{ flex: 1, minWidth: 200 }}>
-                <label>Feature name</label>
-                <input value={newName} onChange={(e) => setNewName(e.target.value)} />
-              </div>
-              <div className="field">
-                <label>Priority</label>
-                <select value={newPriority} onChange={(e) => setNewPriority(e.target.value as Priority)}>
-                  <option value="HIGH">High</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="LOW">Low</option>
-                </select>
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={adding}>
-                {adding ? "Adding…" : "+ Add"}
-              </button>
-            </form>
-            {error && (
-              <div className="form-error" style={{ marginTop: 12 }}>
-                {error}
-              </div>
-            )}
-          </Card>
+          {showAddModal && (
+            <Modal title="Add Feature" onClose={() => setShowAddModal(false)}>
+              <form onSubmit={handleAdd} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div className="field">
+                  <label>Feature name</label>
+                  <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label>Priority</label>
+                  <select value={newPriority} onChange={(e) => setNewPriority(e.target.value as Priority)}>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                  </select>
+                </div>
+                {error && <div className="form-error">{error}</div>}
+                <button type="submit" className="btn btn-primary btn-full" disabled={adding}>
+                  {adding ? "Adding…" : "+ Add"}
+                </button>
+              </form>
+            </Modal>
+          )}
 
           <Card>
             {features.length === 0 ? (

@@ -71,48 +71,70 @@ create a secret (put it in `BOBGO_WEBHOOK_SECRET`), then subscribe
 
 ## Printing (Epson Connect)
 
-Corrected against Epson's actual documented API (auth scope, device ID
-sourcing, and the real 3-step print flow — see TECH_SPEC.md section 6.3 for
-what's verified vs. still a best-effort guess), but never yet run against a
-live Epson account/printer. Confirm end-to-end before relying on it.
+Rewritten directly against Epson's official OpenAPI v2 spec (see
+TECH_SPEC.md section 6.3) — paths, camelCase field names, both required
+auth headers, and the separate upload host are all read straight from that
+spec rather than inferred, but this has never yet been run against a live
+Epson account/printer. Confirm end-to-end before relying on it.
 
-- `src/lib/epson.ts` — OAuth token exchange/refresh, `printPdf()` (create job
-  → upload file to `upload_uri` → execute print), `getDeviceInfo()`,
-  `getJobs()`.
+- `src/lib/epson.ts` — OAuth token exchange/refresh, `printPdf()` (creates
+  the job via `POST /printing/jobs`, uploads the file to the returned
+  `uploadUri` on `upload.epsonconnect.com`, then executes via
+  `POST /printing/jobs/{jobId}/print`; returns the `jobId`),
+  `getDeviceInfo()`, `getJobStatus(jobId)`. Every call sends both
+  `Authorization: Bearer` and `x-api-key` headers — both are required.
 - `src/pages/api/epson/callback.ts` — OAuth redirect target
   (`EPSON_REDIRECT_URI`). Staff/admin only. Stores `access_token`/
   `refresh_token`/device ID (`subject_id` from the token response) in
   HTTP-only cookies.
 - `src/pages/api/documents/[id]/print.ts` — sends a document's PDF straight
-  to the connected printer and marks it `PRINTED` on success. Returns
-  `auth_url` in a 401 if not yet connected; the print queue UI redirects the
-  browser there to start the OAuth flow.
+  to the connected printer, records the returned job ID in `EpsonPrintJob`,
+  and marks it `PRINTED` on success. Returns `auth_url` in a 401 if not yet
+  connected; the print queue UI redirects the browser there to start the
+  OAuth flow.
 - `src/pages/api/epson/status.ts` — polled every 30s by the `PrinterStatus`
   component (print queue + dashboard header, staff only) to show
-  online/busy/offline plus pending job count. Clicking it expands a raw JSON
-  dump of everything the Epson API returned.
+  online/busy/offline plus a pending-job count. Since Epson has no "list
+  jobs" endpoint, pending jobs are counted by polling every `EpsonPrintJob`
+  we've recorded as not yet settled. Clicking the status line opens a
+  drill-down panel: printer identity, pending jobs, today's print success
+  rate, a recent-jobs table sourced from our own audit trail, and a
+  raw-API-response toggle.
 
 ## Quote Tool (Courier Guy)
 
 - `src/lib/courierguy.ts` — `getRates()`, always quoting from the facility
   address (the only collection point this business dispatches from) to a
-  given delivery address. Built on the same request shape as Bob Go since
-  The Courier Guy's direct API is Shiplogic-based (see file comment for
-  what's confirmed vs. inferred by analogy). No shipment is created, no
-  `Document` is touched — purely a rate lookup, shown as a card on
-  `/dashboard`.
+  given delivery address. Base URL (`https://api.portal.thecourierguy.co.za`)
+  and Bearer-token auth are confirmed from a real Postman collection. Built
+  on the same request shape as Bob Go since The Courier Guy's direct API is
+  Shiplogic-based. No shipment is created, no `Document` is touched — purely
+  a rate lookup, shown as a card on `/dashboard` with the same address
+  autocomplete as the dispatch form.
 
 ## Address autocomplete
 
 `src/pages/api/geocode/autocomplete.ts` proxies OpenStreetMap's free
-Nominatim geocoder (no API key needed) for the delivery address field on
-`/dispatch/new`. South Africa only, debounced 350ms client-side.
+Nominatim geocoder (no API key needed), used on the delivery address field
+on `/dispatch/new` and the Quote Tool on `/dashboard`. South Africa only,
+debounced 350ms client-side.
+
+## Live courier tracking
+
+`/tracking/[id]` polls `/api/documents/[id]/live-tracking` on mount and every
+60s, which calls Bob Go's tracking endpoint directly for the document's most
+recent shipment rather than relying only on cached webhook status. Shows a
+"Live Courier Tracking" card with the tracking reference, live status, and a
+checkpoint table (date/status/location/message) above the chain-of-custody
+log.
 
 ## Feature Roadmap
 
 `/roadmap` (staff only) — a lightweight internal tracker for planned
 features (`Feature` model), unrelated to the customer-facing product or the
-audit trail. CRUD via `/api/features` and `/api/features/[id]`.
+audit trail. Adding a feature opens a modal popup (rather than an
+always-visible inline form). CRUD via `/api/features` and
+`/api/features/[id]`.
 
 ## Still to build
 

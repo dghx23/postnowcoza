@@ -145,3 +145,16 @@ export function cancelShipment(trackingReference: string) {
     body: JSON.stringify({ tracking_reference: trackingReference }),
   });
 }
+
+export interface TrackingCheckpoint {
+  date: string;
+  status: string;
+  location?: string;
+  message?: string;
+}
+
+export function getTrackingEvents(trackingReference: string) {
+  return bobgoFetch<{ status: string; tracking_events: TrackingCheckpoint[] }>(
+    `/tracking?tracking_reference=${encodeURIComponent(trackingReference)}`
+  );
+}

@@ -113,6 +113,7 @@ model Document {
   auditEvents      AuditEvent[]
   bobgoShipments   BobgoShipment[]
   payments         Payment[]
+  epsonPrintJobs   EpsonPrintJob[]
 }
 
 // Append-only chain-of-custody log. Rows are never updated or deleted from
@@ -170,6 +171,21 @@ model Feature {
   createdBy String
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
+}
+
+// Epson's API has no "list all jobs" endpoint, only lookup by ID - this
+// records every job we create so status.ts can poll each one individually
+// to build a pending-jobs count instead of asking Epson for a list.
+model EpsonPrintJob {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+  jobId      String   @unique
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([documentId])
 }
 
 // A Bob Pay payment intent for a document's dispatch fee.

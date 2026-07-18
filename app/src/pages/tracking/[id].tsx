@@ -1,8 +1,25 @@
+import { useEffect, useState } from "react";
 import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
 import { AppHeader, Card, DataTable, Badge, StatusPill, TrackingTimeline, type TimelineEvent } from "@/components/ui";
+
+interface LiveCheckpoint {
+  date: string;
+  status: string;
+  location?: string;
+  message?: string;
+}
+
+interface LiveTrackingState {
+  loading: boolean;
+  notBooked: boolean;
+  error: string | null;
+  trackingReference: string | null;
+  status: string | null;
+  events: LiveCheckpoint[];
+}
 
 const STAGE_ORDER = [
   "UPLOADED",
@@ -80,6 +97,52 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
 };
 
 export default function Tracking({ userLabel, documentId, recipientName, status, timeline, logRows }: TrackingProps) {
+  const [live, setLive] = useState<LiveTrackingState>({
+    loading: true,
+    notBooked: false,
+    error: null,
+    trackingReference: null,
+    status: null,
+    events: [],
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchLive() {
+      try {
+        const res = await fetch(`/api/documents/${documentId}/live-tracking`);
+        if (res.status === 404) {
+          if (!cancelled) setLive((s) => ({ ...s, loading: false, notBooked: true }));
+          return;
+        }
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "Unable to reach courier");
+        if (!cancelled) {
+          setLive({
+            loading: false,
+            notBooked: false,
+            error: null,
+            trackingReference: json.trackingReference,
+            status: json.status,
+            events: json.events ?? [],
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLive((s) => ({ ...s, loading: false, error: (err as Error).message }));
+        }
+      }
+    }
+
+    fetchLive();
+    const interval = setInterval(fetchLive, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [documentId]);
+
   return (
     <div className="app-shell">
       <AppHeader active="tracking" userLabel={userLabel} />
@@ -100,6 +163,46 @@ export default function Tracking({ userLabel, documentId, recipientName, status,
               </Card>
             </div>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+              <Card title="Live Courier Tracking">
+                {live.loading ? (
+                  <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>Checking courier status…</div>
+                ) : live.notBooked ? (
+                  <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+                    No courier shipment has been booked for this document yet.
+                  </div>
+                ) : live.error ? (
+                  <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+                    Live tracking is temporarily unavailable ({live.error}).
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <Badge tone="teal">Ref: {live.trackingReference}</Badge>
+                      {live.status && <StatusPill status={live.status} />}
+                    </div>
+                    {live.events.length === 0 ? (
+                      <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+                        No tracking checkpoints from the courier yet.
+                      </div>
+                    ) : (
+                      <DataTable
+                        columns={["Date", "Status", "Location", "Message"]}
+                        rows={live.events.map((e) => [
+                          new Date(e.date).toLocaleString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          }),
+                          e.status,
+                          e.location ?? "—",
+                          e.message ?? "—",
+                        ])}
+                      />
+                    )}
+                  </div>
+                )}
+              </Card>
               <Card title="Chain of Custody Log">
                 {logRows.length === 0 ? (
                   <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>No events recorded yet.</div>

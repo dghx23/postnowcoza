@@ -58,8 +58,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const pdfBuffer = Buffer.from(fileRes.data);
   const jobName = `postnow-${document.id}`;
 
+  let epsonJobId: string;
   try {
-    await printPdf(accessToken, deviceId, pdfBuffer, jobName);
+    epsonJobId = await printPdf(accessToken, pdfBuffer, jobName);
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.status === 401 && refreshToken) {
       try {
@@ -69,17 +70,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           serialize(EPSON_ACCESS_COOKIE, refreshed.access_token, epsonCookieOptions(refreshed.expires_in ?? 3600)),
           serialize(EPSON_REFRESH_COOKIE, refreshed.refresh_token ?? refreshToken, epsonRefreshCookieOptions()),
         ]);
-        await printPdf(accessToken, deviceId, pdfBuffer, jobName);
-      } catch {
+        epsonJobId = await printPdf(accessToken, pdfBuffer, jobName);
+      } catch (retryErr) {
+        await appendAuditEvent({
+          documentId: id,
+          actorId: user.id,
+          action: "epson_print_failed",
+          metadata: { via: "epson_connect", reason: "session_expired", error: (retryErr as Error).message },
+          ip: req.socket.remoteAddress ?? undefined,
+        });
         return res.status(401).json({
           error: "Epson session expired, please reconnect",
           auth_url: buildAuthorizeUrl(document.id),
         });
       }
     } else {
+      await appendAuditEvent({
+        documentId: id,
+        actorId: user.id,
+        action: "epson_print_failed",
+        metadata: { via: "epson_connect", reason: "request_failed", error: (err as Error).message },
+        ip: req.socket.remoteAddress ?? undefined,
+      });
       return res.status(502).json({ error: "Epson Connect print request failed" });
     }
   }
+
+  await prisma.epsonPrintJob.create({
+    data: { documentId: id, jobId: epsonJobId, status: "pending" },
+  });
 
   const updated = await prisma.document.update({
     where: { id },
