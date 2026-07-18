@@ -44,10 +44,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.redirect(302, "/print-queue?epson=connected");
   } catch (err) {
     const axiosErr = err as { response?: { status?: number; data?: unknown }; message?: string };
+    // client_id/client_secret aren't logged, only their lengths and whether
+    // they have leading/trailing whitespace - we've twice now found env vars
+    // corrupted by a stray copy-paste character (R2 secret, Courier Guy
+    // key), so ruling that out here directly instead of guessing again.
+    const clientId = process.env.EPSON_CLIENT_ID ?? "";
+    const clientSecret = process.env.EPSON_CLIENT_SECRET ?? "";
+    const redirectUri = process.env.EPSON_REDIRECT_URI ?? "";
     console.error("Epson OAuth callback: token exchange failed", {
       status: axiosErr.response?.status,
       data: axiosErr.response?.data,
       message: axiosErr.message,
+      clientIdLength: clientId.length,
+      clientIdHasWhitespace: clientId !== clientId.trim(),
+      clientSecretLength: clientSecret.length,
+      clientSecretHasWhitespace: clientSecret !== clientSecret.trim(),
+      redirectUri,
     });
     return res.redirect(302, "/print-queue?epson=error");
   }
