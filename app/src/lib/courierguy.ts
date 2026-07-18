@@ -49,6 +49,16 @@ async function courierGuyFetch<T>(path: string, init: RequestInit = {}): Promise
 
   if (!res.ok) {
     const body = await res.text();
+    // Never log API_KEY itself - only whether it's present, to diagnose an
+    // empty/missing env var vs. a genuinely rejected key without leaking it.
+    console.error("Courier Guy API request failed", {
+      status: res.status,
+      path,
+      baseUrl: BASE_URL,
+      apiKeyPresent: API_KEY.length > 0,
+      apiKeyLength: API_KEY.length,
+      body,
+    });
     throw new Error(`Courier Guy API error ${res.status} on ${path}: ${body}`);
   }
 

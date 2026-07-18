@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { GetServerSideProps } from "next";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
@@ -243,16 +244,17 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
               <DataTable
                 columns={["Request ID", "Recipient", "Uploaded", "Return", "Status", "Actions"]}
                 rows={visibleDocuments.map((doc) => [
-                  <span
+                  <Link
                     key={`${doc.id}-ref`}
-                    style={{ fontFamily: "var(--font-mono, monospace)", fontWeight: 700 }}
+                    href={`/tracking/${doc.id}`}
+                    style={{ fontFamily: "var(--font-mono, monospace)", fontWeight: 700, color: "var(--accent-primary)" }}
                   >
                     #{doc.id.slice(0, 8).toUpperCase()}
-                  </span>,
-                  <div key={`${doc.id}-recipient`}>
+                  </Link>,
+                  <Link key={`${doc.id}-recipient`} href={`/tracking/${doc.id}`} style={{ color: "inherit" }}>
                     <div>{doc.recipientName}</div>
                     <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{doc.city}</div>
-                  </div>,
+                  </Link>,
                   timeAgo(doc.createdAt),
                   <Badge key={`${doc.id}-return`} tone={doc.returnPreference === "MANAGED" ? "teal" : "navy"}>
                     {doc.returnPreference === "MANAGED" ? "Via PostNow" : "Direct"}
