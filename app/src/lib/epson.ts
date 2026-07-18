@@ -78,6 +78,39 @@ export async function refreshTokens(refreshToken: string): Promise<EpsonTokens> 
   return res.data;
 }
 
+function epsonHeaders(accessToken: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    ...(API_KEY ? { "x-api-key": API_KEY } : {}),
+  };
+}
+
+export interface EpsonDeviceInfo {
+  connected?: boolean;
+  productName?: string;
+  serialNumber?: string;
+  [key: string]: unknown;
+}
+
+export async function getDeviceInfo(accessToken: string): Promise<EpsonDeviceInfo> {
+  const res = await axios.get<EpsonDeviceInfo>(`${API_BASE}/printing/devices/info`, {
+    headers: epsonHeaders(accessToken),
+  });
+  return res.data;
+}
+
+export interface EpsonJob {
+  status?: string;
+  [key: string]: unknown;
+}
+
+export async function getJobs(accessToken: string): Promise<EpsonJob[]> {
+  const res = await axios.get<{ jobs?: EpsonJob[] }>(`${API_BASE}/printing/jobs`, {
+    headers: epsonHeaders(accessToken),
+  });
+  return res.data?.jobs ?? [];
+}
+
 // Prints a single PDF as one copy, A4, mono, duplex. Not parameterized
 // further since the print queue only ever sends one kind of job today.
 export async function printPdf(accessToken: string, pdfBuffer: Buffer, jobName: string) {

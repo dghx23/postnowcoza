@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import Link from "next/link";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, MetricTile, Alert, Card, DataTable, StatusPill } from "@/components/ui";
+import { AppHeader, MetricTile, Alert, Card, DataTable, StatusPill, PrinterStatus } from "@/components/ui";
 
 interface DashboardProps {
   userLabel: string;
@@ -57,9 +57,12 @@ export default function Dashboard({ userLabel, isStaff, metrics, rows }: Dashboa
               <div className="page-title">Compliance Dashboard</div>
               <div className="page-subtitle">Zero-Touch model — upload once, we handle everything.</div>
             </div>
-            <Link href="/dispatch/new" className="btn btn-primary">
-              + New Secure Dispatch
-            </Link>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              {isStaff && <PrinterStatus />}
+              <Link href="/dispatch/new" className="btn btn-primary">
+                + New Secure Dispatch
+              </Link>
+            </div>
           </div>
 
           <div style={{ display: "flex", gap: 16 }}>

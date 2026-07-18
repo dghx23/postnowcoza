@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, Badge, StatusPill, Alert } from "@/components/ui";
+import { AppHeader, Card, Badge, StatusPill, Alert, PrinterStatus } from "@/components/ui";
 
 interface QueueDocument {
   id: string;
@@ -123,11 +123,14 @@ export default function PrintQueue({ userLabel, documents: initialDocuments }: P
       <AppHeader active="print-queue" userLabel={userLabel} showPrintQueue />
       <main className="app-main">
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div>
-            <div className="page-title">Print Queue</div>
-            <div className="page-subtitle">
-              Documents awaiting secure intake and printing — {documents.length} pending.
+          <div className="page-head">
+            <div>
+              <div className="page-title">Print Queue</div>
+              <div className="page-subtitle">
+                Documents awaiting secure intake and printing — {documents.length} pending.
+              </div>
             </div>
+            <PrinterStatus />
           </div>
 
           {epsonBanner === "connected" && (

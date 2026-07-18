@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 type NavKey = "dashboard" | "dispatch" | "tracking" | "print-queue";
@@ -137,6 +138,57 @@ export function TrackingTimeline({ events }: { events: TimelineEvent[] }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+interface PrinterStatusData {
+  status: "online" | "busy" | "offline" | "not_connected" | "unknown";
+  message: string;
+  pendingJobs: number;
+  productName?: string;
+}
+
+// Polls /api/epson/status every 30s. Staff-facing only — mounted on pages
+// already gated to STAFF/ADMIN, so no extra auth check needed here.
+export function PrinterStatus() {
+  const [data, setData] = useState<PrinterStatusData | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/epson/status");
+        const json = await res.json();
+        if (!cancelled) setData(json);
+      } catch {
+        if (!cancelled) setData({ status: "unknown", message: "Unable to reach printer", pendingJobs: 0 });
+      }
+    }
+
+    poll();
+    const interval = setInterval(poll, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  if (!data) {
+    return (
+      <div className="printer-status">
+        <span className="printer-status-dot unknown" />
+        Checking printer…
+      </div>
+    );
+  }
+
+  return (
+    <div className="printer-status">
+      <span className={`printer-status-dot ${data.status}`} />
+      {data.message}
+      {data.productName && ` · ${data.productName}`}
     </div>
   );
 }
