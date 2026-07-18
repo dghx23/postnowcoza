@@ -113,7 +113,7 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
       }
 
       const { id } = await res.json();
-      router.push(`/tracking/${id}`);
+      router.push(`/tracking/${id}?submitted=1`);
     } catch (err) {
       setError((err as Error).message);
       setSubmitting(false);
