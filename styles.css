@@ -220,6 +220,7 @@ nav.site-nav a.nav-link:hover {
 }
 .hero-image img {
   width: 100%;
+  height: auto;
   display: block;
 }
 .hero-image::after {
@@ -237,6 +238,7 @@ nav.site-nav a.nav-link:hover {
 .trust-bar img {
   max-width: 700px;
   width: 100%;
+  height: auto;
   display: inline-block;
 }
 
