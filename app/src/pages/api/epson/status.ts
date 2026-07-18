@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { parse } from "cookie";
 import { getSessionUser } from "@/lib/session";
-import { getDeviceInfo, getJobs, EPSON_ACCESS_COOKIE } from "@/lib/epson";
+import { getDeviceInfo, getJobs, EPSON_ACCESS_COOKIE, EPSON_DEVICE_ID_COOKIE } from "@/lib/epson";
 
 // Polled by the print queue / dashboard every ~30s, so this always returns
 // 200 with a status payload rather than surfacing HTTP error codes for
@@ -20,8 +20,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const cookies = parse(req.headers.cookie ?? "");
   const accessToken = cookies[EPSON_ACCESS_COOKIE];
+  const deviceId = cookies[EPSON_DEVICE_ID_COOKIE];
 
-  if (!accessToken) {
+  if (!accessToken || !deviceId) {
     return res.status(200).json({
       status: "not_connected",
       message: "Not connected to Epson Connect",
@@ -31,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const [device, jobs] = await Promise.all([getDeviceInfo(accessToken), getJobs(accessToken)]);
+    const [device, jobs] = await Promise.all([getDeviceInfo(accessToken, deviceId), getJobs(accessToken, deviceId)]);
     const pendingJobs = jobs.filter((j) => j.status === "pending" || j.status === "processing").length;
     const connected = device.connected === true;
 

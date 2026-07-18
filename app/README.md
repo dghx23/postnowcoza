@@ -71,16 +71,18 @@ create a secret (put it in `BOBGO_WEBHOOK_SECRET`), then subscribe
 
 ## Printing (Epson Connect)
 
-**Unverified integration** — implemented per a provided spec, never run
-against a live Epson account or checked against Epson's current API docs
-(https://developer.epsonconnect.com/). Confirm endpoint paths and payload
-field names before relying on this in production.
+Corrected against Epson's actual documented API (auth scope, device ID
+sourcing, and the real 3-step print flow — see TECH_SPEC.md section 6.3 for
+what's verified vs. still a best-effort guess), but never yet run against a
+live Epson account/printer. Confirm end-to-end before relying on it.
 
-- `src/lib/epson.ts` — OAuth token exchange/refresh, `printPdf()`,
-  `getDeviceInfo()`, `getJobs()`.
+- `src/lib/epson.ts` — OAuth token exchange/refresh, `printPdf()` (create job
+  → upload file to `upload_uri` → execute print), `getDeviceInfo()`,
+  `getJobs()`.
 - `src/pages/api/epson/callback.ts` — OAuth redirect target
   (`EPSON_REDIRECT_URI`). Staff/admin only. Stores `access_token`/
-  `refresh_token` in HTTP-only cookies.
+  `refresh_token`/device ID (`subject_id` from the token response) in
+  HTTP-only cookies.
 - `src/pages/api/documents/[id]/print.ts` — sends a document's PDF straight
   to the connected printer and marks it `PRINTED` on success. Returns
   `auth_url` in a 401 if not yet connected; the print queue UI redirects the

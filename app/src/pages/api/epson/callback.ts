@@ -7,6 +7,7 @@ import {
   epsonRefreshCookieOptions,
   EPSON_ACCESS_COOKIE,
   EPSON_REFRESH_COOKIE,
+  EPSON_DEVICE_ID_COOKIE,
 } from "@/lib/epson";
 
 // Redirect target for Epson's OAuth flow (EPSON_REDIRECT_URI in Vercel must
@@ -26,10 +27,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const tokens = await exchangeCodeForTokens(code);
+    if (!tokens.subject_id) {
+      return res.redirect(302, "/print-queue?epson=error");
+    }
 
     res.setHeader("Set-Cookie", [
       serialize(EPSON_ACCESS_COOKIE, tokens.access_token, epsonCookieOptions(tokens.expires_in ?? 3600)),
       serialize(EPSON_REFRESH_COOKIE, tokens.refresh_token, epsonRefreshCookieOptions()),
+      serialize(EPSON_DEVICE_ID_COOKIE, tokens.subject_id, epsonRefreshCookieOptions()),
     ]);
 
     return res.redirect(302, "/print-queue?epson=connected");

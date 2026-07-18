@@ -13,6 +13,7 @@ import {
   epsonRefreshCookieOptions,
   EPSON_ACCESS_COOKIE,
   EPSON_REFRESH_COOKIE,
+  EPSON_DEVICE_ID_COOKIE,
 } from "@/lib/epson";
 
 // Same UPLOADED/QUEUED_FOR_PRINT -> PRINTED transitions the manual
@@ -43,8 +44,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const cookies = parse(req.headers.cookie ?? "");
   let accessToken = cookies[EPSON_ACCESS_COOKIE];
   const refreshToken = cookies[EPSON_REFRESH_COOKIE];
+  const deviceId = cookies[EPSON_DEVICE_ID_COOKIE];
 
-  if (!accessToken) {
+  if (!accessToken || !deviceId) {
     return res.status(401).json({
       error: "Not connected to Epson Connect",
       auth_url: buildAuthorizeUrl(document.id),
@@ -57,7 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const jobName = `postnow-${document.id}`;
 
   try {
-    await printPdf(accessToken, pdfBuffer, jobName);
+    await printPdf(accessToken, deviceId, pdfBuffer, jobName);
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.status === 401 && refreshToken) {
       try {
@@ -67,7 +69,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           serialize(EPSON_ACCESS_COOKIE, refreshed.access_token, epsonCookieOptions(refreshed.expires_in ?? 3600)),
           serialize(EPSON_REFRESH_COOKIE, refreshed.refresh_token ?? refreshToken, epsonRefreshCookieOptions()),
         ]);
-        await printPdf(accessToken, pdfBuffer, jobName);
+        await printPdf(accessToken, deviceId, pdfBuffer, jobName);
       } catch {
         return res.status(401).json({
           error: "Epson session expired, please reconnect",

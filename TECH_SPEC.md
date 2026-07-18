@@ -161,34 +161,54 @@ production build.
 
 ### 6.3 Epson Connect (printing)
 
-**Unverified integration** — built from a provided implementation spec, never
-run against a live Epson account/printer or checked against Epson's current
-API docs (https://developer.epsonconnect.com/). Confirm endpoint paths and
-payload field names before relying on this in production. Two separate
-prompts supplied conflicting details for the same integration (different
-field names — `duplex`/`A4` vs `double_sided`/`ps_a4` — and one included an
-`x-api-key` header/`EPSON_API_KEY` the other didn't mention); the
-implementation picked one coherent version and made both the base URLs and
-the API key header optional/env-overridable rather than guessing which spec
-was authoritative.
+Initially built from two conflicting provided specs (pure guesswork on
+endpoint shapes), then corrected against Epson's actual documented API,
+pieced together via web search on 2026-07-18 since Epson's own developer
+portal (developer.epsonconnect.com, docs.epsonconnect.com) blocks automated
+fetches — sourced from search-engine-indexed content and third-party SDK
+READMEs rather than reading the primary docs directly, so still worth a
+final check against a live account, but this is materially more trustworthy
+than the original guess.
+
+**Verified/well-corroborated:**
+- OAuth: `GET {AUTH_BASE}/auth/authorize?response_type=code&client_id=...&redirect_uri=...&scope=device`
+  (scope is `device`, not `printing` as first guessed), token exchange/refresh
+  at `POST {AUTH_BASE}/auth/token`.
+- The device ID (needed for every subsequent call) comes from `subject_id` on
+  the token response — not a separate lookup.
+- Printing is **three sequential calls**, not one: create a job (`POST
+  .../printing/printers/{deviceId}/jobs` with `job_name`, `print_mode`,
+  `print_setting` — note singular, with fields `media_size` (e.g. `ms_a4`),
+  `media_type`, `color_mode`, `two_sided`, `copies`, etc., not the
+  `print_settings`/`duplex`/plain `A4` shape either original spec used) →
+  upload the raw file bytes to the `upload_uri` it returns → execute the
+  print via `POST .../jobs/{jobId}/print`.
+- API v1 (`/api/1/`) was discontinued 2026-04-01; v2 (`/api/2/`) is current
+  and is what's implemented.
+
+**Still a guess** (no source confirmed these): the device-info and
+job-listing endpoint paths/response shapes used by `getDeviceInfo()` and
+`getJobs()` (`src/pages/api/epson/status.ts`) — reconstructed by convention
+from the verified job-creation path, not confirmed directly.
 
 - `src/lib/epson.ts` — OAuth authorize URL, token exchange/refresh,
-  `printPdf()`, `getDeviceInfo()`, `getJobs()`.
+  `printPdf()` (3-step flow above), `getDeviceInfo()`, `getJobs()`.
 - `src/pages/api/epson/callback.ts` — OAuth redirect target
-  (`EPSON_REDIRECT_URI`). Staff/admin only (checked via `getSessionUser`, the
-  same pattern as every other API route — not `getServerSession` +
-  `session.user.role` directly, which the supplied specs used but which
-  doesn't work here: this app's NextAuth config has no `jwt`/`session`
-  callback copying `role` onto the session object, so `session.user.role`
-  is always `undefined` at runtime).
+  (`EPSON_REDIRECT_URI`), stores access/refresh tokens and the device ID
+  (from `subject_id`) in HTTP-only cookies. Staff/admin only, checked via
+  `getSessionUser` — the same pattern as every other API route, not
+  `getServerSession` + `session.user.role` directly, which the originally
+  supplied specs used but which doesn't work here: this app's NextAuth config
+  has no `jwt`/`session` callback copying `role` onto the session object, so
+  `session.user.role` is always `undefined` at runtime.
 - `src/pages/api/documents/[id]/print.ts` — validates the document is in a
   printable status, downloads the PDF from R2, sends it to Epson, retries
   once via refresh token on a 401, then updates `Document.status` to
   `PRINTED` and appends an audit event through the existing
-  `appendAuditEvent()` hash-chain helper (the supplied spec instead wrote a
-  raw `prisma.auditEvent.create` with a literal `hash: 'pending'` string,
-  which would have broken the tamper-evident audit chain that's the whole
-  point of this table — not used).
+  `appendAuditEvent()` hash-chain helper (an originally supplied spec instead
+  wrote a raw `prisma.auditEvent.create` with a literal `hash: 'pending'`
+  string, which would have broken the tamper-evident audit chain that's the
+  whole point of this table — not used).
 - `src/pages/api/epson/status.ts` + `PrinterStatus` component
   (`src/components/ui.tsx`) — polls printer online/busy/offline + pending
   job count every 30s, shown on the print queue and dashboard headers,
@@ -269,7 +289,8 @@ blank before assuming a code bug.
 9. **Print queue verification** — confirm the `20260102000000_return_preference`
    migration applies cleanly on the next production deploy, then test
    download + mark-as-printed against a real uploaded document.
-10. **Epson Connect verification** — confirm OAuth flow, print endpoint, and
-    status endpoint against Epson's real API docs and a live printer before
-    staff rely on the "Print (API)" button; the current implementation is
-    unverified (see 6.3).
+10. **Epson Connect live test** — the OAuth flow and 3-step print endpoint
+    are now built against corroborated (not guessed) API details, but still
+    need an actual run against a live account/printer to confirm; the
+    device-info/job-listing endpoints in `status.ts` remain an unconfirmed
+    guess by convention (see 6.3).
