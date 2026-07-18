@@ -2,7 +2,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
-type NavKey = "dashboard" | "dispatch" | "tracking" | "print-queue" | "roadmap";
+type NavKey = "dashboard" | "dispatch" | "tracking" | "print-queue" | "roadmap" | "printer";
 
 export function AppHeader({
   active,
@@ -20,6 +20,7 @@ export function AppHeader({
     { key: "dispatch", label: "New Dispatch", href: "/dispatch/new" },
     { key: "tracking", label: "Tracking", href: "/dashboard" },
     ...(showPrintQueue ? [{ key: "print-queue" as const, label: "Print Queue", href: "/print-queue" }] : []),
+    ...(showPrintQueue ? [{ key: "printer" as const, label: "Printer", href: "/printer" }] : []),
     ...(showRoadmap ? [{ key: "roadmap" as const, label: "Roadmap", href: "/roadmap" }] : []),
   ];
 
@@ -284,6 +285,9 @@ export function PrinterStatus() {
             {showRaw ? "Hide" : "View"} raw API response
           </button>
         </div>
+        <Link href="/printer" className="printer-panel-details-link">
+          View full printer details (capabilities, defaults, notifications) →
+        </Link>
         {showRaw && data.raw !== undefined && (
           <pre className="printer-status-raw">{JSON.stringify(data.raw, null, 2)}</pre>
         )}

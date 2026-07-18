@@ -153,6 +153,66 @@ export async function getJobStatus(accessToken: string, jobId: string): Promise<
   return res.data;
 }
 
+export interface EpsonPrintSettings {
+  paperSize?: string;
+  paperType?: string;
+  borderless?: boolean;
+  printQuality?: string;
+  paperSource?: string;
+  colorMode?: string;
+  doubleSided?: string;
+  reverseOrder?: boolean;
+  copies?: number;
+  collate?: boolean;
+}
+
+// The device's currently configured defaults - GET /printing/capability/default.
+export async function getDefaultPrintSettings(accessToken: string): Promise<{ printSettings: EpsonPrintSettings }> {
+  const res = await axios.get<{ printSettings: EpsonPrintSettings }>(`${API_BASE}/printing/capability/default`, {
+    headers: epsonHeaders(accessToken),
+  });
+  return res.data;
+}
+
+export interface EpsonPaperTypeCapability {
+  paperType: string;
+  borderless: boolean;
+  paperSources: string[];
+  printQualities: string[];
+  doubleSided: boolean;
+}
+
+export interface EpsonPrintCapability {
+  colorModes: string[];
+  resolutions: number[];
+  paperSizes: Array<{ paperSize: string; paperTypes: EpsonPaperTypeCapability[] }>;
+}
+
+// What the device can actually do for a given print mode - GET
+// /printing/capability/{document|photo}. This is what the printer's own
+// capability data (not just its current defaults) fully describes.
+export async function getPrintCapability(
+  accessToken: string,
+  printMode: "document" | "photo"
+): Promise<EpsonPrintCapability> {
+  const res = await axios.get<EpsonPrintCapability>(`${API_BASE}/printing/capability/${printMode}`, {
+    headers: epsonHeaders(accessToken),
+  });
+  return res.data;
+}
+
+export interface EpsonNotificationSettings {
+  notification: boolean;
+  callbackUri?: string;
+}
+
+export async function getNotificationSettings(accessToken: string): Promise<EpsonNotificationSettings> {
+  const res = await axios.get<EpsonNotificationSettings>(`${API_BASE}/printing/settings/notification`, {
+    headers: epsonHeaders(accessToken),
+  });
+  return res.data;
+}
+
 interface CreateJobResponse {
   jobId: string;
   uploadUri: string;

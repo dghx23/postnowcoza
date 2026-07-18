@@ -651,6 +651,18 @@ footer.site-footer .copyright {
   cursor: pointer;
   text-decoration: underline;
 }
+.printer-panel-details-link {
+  display: block;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-default);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+.printer-panel-details-link:hover {
+  text-decoration: underline;
+}
 .printer-status-raw {
   margin-top: 10px;
   padding: 12px;

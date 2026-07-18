@@ -1,0 +1,187 @@
+import { useEffect, useState } from "react";
+import type { GetServerSideProps } from "next";
+import Link from "next/link";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/pages/api/auth/[...nextauth]";
+import { prisma } from "@/lib/db";
+import { AppHeader, Card, Badge, DataTable } from "@/components/ui";
+import type {
+  EpsonDeviceInfo,
+  EpsonPrintSettings,
+  EpsonPrintCapability,
+  EpsonNotificationSettings,
+} from "@/lib/epson";
+
+interface PrinterPageProps {
+  userLabel: string;
+}
+
+export const getServerSideProps: GetServerSideProps<PrinterPageProps> = async (context) => {
+  const session = await getServerSession(context.req, context.res, authOptions);
+  if (!session?.user?.email) {
+    return { redirect: { destination: "/login", permanent: false } };
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  if (!user || (user.role !== "STAFF" && user.role !== "ADMIN")) {
+    return { redirect: { destination: "/dashboard", permanent: false } };
+  }
+
+  return { props: { userLabel: `${user.email} · Print Ops` } };
+};
+
+interface DetailsResponse {
+  connected: boolean;
+  device?: EpsonDeviceInfo;
+  defaults?: { printSettings: EpsonPrintSettings };
+  capability?: { document: EpsonPrintCapability; photo: EpsonPrintCapability };
+  notification?: EpsonNotificationSettings;
+}
+
+function capabilityRows(capability: EpsonPrintCapability): string[][] {
+  const rows: string[][] = [];
+  for (const size of capability.paperSizes) {
+    for (const type of size.paperTypes) {
+      rows.push([
+        size.paperSize,
+        type.paperType,
+        type.borderless ? "Yes" : "No",
+        type.paperSources.join(", "),
+        type.printQualities.join(", "),
+        type.doubleSided ? "Yes" : "No",
+      ]);
+    }
+  }
+  return rows;
+}
+
+export default function PrinterPage({ userLabel }: PrinterPageProps) {
+  const [data, setData] = useState<DetailsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/epson/details");
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "Failed to load printer details");
+        if (!cancelled) setData(json);
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="app-shell">
+      <AppHeader active="printer" userLabel={userLabel} showPrintQueue showRoadmap />
+      <main className="app-main">
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div>
+            <div className="page-title">Printer Details</div>
+            <div className="page-subtitle">
+              Everything the Epson Connect API reports about the connected printer — identity, current defaults,
+              full capability matrix, and notification config.
+            </div>
+          </div>
+
+          {error && <div className="form-error">{error}</div>}
+
+          {!data ? (
+            <Card>
+              <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>Loading printer details…</div>
+            </Card>
+          ) : !data.connected ? (
+            <Card>
+              <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+                Not connected to Epson Connect yet.{" "}
+                <Link href="/print-queue" style={{ color: "var(--accent-primary)", fontWeight: 600 }}>
+                  Connect the printer from the Print Queue
+                </Link>{" "}
+                first.
+              </div>
+            </Card>
+          ) : (
+            <>
+              <Card title="Printer Identity">
+                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
+                  <Badge tone={data.device?.connected ? "success" : "navy"}>
+                    {data.device?.connected ? "● Online" : "● Offline"}
+                  </Badge>
+                  <div style={{ fontWeight: 700 }}>{data.device?.productName ?? "Unknown printer"}</div>
+                </div>
+                {data.device?.serialNumber && (
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                    Serial number: {data.device.serialNumber}
+                  </div>
+                )}
+              </Card>
+
+              {data.defaults && (
+                <Card title="Current Default Print Settings">
+                  <DataTable
+                    columns={["Setting", "Value"]}
+                    rows={Object.entries(data.defaults.printSettings).map(([key, value]) => [
+                      key,
+                      String(value),
+                    ])}
+                  />
+                </Card>
+              )}
+
+              {data.capability?.document && (
+                <Card title="Print Capability — Document Mode">
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
+                    Color modes: {data.capability.document.colorModes.join(", ")} · Resolutions:{" "}
+                    {data.capability.document.resolutions.join(", ")} dpi
+                  </div>
+                  <DataTable
+                    columns={["Paper Size", "Paper Type", "Borderless", "Paper Sources", "Print Qualities", "Duplex"]}
+                    rows={capabilityRows(data.capability.document)}
+                  />
+                </Card>
+              )}
+
+              {data.capability?.photo && (
+                <Card title="Print Capability — Photo Mode">
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
+                    Color modes: {data.capability.photo.colorModes.join(", ")} · Resolutions:{" "}
+                    {data.capability.photo.resolutions.join(", ")} dpi
+                  </div>
+                  <DataTable
+                    columns={["Paper Size", "Paper Type", "Borderless", "Paper Sources", "Print Qualities", "Duplex"]}
+                    rows={capabilityRows(data.capability.photo)}
+                  />
+                </Card>
+              )}
+
+              {data.notification && (
+                <Card title="Notification Settings">
+                  <DataTable
+                    columns={["Setting", "Value"]}
+                    rows={[
+                      ["Notifications enabled", data.notification.notification ? "Yes" : "No"],
+                      ["Callback URI", data.notification.callbackUri ?? "—"],
+                    ]}
+                  />
+                </Card>
+              )}
+
+              <Card>
+                <button type="button" className="printer-panel-raw-toggle" onClick={() => setShowRaw((v) => !v)}>
+                  {showRaw ? "Hide" : "View"} full raw API response
+                </button>
+                {showRaw && <pre className="printer-status-raw">{JSON.stringify(data, null, 2)}</pre>}
+              </Card>
+            </>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}

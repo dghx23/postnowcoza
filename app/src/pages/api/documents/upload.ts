@@ -53,7 +53,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const storageKey = newStorageKey(user.id, filename);
   const encryptionKeyRef = randomBytes(16).toString("hex");
 
-  await putDocument(storageKey, body, contentType);
+  try {
+    await putDocument(storageKey, body, contentType);
+  } catch (err) {
+    console.error("Document upload: failed to store file in R2", { message: (err as Error).message });
+    return res.status(502).json({ error: "Failed to store the uploaded file. Please try again shortly." });
+  }
 
   const document = await prisma.document.create({
     data: {
