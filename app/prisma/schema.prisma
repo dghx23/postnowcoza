@@ -20,7 +20,23 @@ enum DocumentStatus {
   DISPATCHED
   IN_TRANSIT
   DELIVERED
+  RETURN_REQUESTED
+  RETURN_IN_TRANSIT
   RETURNED
+}
+
+enum ShipmentDirection {
+  OUTBOUND
+  RETURN
+}
+
+enum SubmissionStatus {
+  PENDING_RATES
+  PENDING_SUBMISSION
+  SUCCESS
+  NO_RATES
+  FAILED_WILL_RETRY
+  FAILED_INDEFINITELY
 }
 
 model User {
@@ -36,18 +52,31 @@ model User {
 }
 
 model Document {
-  id            String         @id @default(cuid())
-  ownerId       String
-  owner         User           @relation(fields: [ownerId], references: [id])
-  status        DocumentStatus @default(UPLOADED)
-  storageKey    String
-  checksum      String
+  id               String         @id @default(cuid())
+  ownerId          String
+  owner            User           @relation(fields: [ownerId], references: [id])
+  status           DocumentStatus @default(UPLOADED)
+  storageKey       String
+  checksum         String
   encryptionKeyRef String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  auditEvents   AuditEvent[]
-  dispatchOrder DispatchOrder?
+  // Delivery address for this document. One address per document keeps this
+  // simple; a customer with multiple documents can have different addresses
+  // on each rather than needing a shared address book.
+  recipientName    String
+  recipientPhone   String
+  recipientEmail   String
+  streetAddress    String
+  localArea        String
+  city             String
+  zone             String
+  postalCode       String
+  country          String         @default("ZA")
+
+  auditEvents      AuditEvent[]
+  bobgoShipments   BobgoShipment[]
 }
 
 // Append-only chain-of-custody log. Rows are never updated or deleted from
@@ -68,18 +97,26 @@ model AuditEvent {
   @@index([documentId])
 }
 
-model DispatchOrder {
-  id            String   @id @default(cuid())
-  documentId    String   @unique
-  document      Document @relation(fields: [documentId], references: [id])
-  carrier       String
-  trackingNumber String?
-  addressLine1  String
-  addressLine2  String?
-  city          String
-  postalCode    String
-  province      String
-  proofOfDelivery String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+// One row per courier shipment attempt on a document — an OUTBOUND dispatch
+// and, later, a RETURN each get their own row so both legs of the
+// chain-of-custody are independently trackable.
+model BobgoShipment {
+  id                String            @id @default(cuid())
+  documentId        String
+  document          Document          @relation(fields: [documentId], references: [id])
+  direction         ShipmentDirection
+  bobgoOrderId      Int?
+  providerSlug      String?
+  serviceLevelCode  String?
+  trackingReference String?           @unique
+  submissionStatus  SubmissionStatus  @default(PENDING_RATES)
+  trackingStatus    String?
+  failedReason      String?
+  waybillUrl        String?
+  podUrl            String?
+  rawPayload        Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([documentId])
 }

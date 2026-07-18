@@ -18,6 +18,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const user = await getSessionUser(req, res);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
+  const deliveryAddressHeader = req.headers["x-delivery-address"];
+  if (typeof deliveryAddressHeader !== "string") {
+    return res.status(400).json({ error: "Missing x-delivery-address header" });
+  }
+
+  let deliveryAddress: {
+    recipientName: string;
+    recipientPhone: string;
+    recipientEmail: string;
+    streetAddress: string;
+    localArea: string;
+    city: string;
+    zone: string;
+    postalCode: string;
+    country?: string;
+  };
+  try {
+    deliveryAddress = JSON.parse(deliveryAddressHeader);
+  } catch {
+    return res.status(400).json({ error: "x-delivery-address must be JSON" });
+  }
+
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const body = Buffer.concat(chunks);
@@ -37,6 +59,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       storageKey,
       checksum,
       encryptionKeyRef,
+      recipientName: deliveryAddress.recipientName,
+      recipientPhone: deliveryAddress.recipientPhone,
+      recipientEmail: deliveryAddress.recipientEmail,
+      streetAddress: deliveryAddress.streetAddress,
+      localArea: deliveryAddress.localArea,
+      city: deliveryAddress.city,
+      zone: deliveryAddress.zone,
+      postalCode: deliveryAddress.postalCode,
+      country: deliveryAddress.country ?? "ZA",
     },
   });
 
