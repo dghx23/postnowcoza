@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 interface AppendAuditEventInput {
@@ -32,7 +33,7 @@ export async function appendAuditEvent(input: AppendAuditEventInput) {
       documentId: input.documentId,
       actorId: input.actorId,
       action: input.action,
-      metadata: input.metadata,
+      metadata: input.metadata as Prisma.InputJsonValue | undefined,
       ip: input.ip,
       prevHash,
       hash,
