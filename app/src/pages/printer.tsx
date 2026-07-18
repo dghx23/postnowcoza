@@ -59,6 +59,9 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   const [data, setData] = useState<DetailsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [provider, setProvider] = useState<"EPSON" | "LINUX_AGENT" | null>(null);
+  const [providerSaving, setProviderSaving] = useState(false);
+  const [providerError, setProviderError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +80,32 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
     };
   }, []);
 
+  useEffect(() => {
+    fetch("/api/print-settings")
+      .then((res) => res.json())
+      .then((json) => setProvider(json.provider ?? "EPSON"))
+      .catch(() => setProvider("EPSON"));
+  }, []);
+
+  async function updateProvider(next: "EPSON" | "LINUX_AGENT") {
+    setProviderSaving(true);
+    setProviderError(null);
+    try {
+      const res = await fetch("/api/print-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: next }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to update printing method");
+      setProvider(json.provider);
+    } catch (err) {
+      setProviderError((err as Error).message);
+    } finally {
+      setProviderSaving(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <AppHeader active="printer" userLabel={userLabel} showPrintQueue showRoadmap />
@@ -89,6 +118,38 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               full capability matrix, and notification config.
             </div>
           </div>
+
+          <Card title="Printing Method">
+            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
+              Choose which backend the print queue's "Print (API)" button uses. Switching this doesn't affect
+              documents already queued or printed.
+            </div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className={provider === "EPSON" ? "btn btn-primary" : "btn btn-secondary"}
+                disabled={providerSaving || provider === null}
+                onClick={() => updateProvider("EPSON")}
+              >
+                ☁️ Epson Connect (Cloud)
+              </button>
+              <button
+                type="button"
+                className={provider === "LINUX_AGENT" ? "btn btn-primary" : "btn btn-secondary"}
+                disabled={providerSaving || provider === null}
+                onClick={() => updateProvider("LINUX_AGENT")}
+              >
+                🐧 Linux Print Agent
+              </button>
+            </div>
+            {provider === "LINUX_AGENT" && (
+              <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 12 }}>
+                Documents sent to print will be queued for your Ubuntu machine's print agent to pick up and print
+                locally via CUPS. See <code>agent/README.md</code> in the repo for setup instructions.
+              </div>
+            )}
+            {providerError && <div className="form-error" style={{ marginTop: 8 }}>{providerError}</div>}
+          </Card>
 
           {error && <div className="form-error">{error}</div>}
 

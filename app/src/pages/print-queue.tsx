@@ -74,6 +74,15 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
   const [search, setSearch] = useState("");
   const [returnFilter, setReturnFilter] = useState<"ALL" | "DIRECT" | "MANAGED">("ALL");
   const [sortKey, setSortKey] = useState<"oldest" | "newest" | "recipient">("oldest");
+  const [printProvider, setPrintProvider] = useState<"EPSON" | "LINUX_AGENT" | null>(null);
+  const [linuxQueuedIds, setLinuxQueuedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetch("/api/print-settings")
+      .then((res) => res.json())
+      .then((data) => setPrintProvider(data.provider ?? "EPSON"))
+      .catch(() => setPrintProvider("EPSON"));
+  }, []);
 
   const visibleDocuments = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -122,7 +131,11 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
       }
       if (!res.ok) throw new Error(data.error ?? "Print failed");
 
-      setDocuments((prev) => prev.filter((d) => d.id !== id));
+      if (data.queuedForLinuxAgent) {
+        setLinuxQueuedIds((prev) => new Set(prev).add(id));
+      } else {
+        setDocuments((prev) => prev.filter((d) => d.id !== id));
+      }
     } catch (err) {
       setErrorId({ id, message: (err as Error).message });
     } finally {
@@ -265,13 +278,22 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
                       <button className="btn btn-secondary" onClick={() => handleDownload(doc.id)}>
                         📄 Download
                       </button>
-                      <button
-                        className="btn btn-secondary"
-                        disabled={busyId === doc.id}
-                        onClick={() => handlePrintApi(doc.id)}
-                      >
-                        🖨️ {busyId === doc.id ? "Printing…" : "Print (API)"}
-                      </button>
+                      {linuxQueuedIds.has(doc.id) ? (
+                        <Badge tone="teal">⏳ Queued for Linux printer</Badge>
+                      ) : (
+                        <button
+                          className="btn btn-secondary"
+                          disabled={busyId === doc.id}
+                          onClick={() => handlePrintApi(doc.id)}
+                        >
+                          🖨️{" "}
+                          {busyId === doc.id
+                            ? "Sending…"
+                            : printProvider === "LINUX_AGENT"
+                              ? "Send to Linux Printer"
+                              : "Print (API)"}
+                        </button>
+                      )}
                       <button
                         className="btn btn-primary"
                         disabled={busyId === doc.id}

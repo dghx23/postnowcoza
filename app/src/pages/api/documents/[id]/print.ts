@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { appendAuditEvent } from "@/lib/audit";
 import { getSessionUser } from "@/lib/session";
 import { getDocumentDownloadUrl } from "@/lib/storage";
+import { getPrintProvider } from "@/lib/printSettings";
 import {
   buildAuthorizeUrl,
   printPdf,
@@ -39,6 +40,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!document) return res.status(404).json({ error: "Document not found" });
   if (!PRINTABLE_STATUSES.has(document.status)) {
     return res.status(409).json({ error: `Cannot print a document in status ${document.status}` });
+  }
+
+  const provider = await getPrintProvider();
+  if (provider === "LINUX_AGENT") {
+    const existing = await prisma.linuxPrintJob.findFirst({
+      where: { documentId: id, status: "PENDING" },
+    });
+    if (existing) {
+      return res.status(409).json({ error: "Already queued for the Linux print agent" });
+    }
+
+    const job = await prisma.linuxPrintJob.create({ data: { documentId: id } });
+    await appendAuditEvent({
+      documentId: id,
+      actorId: user.id,
+      action: "linux_agent_print_queued",
+      metadata: { via: "linux_agent", jobId: job.id },
+      ip: req.socket.remoteAddress ?? undefined,
+    });
+    return res.status(200).json({ id: document.id, status: document.status, queuedForLinuxAgent: true });
   }
 
   const cookies = parse(req.headers.cookie ?? "");

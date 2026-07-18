@@ -65,6 +65,17 @@ enum FeatureStatus {
   IMPLEMENTED
 }
 
+enum PrintProvider {
+  EPSON
+  LINUX_AGENT
+}
+
+enum LinuxPrintJobStatus {
+  PENDING
+  PRINTED
+  FAILED
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
@@ -114,6 +125,7 @@ model Document {
   bobgoShipments   BobgoShipment[]
   payments         Payment[]
   epsonPrintJobs   EpsonPrintJob[]
+  linuxPrintJobs   LinuxPrintJob[]
 }
 
 // Append-only chain-of-custody log. Rows are never updated or deleted from
@@ -186,6 +198,34 @@ model EpsonPrintJob {
   updatedAt  DateTime @updatedAt
 
   @@index([documentId])
+}
+
+// Singleton row (id is always the fixed string "singleton") holding the
+// staff-configurable choice of which print backend the print queue's
+// "Print (API)" button uses. Read/written via /api/print-settings.
+model PrintSettings {
+  id        String        @id @default("singleton")
+  provider  PrintProvider @default(EPSON)
+  updatedAt DateTime      @updatedAt
+}
+
+// A job queued for the Linux print agent - a pull-based unattended script
+// (see agent/linux-print-agent.py) running on a machine with a physically
+// connected printer. The agent polls for PENDING jobs, downloads the file,
+// prints via CUPS, then reports success/failure through a static bearer
+// token (PRINT_AGENT_TOKEN) rather than a browser session, since there's
+// no user logged in on that machine.
+model LinuxPrintJob {
+  id         String              @id @default(cuid())
+  documentId String
+  document   Document            @relation(fields: [documentId], references: [id])
+  status     LinuxPrintJobStatus @default(PENDING)
+  error      String?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@index([documentId])
+  @@index([status])
 }
 
 // A Bob Pay payment intent for a document's dispatch fee.

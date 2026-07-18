@@ -87,6 +87,12 @@ Feature   (internal staff roadmap tracker - unrelated to the product/audit trail
 
 EpsonPrintJob   (tracks Epson job IDs we create, since Epson has no "list jobs" endpoint)
   id, documentId -> Document, jobId (unique, Epson's own job ID), status, createdAt, updatedAt
+
+PrintSettings   (singleton row, id fixed to "singleton" - which printing backend is active)
+  id, provider (EPSON|LINUX_AGENT), updatedAt
+
+LinuxPrintJob   (jobs queued for the Linux Print Agent to pick up and print via CUPS)
+  id, documentId -> Document, status (PENDING|PRINTED|FAILED), error?, createdAt, updatedAt
 ```
 
 Migrations are hand-generated via `prisma migrate diff` (schema-to-schema,
@@ -96,6 +102,7 @@ local database in this environment:
 - `20260102000000_return_preference` — adds `Document.returnPreference`
 - `20260103000000_add_feature_tracker` — adds the `Feature` model
 - `20260104000000_epson_print_jobs` — adds the `EpsonPrintJob` model
+- `20260105000000_linux_print_agent` — adds `PrintSettings` and `LinuxPrintJob`
 
 `npm run build` runs `prisma generate && prisma migrate deploy && npm run seed
 && next build` — migrations and seeding both happen automatically on every
@@ -131,6 +138,10 @@ production build.
 | `/api/features/[id]` | PATCH/DELETE — update or remove a roadmap item | STAFF/ADMIN |
 | `/api/documents/[id]/live-tracking` | GET — live Bob Go tracking status/checkpoints for a document's most recent shipment (see 6.3.1) | owner or STAFF/ADMIN |
 | `/api/epson/details` | GET — device info + default settings + full capability matrix + notification settings in one call, powers `/printer` (see 6.3.2) | STAFF/ADMIN |
+| `/api/print-settings` | GET/PATCH — current/select printing backend (Epson Connect or Linux Print Agent), powers the toggle on `/printer` (see 6.3.3) | STAFF/ADMIN |
+| `/api/print-agent/jobs` | GET — list jobs queued for the Linux Print Agent (see 6.3.3) | bearer token (`PRINT_AGENT_TOKEN`), not session |
+| `/api/print-agent/jobs/[id]/file` | GET — redirects to a presigned R2 URL for the job's PDF | bearer token, not session |
+| `/api/print-agent/jobs/[id]/complete` | POST — agent reports success/failure, advances `Document.status` on success | bearer token, not session |
 
 ## 6. Third-party integrations
 
@@ -294,6 +305,64 @@ spec rather than reconstructed by analogy.
   toggle. Linked from the nav bar (`showPrintQueue` also gates this link)
   and from the `PrinterStatus` panel's "View full printer details →" link.
 
+### 6.3.3 Linux Print Agent (alternative to Epson Connect)
+
+A second printing backend, selectable per-deployment (not per-document) via
+a **Printing Method** toggle on `/printer` — staff choose Epson Connect
+(cloud) or a Linux Print Agent running on any CUPS-attached machine, without
+needing a code change or redeploy to switch. Added because Epson Connect
+requires per-application OAuth credentials from Epson's developer portal
+(which has been unreliable to set up - see outstanding work), whereas the
+Linux agent works with any printer CUPS supports and only needs a static
+token.
+
+- **Data model**: `PrintSettings` (singleton row, `id` fixed to the literal
+  string `"singleton"`, holds the current `PrintProvider` — `EPSON` or
+  `LINUX_AGENT`) and `LinuxPrintJob` (`documentId`, `status`
+  `PENDING`/`PRINTED`/`FAILED`, `error?`) tracking jobs queued for the
+  agent to pick up.
+- `src/lib/printSettings.ts` — `getPrintProvider()`/`setPrintProvider()`,
+  both `upsert` against the singleton row so no seed step is needed.
+- `src/pages/api/print-settings.ts` — GET/PATCH, staff-only, backs the
+  toggle on `/printer`.
+- `src/pages/api/documents/[id]/print.ts` — now checks the current
+  provider first. If `LINUX_AGENT`, it creates a `LinuxPrintJob` row and
+  returns immediately with `queuedForLinuxAgent: true` — **the document's
+  status is deliberately left unchanged** (`UPLOADED`/`QUEUED_FOR_PRINT`)
+  until the agent itself reports success, unlike the Epson path which
+  marks `PRINTED` as soon as the API accepts the job. `print-queue.tsx`
+  reflects this: a queued row shows a "⏳ Queued for Linux printer" badge
+  instead of being removed from the list, and the print button's label
+  changes to "Send to Linux Printer" when this mode is active.
+- **Agent-facing API** (bearer-token authenticated via a static
+  `PRINT_AGENT_TOKEN` env var, checked by `src/lib/printAgentAuth.ts` -
+  deliberately *not* the browser-session `getSessionUser()` pattern every
+  other route uses, since there's no logged-in user on an unattended
+  machine):
+  - `GET /api/print-agent/jobs` — list `PENDING` jobs.
+  - `GET /api/print-agent/jobs/[id]/file` — 302-redirects to a presigned
+    R2 download URL for the job's PDF.
+  - `POST /api/print-agent/jobs/[id]/complete` — `{success, error?}`; on
+    success moves the document to `PRINTED` and appends a
+    `status_changed:...->PRINTED` audit event (`via: "linux_agent"`); on
+    failure appends `linux_agent_print_failed` and leaves the document
+    where it was so staff can retry or fall back to Epson.
+- **The agent itself**: `agent/linux-print-agent.py` — a stdlib-only
+  Python script (no `pip install` needed) that polls the jobs endpoint
+  every `POLL_INTERVAL_SECONDS` (default 10s), downloads each PDF, prints
+  it via CUPS's `lp` command, and reports back. `agent/
+  postnow-print-agent.service` is a systemd unit for running it as a
+  daemon; `agent/README.md` covers full setup (CUPS prerequisites, token
+  generation, systemd installation, troubleshooting).
+- This intentionally avoids the pitfalls the earlier "Instant Print" /
+  PUDO-label-agent proposal had (see outstanding work item on things
+  deliberately not built): no file-based token storage (the token lives in
+  an env var / systemd `EnvironmentFile`, not a flat file the app writes),
+  no fabricated tracking numbers (this only handles printing, not courier
+  labels), and no new status enum overlapping `Document.status` — it reuses
+  the existing `UPLOADED`/`QUEUED_FOR_PRINT`/`PRINTED` states exactly as
+  the Epson path does.
+
 ### 6.4 Courier Guy Quote Tool
 
 - `src/lib/courierguy.ts` — `getRates()` only (no shipment creation — this is
@@ -401,9 +470,10 @@ collection address for outbound and delivery address for returns),
 `BOBPAY_*` (3), `SEED_STAFF_EMAIL`/`SEED_STAFF_PASSWORD`, `EPSON_*` (up to 6:
 `CLIENT_ID`/`CLIENT_SECRET`/`REDIRECT_URI` required, `API_KEY` and the two
 base-URL overrides optional), `COURIER_GUY_API` (required for the quote
-tool) / `COURIER_GUY_BASE_URL` (optional override). No env vars needed for
-address autocomplete (Nominatim requires no API key) or the roadmap
-tracker.
+tool) / `COURIER_GUY_BASE_URL` (optional override), `PRINT_AGENT_TOKEN`
+(required only if using the Linux Print Agent instead of Epson Connect —
+see 6.3.3 and `agent/README.md`). No env vars needed for address
+autocomplete (Nominatim requires no API key) or the roadmap tracker.
 
 **Operational lesson learned during setup**: Vercel's bulk `.env`-paste
 feature creates a row for every key even when no value is supplied. Twice
