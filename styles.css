@@ -402,8 +402,15 @@ footer.site-footer .copyright {
   color: var(--text-muted);
 }
 
+.coverage-grid {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 64px;
+  align-items: center;
+}
+
 @media (max-width: 860px) {
-  .hero-grid, .pathways-grid { grid-template-columns: 1fr; }
+  .hero-grid, .pathways-grid, .coverage-grid { grid-template-columns: 1fr; }
   .metrics-grid, .steps-grid { grid-template-columns: repeat(2, 1fr); }
   nav.site-nav { gap: 16px; }
   .wrap, .section, header.site-header, .hero, footer.site-footer { padding-left: 20px; padding-right: 20px; }
