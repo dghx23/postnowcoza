@@ -13,6 +13,12 @@ interface QuoteRate {
   total_price?: number;
 }
 
+interface RateCardRate {
+  courier: string;
+  code: string;
+  price: number;
+}
+
 interface DashboardProps {
   userLabel: string;
   isStaff: boolean;
@@ -120,6 +126,29 @@ export default function Dashboard({ userLabel, isStaff, metrics, rows }: Dashboa
       setQuoteError((err as Error).message);
     } finally {
       setQuoting(false);
+    }
+  }
+
+  const [rateCardZone, setRateCardZone] = useState<"local" | "main" | "regional">("local");
+  const [rateCardWeight, setRateCardWeight] = useState("0.2");
+  const [rateCardLoading, setRateCardLoading] = useState(false);
+  const [rateCardError, setRateCardError] = useState<string | null>(null);
+  const [rateCardRates, setRateCardRates] = useState<RateCardRate[] | null>(null);
+
+  async function handleRateCardLookup(e: React.FormEvent) {
+    e.preventDefault();
+    setRateCardLoading(true);
+    setRateCardError(null);
+    setRateCardRates(null);
+    try {
+      const res = await fetch(`/api/rate-cards?zone=${rateCardZone}&weight=${encodeURIComponent(rateCardWeight)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Rate card lookup failed");
+      setRateCardRates(data.rates ?? []);
+    } catch (err) {
+      setRateCardError((err as Error).message);
+    } finally {
+      setRateCardLoading(false);
     }
   }
 
@@ -239,6 +268,64 @@ export default function Dashboard({ userLabel, isStaff, metrics, rows }: Dashboa
                       r.service_name ?? r.service_level_code ?? "—",
                       r.total_price != null ? `R${r.total_price.toFixed(2)}` : "—",
                     ])}
+                  />
+                )}
+              </form>
+            </Card>
+          )}
+
+          {isStaff && (
+            <Card title="Bob Go Rate Card">
+              <form
+                onSubmit={handleRateCardLookup}
+                style={{ display: "flex", flexDirection: "column", gap: 16 }}
+              >
+                <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                  Static negotiated rates from our Bob Go account (POS052) across local, main-centre and
+                  regional zones — works even when the live Courier Guy API is unavailable.
+                </div>
+                <div className="field-row">
+                  <div className="field">
+                    <label>Zone</label>
+                    <select
+                      value={rateCardZone}
+                      onChange={(e) => setRateCardZone(e.target.value as "local" | "main" | "regional")}
+                    >
+                      <option value="local">Local</option>
+                      <option value="main">Main centre</option>
+                      <option value="regional">Regional</option>
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>Weight (kg)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      value={rateCardWeight}
+                      onChange={(e) => setRateCardWeight(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={rateCardLoading}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  {rateCardLoading ? "Looking up…" : "Look Up Rates"}
+                </button>
+                {rateCardError && <div className="form-error">{rateCardError}</div>}
+                {rateCardRates && rateCardRates.length === 0 && (
+                  <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+                    No rates available for that zone/weight.
+                  </div>
+                )}
+                {rateCardRates && rateCardRates.length > 0 && (
+                  <DataTable
+                    columns={["Courier", "Service", "Price"]}
+                    rows={rateCardRates.map((r) => [r.courier, r.code, `R${r.price.toFixed(2)}`])}
                   />
                 )}
               </form>
