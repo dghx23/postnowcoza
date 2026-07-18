@@ -147,6 +147,7 @@ interface PrinterStatusData {
   message: string;
   pendingJobs: number;
   productName?: string;
+  raw?: unknown;
 }
 
 // Polls /api/epson/status every 30s. Staff-facing only — mounted on pages
@@ -185,11 +186,16 @@ export function PrinterStatus() {
   }
 
   return (
-    <div className="printer-status">
-      <span className={`printer-status-dot ${data.status}`} />
-      {data.message}
-      {data.productName && ` · ${data.productName}`}
-    </div>
+    <details className="printer-status-details">
+      <summary className="printer-status">
+        <span className={`printer-status-dot ${data.status}`} />
+        {data.message}
+        {data.productName && ` · ${data.productName}`}
+      </summary>
+      {data.raw !== undefined && (
+        <pre className="printer-status-raw">{JSON.stringify(data.raw, null, 2)}</pre>
+      )}
+    </details>
   );
 }
 

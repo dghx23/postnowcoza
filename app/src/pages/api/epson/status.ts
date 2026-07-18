@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import axios from "axios";
 import { parse } from "cookie";
 import { getSessionUser } from "@/lib/session";
 import { getDeviceInfo, getJobs, EPSON_ACCESS_COOKIE, EPSON_DEVICE_ID_COOKIE } from "@/lib/epson";
@@ -54,13 +55,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       pendingJobs,
       connected,
       productName: device.productName ?? "Printer",
+      // Everything the Epson API actually returned, unfiltered - the
+      // curated fields above only surface a few of these.
+      raw: { device, jobs },
     });
-  } catch {
+  } catch (err) {
     return res.status(200).json({
       status: "unknown",
       message: "Unable to reach printer",
       pendingJobs: 0,
       connected: false,
+      raw: axios.isAxiosError(err) ? { error: err.response?.data ?? err.message } : undefined,
     });
   }
 }

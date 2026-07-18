@@ -557,12 +557,34 @@ footer.site-footer .copyright {
 .status-printed, .status-dispatched, .status-uploaded, .status-queued_for_print, .status-return_requested { background: var(--gray-050); color: var(--gray-800); }
 .status-action-required, .status-exception { background: var(--gold-100); color: var(--gold-600); }
 
+.printer-status-details {
+  display: inline-block;
+}
 .printer-status {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
   color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+.printer-status::-webkit-details-marker {
+  display: none;
+}
+.printer-status-raw {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--navy-900);
+  color: var(--teal-100);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  max-height: 320px;
+  max-width: 480px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .printer-status-dot {
   width: 9px;
