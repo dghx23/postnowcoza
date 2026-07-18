@@ -22,11 +22,10 @@ DNS is managed at GoDaddy. Records in place:
 - `CNAME www` → `dghx23.github.io.`
 - `CNAME app` → `403674f131a44b1b.vercel-dns-017.com.` (Vercel's assigned target)
 
-No CAA record is present (so no certificate-authority restriction). As of
-writing, `app.postnow.co.za`'s DNS is correctly configured but SSL certificate
-issuance on Vercel's side was intermittently failing ("Failed to Load Cert") —
-DNS itself was verified correct; this needs a retry/recheck on the Vercel
-Domains page.
+No CAA record is present (so no certificate-authority restriction).
+`app.postnow.co.za`'s DNS and SSL certificate are both confirmed working in
+production (an earlier intermittent "Failed to Load Cert" issue on Vercel's
+side has since resolved on its own).
 
 ## 3. Repository layout
 
@@ -362,7 +361,36 @@ spec rather than reconstructed by analogy.
 - **Auth**: NextAuth credentials provider, bcrypt password hashing, JWT
   session strategy. First login is bootstrapped via
   `prisma/seed.ts` using `SEED_STAFF_EMAIL` / `SEED_STAFF_PASSWORD` — there is
-  no signup flow.
+  no signup flow. **Important gotcha that affects every staff-gated route**:
+  this NextAuth config has no `jwt`/`session` callback that copies `role`
+  onto the session object, so `session.user.role` is **always `undefined`**
+  at runtime — checking it directly (as several pasted specs assumed) silently
+  lets every request through as unauthorized rather than actually gating
+  anything. The fix used everywhere in this codebase is either
+  `getSessionUser()` (`src/lib/session.ts`, for API routes) or the
+  `getServerSession()` + `prisma.user.findUnique({where:{email}})` pattern
+  (for `getServerSideProps` in pages) — both re-fetch the real role from
+  Postgres instead of trusting the session payload.
+
+### 6.7 Feature Roadmap tracker (internal staff tool)
+
+- `/roadmap` (`src/pages/roadmap.tsx`) — not a third-party integration, but a
+  lightweight internal planning tool for staff: add/track/prioritize planned
+  features (`Feature` model — name, priority, status, comment, checked),
+  entirely separate from the customer-facing product and the audit trail.
+  CRUD via `/api/features` and `/api/features/[id]`.
+- Adding a feature opens via a **modal popup** (`Modal` component in
+  `src/components/ui.tsx`, reusable) triggered by a "+ Add Feature" button,
+  rather than an always-visible inline form.
+- Built from a large pasted spec that (like other pasted specs this session)
+  assumed `session.user.role` works (see the gotcha above — it was corrected
+  to the real pattern), used Tailwind classes (this codebase has no
+  Tailwind, only the custom `globals.css` design system), a nested
+  `/staff/roadmap` route (corrected to the flat `/roadmap` this app actually
+  uses), and — a real bug — sorted the `priority` enum as a plain string
+  column, which gives `HIGH < LOW < MEDIUM` alphabetically instead of
+  high-to-low; fixed with an explicit `PRIORITY_RANK` map used for sorting
+  both server- and client-side.
 
 ## 7. Environment variables
 
@@ -395,48 +423,51 @@ blank before assuming a code bug.
   automatically on every deploy, no manual step required.
 - No CI/test suite wired up yet — verification so far has been `tsc --noEmit`
   locally plus manual testing via the deployed Vercel preview.
+- **Real outage caused and fixed**: the repo was briefly made private (for
+  reasons unrelated to Pages), which took `postnow.co.za` down with a 404 —
+  GitHub Pages doesn't serve from a private repo without a paid GitHub plan.
+  Fixed by making the repo public again; this was double-checked as safe
+  first via a full `git log --all -p` plus a working-tree grep confirming no
+  real secrets exist anywhere in the repo's history (all credentials have
+  only ever lived in Vercel's env var UI, never committed).
 
 ## 9. Verified working (as of writing)
 
-- Marketing site live at `postnow.co.za`.
-- App deployed on Vercel, reachable at `postnowcoza.vercel.app`.
-- Login, session handling, and the dashboard all confirmed working against
-  the real Neon database (dashboard correctly showed zeroed real metrics, not
-  prototype placeholder data).
-- Custom domain `app.postnow.co.za` DNS correctly configured; SSL certificate
-  issuance pending/retrying at time of writing.
-- Staff print queue (`/print-queue`) built and type-checked; not yet
-  exercised against a live deployment (pending the next deploy landing).
-- Epson Connect printing + status indicator built and type-checked;
-  completely unverified against a real Epson account/printer (see 6.3).
-- Print queue enriched: table layout (Request ID/Recipient/Uploaded/Return/
-  Status/Actions), real facility address in the header, relative
-  "uploaded X ago" timestamps, plus search/return-type filter/sort controls
-  and pending/direct/managed/oldest-waiting summary tiles.
-- Courier Guy Quote Tool, address autocomplete, and the staff Feature
-  Roadmap tracker (add-feature now via a modal popup) all built and
-  type-checked; none yet exercised against a live deployment (pending the
-  next deploy).
-- Epson Connect rewritten against the official OpenAPI v2 spec (job
-  creation/print/lookup paths, camelCase fields, required `x-api-key`,
-  separate upload host, `EpsonPrintJob`-based pending-job tracking since no
-  job-list endpoint exists) — type-checked, still unverified against a real
-  Epson account/printer.
-- Printer status drill-down redesigned as a card-based dashboard (printer
-  identity, pending jobs, today's success rate, recent print jobs table
-  sourced from our own audit trail, raw-response toggle); a full `/printer`
-  page adds the complete capability matrix and notification settings on top.
-- Live courier tracking added to `/tracking/[id]` — polls Bob Go directly at
-  view time rather than relying solely on cached webhook status.
-- **Document upload confirmed working end-to-end in production** — this was
-  broken for a while by the R2 `S3_REGION` bug (see 6.6); after fixing it,
-  a real document was uploaded, stored in R2, appeared correctly on
-  `/print-queue`, and its tracking page rendered the full timeline,
-  dispatch summary, and chain-of-custody log correctly. Manually marking a
-  document `PRINTED` via the queue's button also confirmed working.
-- Post-upload tracking page experience improved: success banner, copy-link
-  button, Dispatch Summary card, plain-language chain-of-custody log (see
-  6.3.1).
+**Confirmed live against the real production deployment** (not just
+type-checked):
+- Marketing site live at `postnow.co.za`; app live at `app.postnow.co.za`
+  with a valid SSL certificate (the earlier "Failed to Load Cert" issue has
+  since resolved).
+- Login/session handling, the dashboard, and its real metrics (against the
+  live Neon database, not placeholder data).
+- Document upload → R2 storage → `Document` row creation, end-to-end,
+  after fixing the `S3_REGION` bug (see 6.6).
+- The print queue: a real uploaded document correctly appears on
+  `/print-queue`, and manually marking it `PRINTED` via the queue's button
+  works and is reflected on its tracking page.
+- The tracking page: full status timeline, Dispatch Summary card, live
+  courier tracking card (correctly shows "not booked yet" for a document
+  with no shipment), chain-of-custody log with plain-language event labels,
+  and compliance badges all render correctly for a real document.
+- The Epson Connect OAuth round-trip *reaches* both Epson's `/auth/authorize`
+  and `/auth/token` endpoints (confirmed via live logs) — but every attempt
+  so far is rejected with `invalid_client` (see outstanding work #10); no
+  successful connection or live print has happened yet.
+- The Courier Guy Quote Tool reaches `api.portal.thecourierguy.co.za/rates`
+  for real — but every attempt is rejected with a 401 (see outstanding work
+  #11); no successful quote has come back yet.
+
+**Built and type-checked, not yet exercised live** (blocked on the above two
+integrations, or simply not tried yet):
+- Print queue table: search/return-type filter/sort controls, summary
+  tiles, links from each row to `/tracking/[id]`.
+- The full `/printer` details page (identity, defaults, capability matrix,
+  notification settings) — depends on a working Epson connection to show
+  real data; currently correctly reports "not connected."
+- The staff Feature Roadmap tracker, including its add-feature modal.
+- Address autocomplete on both the dispatch form and the Quote Tool.
+- Bob Go dispatch/returns and Bob Pay payments — blocked on missing API
+  tokens (see outstanding work #1–2), never called live.
 
 ## 10. Outstanding work
 
@@ -444,7 +475,8 @@ blank before assuming a code bug.
    to unlock, or a plan upgrade.
 2. **Bob Pay API token & passphrase** — need the manual login API call and to
    locate the passphrase in account settings.
-3. **`app.postnow.co.za` SSL** — recheck/retry certificate issuance on Vercel.
+3. **`app.postnow.co.za` SSL** — ✅ resolved. Confirmed working in production;
+   the earlier intermittent "Failed to Load Cert" issue cleared on its own.
 4. **End-to-end test of a real document** — upload → dispatch → payment →
    tracking has not yet been exercised against live Bob Go/Bob Pay sandbox
    APIs (blocked on items 1–2).
