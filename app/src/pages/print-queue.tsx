@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { GetServerSideProps } from "next";
+import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, Badge, StatusPill } from "@/components/ui";
+import { AppHeader, Card, Badge, StatusPill, Alert } from "@/components/ui";
 
 interface QueueDocument {
   id: string;
@@ -49,9 +50,43 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
 };
 
 export default function PrintQueue({ userLabel, documents: initialDocuments }: PrintQueueProps) {
+  const router = useRouter();
   const [documents, setDocuments] = useState(initialDocuments);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<{ id: string; message: string } | null>(null);
+  const [epsonBanner, setEpsonBanner] = useState<"connected" | "error" | null>(null);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const { epson } = router.query;
+    if (epson === "connected" || epson === "error") {
+      setEpsonBanner(epson);
+      const { epson: _drop, ...rest } = router.query;
+      router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
+
+  async function handlePrintApi(id: string) {
+    setBusyId(id);
+    setErrorId(null);
+    try {
+      const res = await fetch(`/api/documents/${id}/print`, { method: "POST" });
+      const data = await res.json();
+
+      if (res.status === 401 && data.auth_url) {
+        window.location.href = data.auth_url;
+        return;
+      }
+      if (!res.ok) throw new Error(data.error ?? "Print failed");
+
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      setErrorId({ id, message: (err as Error).message });
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function handleDownload(id: string) {
     setErrorId(null);
@@ -95,6 +130,15 @@ export default function PrintQueue({ userLabel, documents: initialDocuments }: P
             </div>
           </div>
 
+          {epsonBanner === "connected" && (
+            <Alert title="Epson Connect linked">Printer connection authorized — try printing again.</Alert>
+          )}
+          {epsonBanner === "error" && (
+            <Alert title="Epson Connect authorization failed" tone="danger">
+              Could not connect to Epson Connect. Try again, or check the printer account credentials.
+            </Alert>
+          )}
+
           {documents.length === 0 ? (
             <Card>
               <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
@@ -135,6 +179,13 @@ export default function PrintQueue({ userLabel, documents: initialDocuments }: P
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <button className="btn btn-secondary" onClick={() => handleDownload(doc.id)}>
                         Download
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        disabled={busyId === doc.id}
+                        onClick={() => handlePrintApi(doc.id)}
+                      >
+                        {busyId === doc.id ? "Printing…" : "Print (API)"}
                       </button>
                       <button
                         className="btn btn-primary"

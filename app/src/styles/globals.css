@@ -512,6 +512,10 @@ footer.site-footer .copyright {
   background: var(--success-bg, #e5f6ee);
   color: #12633f;
 }
+.alert-danger {
+  background: var(--danger-bg, #fbeae8);
+  color: var(--danger);
+}
 .alert-title {
   font-weight: 700;
   font-size: 14px;

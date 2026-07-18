@@ -66,9 +66,17 @@ export function Card({ title, children }: { title?: string; children: ReactNode 
   );
 }
 
-export function Alert({ title, children }: { title: string; children: ReactNode }) {
+export function Alert({
+  title,
+  children,
+  tone = "success",
+}: {
+  title: string;
+  children: ReactNode;
+  tone?: "success" | "danger";
+}) {
   return (
-    <div className="alert alert-success">
+    <div className={`alert alert-${tone}`}>
       <div className="alert-title">{title}</div>
       <div className="alert-body">{children}</div>
     </div>
