@@ -1,11 +1,22 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export function AppHeader({ active, userLabel }: { active: "dashboard" | "dispatch" | "tracking"; userLabel: string }) {
-  const items: Array<{ key: typeof active; label: string; href: string }> = [
+type NavKey = "dashboard" | "dispatch" | "tracking" | "print-queue";
+
+export function AppHeader({
+  active,
+  userLabel,
+  showPrintQueue,
+}: {
+  active: NavKey;
+  userLabel: string;
+  showPrintQueue?: boolean;
+}) {
+  const items: Array<{ key: NavKey; label: string; href: string }> = [
     { key: "dashboard", label: "Dashboard", href: "/dashboard" },
     { key: "dispatch", label: "New Dispatch", href: "/dispatch/new" },
     { key: "tracking", label: "Tracking", href: "/dashboard" },
+    ...(showPrintQueue ? [{ key: "print-queue" as const, label: "Print Queue", href: "/print-queue" }] : []),
   ];
 
   return (

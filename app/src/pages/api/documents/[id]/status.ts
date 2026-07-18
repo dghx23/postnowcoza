@@ -4,7 +4,7 @@ import { appendAuditEvent } from "@/lib/audit";
 import { getSessionUser } from "@/lib/session";
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  UPLOADED: ["QUEUED_FOR_PRINT"],
+  UPLOADED: ["QUEUED_FOR_PRINT", "PRINTED"],
   QUEUED_FOR_PRINT: ["PRINTED"],
   PRINTED: ["DISPATCHED"],
   DISPATCHED: ["IN_TRANSIT"],

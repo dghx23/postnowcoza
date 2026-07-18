@@ -47,6 +47,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum ReturnPreference {
+  DIRECT
+  MANAGED
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
@@ -82,6 +87,10 @@ model Document {
   zone             String
   postalCode       String
   country          String         @default("ZA")
+
+  // Option A (Direct) vs Option B (Fully Managed) from the return pathway
+  // the customer chose at submission time.
+  returnPreference ReturnPreference @default(MANAGED)
 
   // Courier rate charged for the outbound dispatch, set once a shipment is
   // booked (src/lib/dispatch.ts). The dispatch fee payment is created from

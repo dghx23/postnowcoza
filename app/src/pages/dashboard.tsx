@@ -7,6 +7,7 @@ import { AppHeader, MetricTile, Alert, Card, DataTable, StatusPill } from "@/com
 
 interface DashboardProps {
   userLabel: string;
+  isStaff: boolean;
   metrics: { activeDispatches: number; inTransit: number; delivered: number; exceptions: number };
   rows: Array<{ id: string; recipientName: string; status: string }>;
 }
@@ -38,16 +39,17 @@ export const getServerSideProps: GetServerSideProps<DashboardProps> = async (con
   return {
     props: {
       userLabel: `${user.email} · ${isStaff ? "Secure Facility (JHB)" : "Customer"}`,
+      isStaff,
       metrics: { activeDispatches, inTransit, delivered, exceptions },
       rows: documents.map((d) => ({ id: d.id, recipientName: d.recipientName, status: d.status })),
     },
   };
 };
 
-export default function Dashboard({ userLabel, metrics, rows }: DashboardProps) {
+export default function Dashboard({ userLabel, isStaff, metrics, rows }: DashboardProps) {
   return (
     <div className="app-shell">
-      <AppHeader active="dashboard" userLabel={userLabel} />
+      <AppHeader active="dashboard" userLabel={userLabel} showPrintQueue={isStaff} />
       <main className="app-main">
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div className="page-head">

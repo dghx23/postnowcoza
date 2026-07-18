@@ -32,6 +32,7 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
   const [city, setCity] = useState("");
   const [zone, setZone] = useState("");
   const [postalCode, setPostalCode] = useState("");
+  const [returnPreference, setReturnPreference] = useState<"DIRECT" | "MANAGED">("MANAGED");
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +65,7 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
             city,
             zone,
             postalCode,
+            returnPreference,
           }),
         },
         body: file,
@@ -155,6 +157,42 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
                 <div className="field">
                   <label>Mobile</label>
                   <input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} required />
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "var(--text-primary)" }}>
+                  Return Preference
+                </div>
+                <div className="radio-cards">
+                  <label className={`radio-card${returnPreference === "DIRECT" ? " selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="returnPreference"
+                      checked={returnPreference === "DIRECT"}
+                      onChange={() => setReturnPreference("DIRECT")}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <div className="radio-card-title">A. Direct Return</div>
+                      <div className="radio-card-desc">Facilitated collection with a prepaid courier sticker.</div>
+                    </div>
+                  </label>
+                  <label className={`radio-card${returnPreference === "MANAGED" ? " selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="returnPreference"
+                      checked={returnPreference === "MANAGED"}
+                      onChange={() => setReturnPreference("MANAGED")}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <div className="radio-card-title">
+                        B. Fully Managed Return <span className="radio-card-badge">Recommended</span>
+                      </div>
+                      <div className="radio-card-desc">via PostNow E2</div>
+                    </div>
+                  </label>
                 </div>
               </div>
 

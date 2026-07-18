@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import type { ReturnPreference } from "@prisma/client";
 import { createHash, randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { newStorageKey, putDocument } from "@/lib/storage";
@@ -33,6 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     zone: string;
     postalCode: string;
     country?: string;
+    returnPreference?: ReturnPreference;
   };
   try {
     deliveryAddress = JSON.parse(deliveryAddressHeader);
@@ -68,6 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       zone: deliveryAddress.zone,
       postalCode: deliveryAddress.postalCode,
       country: deliveryAddress.country ?? "ZA",
+      returnPreference: deliveryAddress.returnPreference ?? "MANAGED",
     },
   });
 
