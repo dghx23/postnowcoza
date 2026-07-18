@@ -65,6 +65,7 @@ Document
           -> DELIVERED -> RETURN_REQUESTED -> RETURN_IN_TRANSIT -> RETURNED
   storageKey, checksum, encryptionKeyRef   (file itself lives in S3/R2, never in Postgres)
   recipientName/Phone/Email, streetAddress, localArea, city, zone, postalCode, country
+  returnPreference: DIRECT | MANAGED   -- Option A/B from the return pathway, default MANAGED
   dispatchFee (Float?)   -- set from the Bob Go courier rate at booking time
 
 AuditEvent   (append-only, hash-chained chain-of-custody log)
@@ -82,9 +83,12 @@ Payment   (Bob Pay payment intent for a document's dispatch fee)
   status (UNPAID|PAID|FAILED|CANCELLED|REFUNDED), paymentMethod, paymentUrl, rawPayload
 ```
 
-Migration: a single hand-generated initial migration
-(`prisma/migrations/20260101000000_init/migration.sql`, produced via
-`prisma migrate diff --from-empty` without needing a live DB connection).
+Migrations are hand-generated via `prisma migrate diff` (schema-to-schema,
+no live DB connection needed) rather than `migrate dev`, since there's no
+local database in this environment:
+- `20260101000000_init` — initial schema
+- `20260102000000_return_preference` — adds `Document.returnPreference`
+
 `npm run build` runs `prisma generate && prisma migrate deploy && npm run seed
 && next build` — migrations and seeding both happen automatically on every
 production build.
@@ -95,10 +99,12 @@ production build.
 |---|---|---|
 | `/login` | NextAuth credentials sign-in | public |
 | `/dashboard` | Live metrics (active dispatches, in-transit, delivered, exceptions) + recent documents table | session required |
-| `/dispatch/new` | Upload form: file + recipient/address fields | session required |
+| `/dispatch/new` | Upload form: file + recipient/address fields + return preference (Direct/Fully Managed) | session required |
 | `/tracking/[id]` | Real status timeline + chain-of-custody log + compliance badges for one document | session required, owner or staff |
+| `/print-queue` | Staff print queue: documents in `UPLOADED`/`QUEUED_FOR_PRINT`, download original file, mark as printed | STAFF/ADMIN |
 | `/api/documents/upload` | POST — encrypts & stores file to S3/R2, creates `Document`, first `uploaded` audit event | session required |
-| `/api/documents/[id]/status` | PATCH — staff-only manual status transitions (`UPLOADED→QUEUED_FOR_PRINT` etc.) | STAFF/ADMIN |
+| `/api/documents/[id]/status` | PATCH — staff-only manual status transitions (`UPLOADED→QUEUED_FOR_PRINT`, `UPLOADED→PRINTED`, `QUEUED_FOR_PRINT→PRINTED`, etc.) | STAFF/ADMIN |
+| `/api/documents/[id]/download` | GET — presigned R2 download URL for the original file, audit-logs the download | owner or staff |
 | `/api/documents/[id]/dispatch` | POST — books the outbound Bob Go shipment (see 6.1) | STAFF/ADMIN |
 | `/api/documents/[id]/return` | POST — books the Bob Go managed return (see 6.1) | owner or STAFF/ADMIN |
 | `/api/documents/[id]/pay` | POST — creates/returns a Bob Pay payment link for the dispatch fee | owner or STAFF/ADMIN |
@@ -199,6 +205,8 @@ blank before assuming a code bug.
   prototype placeholder data).
 - Custom domain `app.postnow.co.za` DNS correctly configured; SSL certificate
   issuance pending/retrying at time of writing.
+- Staff print queue (`/print-queue`) built and type-checked; not yet
+  exercised against a live deployment (pending the next deploy landing).
 
 ## 10. Outstanding work
 
@@ -210,12 +218,12 @@ blank before assuming a code bug.
 4. **End-to-end test of a real document** — upload → dispatch → payment →
    tracking has not yet been exercised against live Bob Go/Bob Pay sandbox
    APIs (blocked on items 1–2).
-5. **Staff dashboard for the print queue** — moving a document from
-   `UPLOADED` → `PRINTED` is currently API-only (`PATCH
-   /api/documents/[id]/status`), no UI.
-6. **POPIA data subject rights** — export/deletion endpoints not built.
-7. **Upload hardening** — no virus scanning or rate limiting yet.
-8. **Payment UI** — the `/pay` endpoint exists but there's no button on the
+5. **POPIA data subject rights** — export/deletion endpoints not built.
+6. **Upload hardening** — no virus scanning or rate limiting yet.
+7. **Payment UI** — the `/pay` endpoint exists but there's no button on the
    tracking page to trigger it yet.
-9. **Bob Pay token refresh** — the JWT expires after 30 days; no automated
+8. **Bob Pay token refresh** — the JWT expires after 30 days; no automated
    renewal exists.
+9. **Print queue verification** — confirm the `20260102000000_return_preference`
+   migration applies cleanly on the next production deploy, then test
+   download + mark-as-printed against a real uploaded document.
