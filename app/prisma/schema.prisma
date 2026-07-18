@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+enum DocumentStatus {
+  UPLOADED
+  QUEUED_FOR_PRINT
+  PRINTED
+  DISPATCHED
+  IN_TRANSIT
+  DELIVERED
+  RETURNED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  role          Role      @default(CUSTOMER)
+  consentedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  documents     Document[]
+  auditEvents   AuditEvent[]
+}
+
+model Document {
+  id            String         @id @default(cuid())
+  ownerId       String
+  owner         User           @relation(fields: [ownerId], references: [id])
+  status        DocumentStatus @default(UPLOADED)
+  storageKey    String
+  checksum      String
+  encryptionKeyRef String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  auditEvents   AuditEvent[]
+  dispatchOrder DispatchOrder?
+}
+
+// Append-only chain-of-custody log. Rows are never updated or deleted from
+// application code; `prevHash`/`hash` form a tamper-evident chain.
+model AuditEvent {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id])
+  actorId     String?
+  actor       User?    @relation(fields: [actorId], references: [id])
+  action      String
+  metadata    Json?
+  ip          String?
+  prevHash    String?
+  hash        String
+  createdAt   DateTime @default(now())
+
+  @@index([documentId])
+}
+
+model DispatchOrder {
+  id            String   @id @default(cuid())
+  documentId    String   @unique
+  document      Document @relation(fields: [documentId], references: [id])
+  carrier       String
+  trackingNumber String?
+  addressLine1  String
+  addressLine2  String?
+  city          String
+  postalCode    String
+  province      String
+  proofOfDelivery String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
