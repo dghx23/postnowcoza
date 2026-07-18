@@ -111,7 +111,8 @@ production build.
 | `/dispatch/new` | Upload form: file + recipient/address fields (with address autocomplete, see 6.5) + return preference (Direct/Fully Managed) | session required |
 | `/roadmap` | Internal feature/task tracker for staff — not customer-facing, not part of the audit trail | STAFF/ADMIN |
 | `/tracking/[id]` | Status timeline + live courier tracking card (polled, see 6.3.1) + chain-of-custody log + compliance badges for one document | session required, owner or staff |
-| `/print-queue` | Staff print queue: search/filter/sort, documents in `UPLOADED`/`QUEUED_FOR_PRINT`, download original file, mark as printed, one-click print via Epson Connect, live printer status with drill-down | STAFF/ADMIN |
+| `/print-queue` | Staff print queue: search/filter/sort, documents in `UPLOADED`/`QUEUED_FOR_PRINT`, download original file, mark as printed, one-click print via Epson Connect, live printer status with drill-down; each row links through to `/tracking/[id]` | STAFF/ADMIN |
+| `/printer` | Full printer details page: identity, default print settings, complete capability matrix, notification config, raw response (see 6.3.2) | STAFF/ADMIN |
 | `/api/documents/upload` | POST — encrypts & stores file to S3/R2, creates `Document`, first `uploaded` audit event | session required |
 | `/api/documents/[id]/status` | PATCH — staff-only manual status transitions (`UPLOADED→QUEUED_FOR_PRINT`, `UPLOADED→PRINTED`, `QUEUED_FOR_PRINT→PRINTED`, etc.) | STAFF/ADMIN |
 | `/api/documents/[id]/download` | GET — presigned R2 download URL for the original file, audit-logs the download | owner or staff |
@@ -130,6 +131,7 @@ production build.
 | `/api/features` | GET/POST — list/create roadmap items (add is via a modal popup on `/roadmap`) | STAFF/ADMIN |
 | `/api/features/[id]` | PATCH/DELETE — update or remove a roadmap item | STAFF/ADMIN |
 | `/api/documents/[id]/live-tracking` | GET — live Bob Go tracking status/checkpoints for a document's most recent shipment (see 6.3.1) | owner or STAFF/ADMIN |
+| `/api/epson/details` | GET — device info + default settings + full capability matrix + notification settings in one call, powers `/printer` (see 6.3.2) | STAFF/ADMIN |
 
 ## 6. Third-party integrations
 
@@ -261,6 +263,37 @@ spec rather than reconstructed by analogy.
   rendering a "Live Courier Tracking" card (reference, live status, a
   Date/Status/Location/Message table of checkpoints) above the existing
   chain-of-custody log, distinct loading/not-booked/error states.
+- Post-upload experience: `dispatch/new.tsx` redirects to
+  `/tracking/[id]?submitted=1` on success; the tracking page shows a
+  dismissable "✅ Document received securely" banner on that first visit
+  (the query param is stripped via shallow routing, same pattern as the
+  print queue's Epson-connected banner), a "🔗 Copy tracking link" button,
+  and a new "Dispatch Summary" card (delivery address, contact info, return
+  preference, submitted time) so the customer can verify what was actually
+  submitted. Raw `AuditEvent.action` strings (e.g.
+  `status_changed:UPLOADED->PRINTED`) are now rendered through a
+  `formatAuditAction()` helper into plain language (e.g. "Status updated:
+  Secure Intake & Printing") in the Chain of Custody Log.
+
+### 6.3.2 Printer details page
+
+- `src/lib/epson.ts` — added `getDefaultPrintSettings()` (`GET
+  /printing/capability/default`), `getPrintCapability(printMode)` (`GET
+  /printing/capability/{document|photo}` — full capability matrix: color
+  modes, resolutions, and every paper size × paper type × source × quality ×
+  duplex combination the device supports), and `getNotificationSettings()`
+  (`GET /printing/settings/notification`) — all read directly from the
+  official spec, same as the rest of 6.3.
+- `src/pages/api/epson/details.ts` — staff-only, fetches device info +
+  defaults + both print-mode capabilities + notification settings in
+  parallel and returns them together (or `{connected: false}` if not yet
+  connected).
+- `src/pages/printer.tsx` — a dedicated full page (not just the print
+  queue's dropdown panel) showing everything the API reports: printer
+  identity, current default print settings, the full capability matrix for
+  both document and photo modes, notification config, and a raw-JSON
+  toggle. Linked from the nav bar (`showPrintQueue` also gates this link)
+  and from the `PrinterStatus` panel's "View full printer details →" link.
 
 ### 6.4 Courier Guy Quote Tool
 
@@ -308,7 +341,24 @@ spec rather than reconstructed by analogy.
   immediately as a precaution before being placed in Vercel.
 - **Object storage**: Cloudflare R2, bucket `postnow-documents`, S3-compatible
   API (`src/lib/storage.ts` uses `@aws-sdk/client-s3`). Access scoped via an
-  Object Read & Write token.
+  Object Read & Write token. **Real production bug found and fixed**:
+  `.env.example` documented `S3_REGION="af-south-1"`, but R2's SigV4 request
+  signature only validates against the literal region string `"auto"` — any
+  other value makes every upload fail with `SignatureDoesNotMatch`. Because
+  `/api/documents/upload.ts` didn't catch storage errors, this crashed into
+  Vercel's default HTML error page instead of a JSON response, which
+  surfaced to users as a confusing "Unexpected token '<'" error in the
+  browser. Fixed by correcting the env var default and wrapping the
+  `putDocument()` call in a try/catch that returns a clean JSON 502. Also
+  hit the same *shape* of bug twice more on other credentials — a corrupted
+  R2 secret access key (65 chars pasted where R2 expects exactly 64,
+  evidently a trailing newline from copy/paste) and a Courier Guy API key
+  one character too long (33 vs. the expected 32) — both caught by adding
+  temporary non-secret diagnostic logging (credential *lengths* and
+  whitespace-trim checks, never the values themselves) rather than by
+  guessing. This is now a known failure pattern worth checking first
+  whenever a newly-pasted credential produces an otherwise-unexplained auth
+  rejection.
 - **Auth**: NextAuth credentials provider, bcrypt password hashing, JWT
   session strategy. First login is bootstrapped via
   `prisma/seed.ts` using `SEED_STAFF_EMAIL` / `SEED_STAFF_PASSWORD` — there is
@@ -374,9 +424,19 @@ blank before assuming a code bug.
   Epson account/printer.
 - Printer status drill-down redesigned as a card-based dashboard (printer
   identity, pending jobs, today's success rate, recent print jobs table
-  sourced from our own audit trail, raw-response toggle).
+  sourced from our own audit trail, raw-response toggle); a full `/printer`
+  page adds the complete capability matrix and notification settings on top.
 - Live courier tracking added to `/tracking/[id]` — polls Bob Go directly at
   view time rather than relying solely on cached webhook status.
+- **Document upload confirmed working end-to-end in production** — this was
+  broken for a while by the R2 `S3_REGION` bug (see 6.6); after fixing it,
+  a real document was uploaded, stored in R2, appeared correctly on
+  `/print-queue`, and its tracking page rendered the full timeline,
+  dispatch summary, and chain-of-custody log correctly. Manually marking a
+  document `PRINTED` via the queue's button also confirmed working.
+- Post-upload tracking page experience improved: success banner, copy-link
+  button, Dispatch Summary card, plain-language chain-of-custody log (see
+  6.3.1).
 
 ## 10. Outstanding work
 
@@ -394,19 +454,34 @@ blank before assuming a code bug.
    tracking page to trigger it yet.
 8. **Bob Pay token refresh** — the JWT expires after 30 days; no automated
    renewal exists.
-9. **Print queue verification** — confirm the `20260102000000_return_preference`
-   migration applies cleanly on the next production deploy, then test
-   download + mark-as-printed against a real uploaded document.
-10. **Epson Connect live test** — the OAuth flow and print endpoints are now
-    built directly against the official OpenAPI spec (paths, camelCase
-    fields, required headers, and the separate upload host are all
-    spec-confirmed, not guessed), but still need an actual run against a
-    live account/printer to confirm nothing was misread from the spec
-    (see 6.3).
-11. **Courier Guy Quote Tool live test** — base URL and Bearer-header auth
-    are now confirmed from a real Postman collection (see 6.4), but
-    `getRates()` has still never been called against the real
-    `COURIER_GUY_API` credential end-to-end.
+9. **Print queue verification** — ✅ done. Migration applied cleanly; a real
+   document was uploaded, appeared on `/print-queue`, and was successfully
+   marked `PRINTED` via the manual button.
+10. **Epson Connect live test — actively blocked, in progress.** The
+    OAuth flow now reaches Epson's token endpoint (confirmed via live
+    logging), but every attempt fails with `invalid_client` from
+    `auth.epsonconnect.com/auth/token` — Epson is rejecting the
+    `client_id`/`client_secret` pair itself, not anything about our request
+    shape. Tried so far: regenerating a brand-new app in the Epson developer
+    console (developer.epsonconnect.com) and updating
+    `EPSON_CLIENT_ID`/`EPSON_CLIENT_SECRET`/`EPSON_API_KEY` in Vercel — still
+    `invalid_client` after redeploying. Added temporary diagnostic logging
+    to `callback.ts` (credential lengths + leading/trailing-whitespace
+    flags, never the actual values, plus the exact `EPSON_REDIRECT_URI`
+    being sent) to rule out the same "corrupted copy-paste" bug class that
+    hit the R2 secret and Courier Guy key (see 6.6) — not yet confirmed
+    whether that's the cause here too, or whether the Redirect URI
+    registered against the Epson app doesn't exactly match
+    `EPSON_REDIRECT_URI`. Next step: re-check that diagnostic log output
+    after the next connection attempt.
+11. **Courier Guy Quote Tool live test — actively blocked.** Base URL and
+    Bearer-header auth are confirmed correct from a real Postman collection
+    (see 6.4), but every real call to `/rates` gets a 401 "Authentication
+    failed" from Courier Guy. Diagnostic logging (`courierguy.ts`) showed
+    `COURIER_GUY_API` is 33 characters where a standard key is 32 —
+    the same trailing-character-from-paste bug hit twice already elsewhere
+    (see 6.6). Needs the value re-pasted carefully in Vercel and confirmed
+    at exactly 32 characters before retesting.
 12. **Deliberately not built** — a later prompt asked for: a `labelStatus`
     field on `Document`, a home-grown courier label generator (a Python
     agent using `reportlab` to draw a label PDF with its own fabricated
