@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma migrate deploy && npm run seed && next build",
+    "build": "prisma generate && (prisma migrate resolve --rolled-back 20260106000000_epson_direct_email_print || true) && prisma migrate deploy && npm run seed && next build",
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
