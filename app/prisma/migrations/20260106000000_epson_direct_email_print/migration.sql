@@ -1,3 +1,8 @@
+-- Any row saved as LINUX_AGENT while that option existed has no equivalent
+-- in the new enum - fold it back to EPSON before the cast below, while the
+-- column is still the old enum type that LINUX_AGENT is valid for.
+UPDATE "PrintSettings" SET "provider" = 'EPSON' WHERE "provider"::text = 'LINUX_AGENT';
+
 -- AlterEnum
 BEGIN;
 CREATE TYPE "PrintProvider_new" AS ENUM ('EPSON', 'EPSON_DIRECT');
