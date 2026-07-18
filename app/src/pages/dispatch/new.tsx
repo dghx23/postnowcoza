@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { GetServerSideProps } from "next";
 import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { AppHeader, Card, Stepper, TrackingTimeline } from "@/components/ui";
+import type { AddressSuggestion } from "@/pages/api/geocode/autocomplete";
 
 export const getServerSideProps: GetServerSideProps<{ userLabel: string }> = async (context) => {
   const session = await getServerSession(context.req, context.res, authOptions);
@@ -36,6 +37,41 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleStreetAddressChange(value: string) {
+    setStreetAddress(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (value.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/geocode/autocomplete?q=${encodeURIComponent(value)}`);
+        const data = await res.json();
+        setSuggestions(data.suggestions ?? []);
+        setShowSuggestions(true);
+      } catch {
+        setSuggestions([]);
+      }
+    }, 350);
+  }
+
+  function selectSuggestion(s: AddressSuggestion) {
+    setStreetAddress(s.streetAddress);
+    setLocalArea(s.localArea);
+    setCity(s.city);
+    setZone(s.zone);
+    setPostalCode(s.postalCode);
+    setSuggestions([]);
+    setShowSuggestions(false);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -114,14 +150,28 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
                 </div>
               </div>
 
-              <div className="field">
+              <div className="field" style={{ position: "relative" }}>
                 <label>Physical Address</label>
                 <input
-                  placeholder="Street address"
+                  placeholder="Start typing an address…"
                   value={streetAddress}
-                  onChange={(e) => setStreetAddress(e.target.value)}
+                  onChange={(e) => handleStreetAddressChange(e.target.value)}
+                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  autoComplete="off"
                   required
                 />
+                {showSuggestions && suggestions.length > 0 && (
+                  <ul className="address-suggestions">
+                    {suggestions.map((s, i) => (
+                      <li key={i}>
+                        <button type="button" onMouseDown={() => selectSuggestion(s)}>
+                          {s.displayName}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="field-row">
                 <div className="field">

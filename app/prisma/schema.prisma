@@ -52,6 +52,19 @@ enum ReturnPreference {
   MANAGED
 }
 
+enum FeaturePriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum FeatureStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  READY
+  IMPLEMENTED
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
@@ -142,6 +155,21 @@ model BobgoShipment {
   updatedAt         DateTime          @updatedAt
 
   @@index([documentId])
+}
+
+// Internal staff-only feature/roadmap tracker - not part of the customer-
+// facing product or the chain-of-custody audit trail, just a lightweight
+// planning tool.
+model Feature {
+  id        String          @id @default(cuid())
+  name      String
+  priority  FeaturePriority @default(MEDIUM)
+  status    FeatureStatus   @default(NOT_STARTED)
+  comment   String?
+  checked   Boolean         @default(false)
+  createdBy String
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 }
 
 // A Bob Pay payment intent for a document's dispatch fee.

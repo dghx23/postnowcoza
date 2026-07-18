@@ -89,7 +89,30 @@ live Epson account/printer. Confirm end-to-end before relying on it.
   browser there to start the OAuth flow.
 - `src/pages/api/epson/status.ts` — polled every 30s by the `PrinterStatus`
   component (print queue + dashboard header, staff only) to show
-  online/busy/offline plus pending job count.
+  online/busy/offline plus pending job count. Clicking it expands a raw JSON
+  dump of everything the Epson API returned.
+
+## Quote Tool (Courier Guy)
+
+- `src/lib/courierguy.ts` — `getRates()`, always quoting from the facility
+  address (the only collection point this business dispatches from) to a
+  given delivery address. Built on the same request shape as Bob Go since
+  The Courier Guy's direct API is Shiplogic-based (see file comment for
+  what's confirmed vs. inferred by analogy). No shipment is created, no
+  `Document` is touched — purely a rate lookup, shown as a card on
+  `/dashboard`.
+
+## Address autocomplete
+
+`src/pages/api/geocode/autocomplete.ts` proxies OpenStreetMap's free
+Nominatim geocoder (no API key needed) for the delivery address field on
+`/dispatch/new`. South Africa only, debounced 350ms client-side.
+
+## Feature Roadmap
+
+`/roadmap` (staff only) — a lightweight internal tracker for planned
+features (`Feature` model), unrelated to the customer-facing product or the
+audit trail. CRUD via `/api/features` and `/api/features/[id]`.
 
 ## Still to build
 
@@ -99,3 +122,5 @@ live Epson account/printer. Confirm end-to-end before relying on it.
   the tracking page (the API exists, no UI yet).
 - Bob Pay API token refresh automation (currently a manual 30-day rotation).
 - Verify the Epson Connect integration against a real account/printer.
+- Verify the Courier Guy Quote Tool against a real `COURIER_GUY_API`
+  credential (auth header placement is a guess — see TECH_SPEC.md 6.4).

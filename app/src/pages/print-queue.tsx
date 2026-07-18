@@ -4,18 +4,31 @@ import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, Badge, StatusPill, Alert, PrinterStatus } from "@/components/ui";
+import { AppHeader, Card, Badge, StatusPill, Alert, PrinterStatus, DataTable } from "@/components/ui";
+import { FACILITY_ADDRESS } from "@/lib/facility";
+
+function timeAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 interface QueueDocument {
   id: string;
   createdAt: string;
   recipientName: string;
+  city: string;
   returnPreference: "DIRECT" | "MANAGED";
   status: string;
 }
 
 interface PrintQueueProps {
   userLabel: string;
+  facilityLabel: string;
   documents: QueueDocument[];
 }
 
@@ -37,11 +50,13 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
 
   return {
     props: {
-      userLabel: `${user.email} · Secure Facility (JHB)`,
+      userLabel: `${user.email} · Print Ops`,
+      facilityLabel: [FACILITY_ADDRESS.street_address, FACILITY_ADDRESS.city].filter(Boolean).join(", "),
       documents: documents.map((d) => ({
         id: d.id,
         createdAt: d.createdAt.toISOString(),
         recipientName: d.recipientName,
+        city: d.city,
         returnPreference: d.returnPreference,
         status: d.status,
       })),
@@ -49,7 +64,7 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
   };
 };
 
-export default function PrintQueue({ userLabel, documents: initialDocuments }: PrintQueueProps) {
+export default function PrintQueue({ userLabel, facilityLabel, documents: initialDocuments }: PrintQueueProps) {
   const router = useRouter();
   const [documents, setDocuments] = useState(initialDocuments);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -120,7 +135,7 @@ export default function PrintQueue({ userLabel, documents: initialDocuments }: P
 
   return (
     <div className="app-shell">
-      <AppHeader active="print-queue" userLabel={userLabel} showPrintQueue />
+      <AppHeader active="print-queue" userLabel={userLabel} showPrintQueue showRoadmap />
       <main className="app-main">
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div className="page-head">
@@ -129,6 +144,11 @@ export default function PrintQueue({ userLabel, documents: initialDocuments }: P
               <div className="page-subtitle">
                 Documents awaiting secure intake and printing — {documents.length} pending.
               </div>
+              {facilityLabel && (
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
+                  📍 {facilityLabel} · 👤 Staff · Print Ops
+                </div>
+              )}
             </div>
             <PrinterStatus />
           </div>
@@ -149,64 +169,50 @@ export default function PrintQueue({ userLabel, documents: initialDocuments }: P
               </div>
             </Card>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {documents.map((doc) => (
-                <Card key={doc.id}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: 16,
-                    }}
+            <Card>
+              <DataTable
+                columns={["Request ID", "Recipient", "Uploaded", "Return", "Status", "Actions"]}
+                rows={documents.map((doc) => [
+                  <span
+                    key={`${doc.id}-ref`}
+                    style={{ fontFamily: "var(--font-mono, monospace)", fontWeight: 700 }}
                   >
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontFamily: "var(--font-mono, monospace)", fontWeight: 700, fontSize: 15 }}>
-                          {doc.id.slice(0, 10).toUpperCase()}
-                        </span>
-                        <StatusPill status={doc.status} />
-                      </div>
-                      <div style={{ fontSize: 14, color: "var(--text-primary)" }}>{doc.recipientName}</div>
-                      <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                        Uploaded {new Date(doc.createdAt).toLocaleString()}
-                      </div>
-                      <div>
-                        <Badge tone={doc.returnPreference === "MANAGED" ? "teal" : "navy"}>
-                          {doc.returnPreference === "MANAGED" ? "Fully Managed Return" : "Direct Return"}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    #{doc.id.slice(0, 8).toUpperCase()}
+                  </span>,
+                  <div key={`${doc.id}-recipient`}>
+                    <div>{doc.recipientName}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{doc.city}</div>
+                  </div>,
+                  timeAgo(doc.createdAt),
+                  <Badge key={`${doc.id}-return`} tone={doc.returnPreference === "MANAGED" ? "teal" : "navy"}>
+                    {doc.returnPreference === "MANAGED" ? "Via PostNow" : "Direct"}
+                  </Badge>,
+                  <StatusPill key={`${doc.id}-status`} status={doc.status} />,
+                  <div key={`${doc.id}-actions`} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button className="btn btn-secondary" onClick={() => handleDownload(doc.id)}>
-                        Download
+                        📄 Download
                       </button>
                       <button
                         className="btn btn-secondary"
                         disabled={busyId === doc.id}
                         onClick={() => handlePrintApi(doc.id)}
                       >
-                        {busyId === doc.id ? "Printing…" : "Print (API)"}
+                        🖨️ {busyId === doc.id ? "Printing…" : "Print (API)"}
                       </button>
                       <button
                         className="btn btn-primary"
                         disabled={busyId === doc.id}
                         onClick={() => handleMarkPrinted(doc.id)}
                       >
-                        {busyId === doc.id ? "Marking…" : "Mark as Printed"}
+                        ✅ {busyId === doc.id ? "Marking…" : "Mark Printed"}
                       </button>
                     </div>
-                  </div>
-                  {errorId?.id === doc.id && (
-                    <div className="form-error" style={{ marginTop: 12 }}>
-                      {errorId.message}
-                    </div>
-                  )}
-                </Card>
-              ))}
-            </div>
+                    {errorId?.id === doc.id && <div className="form-error">{errorId.message}</div>}
+                  </div>,
+                ])}
+              />
+            </Card>
           )}
         </div>
       </main>

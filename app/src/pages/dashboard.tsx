@@ -1,9 +1,16 @@
+import { useState } from "react";
 import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
 import Link from "next/link";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
 import { AppHeader, MetricTile, Alert, Card, DataTable, StatusPill, PrinterStatus } from "@/components/ui";
+
+interface QuoteRate {
+  service_name?: string;
+  service_level_code?: string;
+  total_price?: number;
+}
 
 interface DashboardProps {
   userLabel: string;
@@ -47,9 +54,39 @@ export const getServerSideProps: GetServerSideProps<DashboardProps> = async (con
 };
 
 export default function Dashboard({ userLabel, isStaff, metrics, rows }: DashboardProps) {
+  const [streetAddress, setStreetAddress] = useState("");
+  const [localArea, setLocalArea] = useState("");
+  const [city, setCity] = useState("");
+  const [zone, setZone] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [quoting, setQuoting] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [rates, setRates] = useState<QuoteRate[] | null>(null);
+
+  async function handleGetQuote(e: React.FormEvent) {
+    e.preventDefault();
+    setQuoting(true);
+    setQuoteError(null);
+    setRates(null);
+    try {
+      const res = await fetch("/api/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ streetAddress, localArea, city, zone, postalCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Quote request failed");
+      setRates(data.rates ?? []);
+    } catch (err) {
+      setQuoteError((err as Error).message);
+    } finally {
+      setQuoting(false);
+    }
+  }
+
   return (
     <div className="app-shell">
-      <AppHeader active="dashboard" userLabel={userLabel} showPrintQueue={isStaff} />
+      <AppHeader active="dashboard" userLabel={userLabel} showPrintQueue={isStaff} showRoadmap={isStaff} />
       <main className="app-main">
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div className="page-head">
@@ -98,6 +135,58 @@ export default function Dashboard({ userLabel, isStaff, metrics, rows }: Dashboa
               />
             )}
           </Card>
+
+          {isStaff && (
+            <Card title="Quote Tool">
+              <form onSubmit={handleGetQuote} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                  Rates from our facility to a delivery address, via Courier Guy.
+                </div>
+                <div className="field">
+                  <label>Street Address</label>
+                  <input value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} required />
+                </div>
+                <div className="field-row">
+                  <div className="field">
+                    <label>Suburb</label>
+                    <input value={localArea} onChange={(e) => setLocalArea(e.target.value)} required />
+                  </div>
+                  <div className="field">
+                    <label>City</label>
+                    <input value={city} onChange={(e) => setCity(e.target.value)} required />
+                  </div>
+                </div>
+                <div className="field-row">
+                  <div className="field">
+                    <label>Province</label>
+                    <input value={zone} onChange={(e) => setZone(e.target.value)} required />
+                  </div>
+                  <div className="field">
+                    <label>Postal Code</label>
+                    <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} required />
+                  </div>
+                </div>
+                <button type="submit" className="btn btn-primary" disabled={quoting} style={{ alignSelf: "flex-start" }}>
+                  {quoting ? "Getting quote…" : "Get Quote"}
+                </button>
+                {quoteError && <div className="form-error">{quoteError}</div>}
+                {rates && rates.length === 0 && (
+                  <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+                    No rates available for that address.
+                  </div>
+                )}
+                {rates && rates.length > 0 && (
+                  <DataTable
+                    columns={["Service", "Price"]}
+                    rows={rates.map((r) => [
+                      r.service_name ?? r.service_level_code ?? "—",
+                      r.total_price != null ? `R${r.total_price.toFixed(2)}` : "—",
+                    ])}
+                  />
+                )}
+              </form>
+            </Card>
+          )}
         </div>
       </main>
     </div>

@@ -81,6 +81,10 @@ BobgoShipment   (one row per courier leg — outbound dispatch, or a return)
 Payment   (Bob Pay payment intent for a document's dispatch fee)
   id, documentId, customPaymentId (unique), bobpayUuid?, amount,
   status (UNPAID|PAID|FAILED|CANCELLED|REFUNDED), paymentMethod, paymentUrl, rawPayload
+
+Feature   (internal staff roadmap tracker - unrelated to the product/audit trail)
+  id, name, priority (HIGH|MEDIUM|LOW), status (NOT_STARTED|IN_PROGRESS|READY|IMPLEMENTED),
+  comment?, checked, createdBy, createdAt, updatedAt
 ```
 
 Migrations are hand-generated via `prisma migrate diff` (schema-to-schema,
@@ -88,6 +92,7 @@ no live DB connection needed) rather than `migrate dev`, since there's no
 local database in this environment:
 - `20260101000000_init` — initial schema
 - `20260102000000_return_preference` — adds `Document.returnPreference`
+- `20260103000000_add_feature_tracker` — adds the `Feature` model
 
 `npm run build` runs `prisma generate && prisma migrate deploy && npm run seed
 && next build` — migrations and seeding both happen automatically on every
@@ -98,8 +103,9 @@ production build.
 | Route | Purpose | Auth |
 |---|---|---|
 | `/login` | NextAuth credentials sign-in | public |
-| `/dashboard` | Live metrics (active dispatches, in-transit, delivered, exceptions) + recent documents table | session required |
-| `/dispatch/new` | Upload form: file + recipient/address fields + return preference (Direct/Fully Managed) | session required |
+| `/dashboard` | Live metrics (active dispatches, in-transit, delivered, exceptions) + recent documents table + staff Quote Tool (see 6.4) | session required |
+| `/dispatch/new` | Upload form: file + recipient/address fields (with address autocomplete, see 6.5) + return preference (Direct/Fully Managed) | session required |
+| `/roadmap` | Internal feature/task tracker for staff — not customer-facing, not part of the audit trail | STAFF/ADMIN |
 | `/tracking/[id]` | Real status timeline + chain-of-custody log + compliance badges for one document | session required, owner or staff |
 | `/print-queue` | Staff print queue: documents in `UPLOADED`/`QUEUED_FOR_PRINT`, download original file, mark as printed, one-click print via Epson Connect, live printer status | STAFF/ADMIN |
 | `/api/documents/upload` | POST — encrypts & stores file to S3/R2, creates `Document`, first `uploaded` audit event | session required |
@@ -115,6 +121,10 @@ production build.
 | `/api/webhooks/bobgo` | POST — Bob Go tracking/submission-status webhook receiver | HMAC-verified, no session |
 | `/api/webhooks/bobpay` | POST — Bob Pay payment notification receiver | IP + signature verified, no session |
 | `/api/auth/[...nextauth]` | NextAuth handler | — |
+| `/api/quote` | POST — Courier Guy rate lookup from the facility to a given address, dashboard-only tool, doesn't touch any `Document` (see 6.4) | STAFF/ADMIN |
+| `/api/geocode/autocomplete` | GET — proxies OpenStreetMap Nominatim for address suggestions on the dispatch form (see 6.5) | session required |
+| `/api/features` | GET/POST — list/create roadmap items | STAFF/ADMIN |
+| `/api/features/[id]` | PATCH/DELETE — update or remove a roadmap item | STAFF/ADMIN |
 
 ## 6. Third-party integrations
 
@@ -214,7 +224,38 @@ from the verified job-creation path, not confirmed directly.
   job count every 30s, shown on the print queue and dashboard headers,
   staff only.
 
-### 6.4 Storage & auth
+### 6.4 Courier Guy Quote Tool
+
+- `src/lib/courierguy.ts` — `getRates()` only (no shipment creation — this is
+  a rate-check tool for the dashboard, not a dispatch mechanism). Modeled
+  closely on `bobgo.ts`'s request shape because The Courier Guy's direct API
+  (`api-tcg.co.za`) is confirmed (via web search — their own docs sites
+  block automated fetches) to be built on the **Shiplogic** platform, the
+  same lineage as Bob Go, which is why the field names match
+  (`collection_address`/`delivery_address`/`parcels`). **Not confirmed**:
+  whether the API key belongs in an `Authorization: Bearer` header (used
+  here, matching Bob Go's convention) or a query parameter — search results
+  only said "authentication is via an api_key parameter" without specifying
+  placement.
+- `src/pages/api/quote.ts` — always rates from the facility address (the
+  only collection point this business dispatches from) to a staff-entered
+  delivery address. Purely a quote lookup, doesn't create or touch any
+  `Document`/`BobgoShipment`.
+- UI: a "Quote Tool" card on `/dashboard`, staff only.
+
+### 6.5 Address autocomplete
+
+- `src/pages/api/geocode/autocomplete.ts` — proxies OpenStreetMap's free
+  Nominatim geocoder (no API key required) for the "Physical Address" field
+  on `/dispatch/new`. Constrained to South Africa (`countrycodes=za`),
+  debounced client-side (350ms), returns up to 5 suggestions that populate
+  street/suburb/city/province/postal code on selection.
+- Chosen over a paid provider (Google Places, etc.) since no such API key
+  was provided/requested — this works immediately with no account setup,
+  at the cost of address-matching quality being noticeably rougher than a
+  commercial geocoder for South African addresses specifically.
+
+### 6.6 Storage & auth
 
 - **Postgres**: Neon (EU West London region). Note: the original connection
   string was accidentally pasted into a chat session and was rotated
@@ -235,7 +276,10 @@ Full reference: `app/.env.example`. Categories: `DATABASE_URL`,
 collection address for outbound and delivery address for returns),
 `BOBPAY_*` (3), `SEED_STAFF_EMAIL`/`SEED_STAFF_PASSWORD`, `EPSON_*` (up to 6:
 `CLIENT_ID`/`CLIENT_SECRET`/`REDIRECT_URI` required, `API_KEY` and the two
-base-URL overrides optional).
+base-URL overrides optional), `COURIER_GUY_API` (required for the quote
+tool) / `COURIER_GUY_BASE_URL` (optional override). No env vars needed for
+address autocomplete (Nominatim requires no API key) or the roadmap
+tracker.
 
 **Operational lesson learned during setup**: Vercel's bulk `.env`-paste
 feature creates a row for every key even when no value is supplied. Twice
@@ -269,6 +313,12 @@ blank before assuming a code bug.
   exercised against a live deployment (pending the next deploy landing).
 - Epson Connect printing + status indicator built and type-checked;
   completely unverified against a real Epson account/printer (see 6.3).
+- Print queue enriched: table layout (Request ID/Recipient/Uploaded/Return/
+  Status/Actions), real facility address in the header, relative
+  "uploaded X ago" timestamps.
+- Courier Guy Quote Tool, address autocomplete, and the staff Feature
+  Roadmap tracker all built and type-checked; none yet exercised against a
+  live deployment (pending the next deploy).
 
 ## 10. Outstanding work
 
@@ -294,3 +344,26 @@ blank before assuming a code bug.
     need an actual run against a live account/printer to confirm; the
     device-info/job-listing endpoints in `status.ts` remain an unconfirmed
     guess by convention (see 6.3).
+11. **Courier Guy Quote Tool live test** — `getRates()` is modeled on Bob
+    Go's shape by strong analogy (confirmed shared Shiplogic lineage) but
+    never called against the real `COURIER_GUY_API` credential; the
+    Bearer-header auth placement specifically is a guess (see 6.4).
+12. **Deliberately not built** — a later prompt asked for: a `labelStatus`
+    field on `Document`, a home-grown courier label generator (a Python
+    agent using `reportlab` to draw a label PDF with its own fabricated
+    tracking number, polling a `GET /api/labels/pending` endpoint and
+    storing Epson tokens in a flat file `~/.epson_tokens.json`), and an
+    "Instant Print" button distinct from the existing "Print (API)" one.
+    Not implemented because: (a) file-based token storage cannot work at
+    all on Vercel's serverless model — there is no persistent filesystem
+    across function invocations; (b) it duplicates functionality Bob Go
+    already provides properly (`BobgoShipment.waybillUrl`, the courier's own
+    official tracking reference) with a fabricated fallback tracking number
+    instead, which risks real packages carrying labels the courier's own
+    system doesn't recognize; (c) it introduces a third status enum
+    overlapping `Document.status` and `BobgoShipment.submissionStatus`. If a
+    genuine local-print-agent (a script on a machine physically connected to
+    a printer, for when Epson Connect Cloud isn't reliable) is still wanted,
+    it needs scoping as its own feature with a real auth mechanism suited to
+    an unattended script — not a reuse of the browser-session OAuth cookie
+    flow.

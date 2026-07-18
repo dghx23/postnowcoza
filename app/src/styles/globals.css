@@ -777,6 +777,39 @@ table.data-table tr:last-child td {
   color: var(--navy-900);
 }
 
+.address-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--white);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.address-suggestions li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.address-suggestions li button:hover {
+  background: var(--teal-050);
+}
+
 .btn-full { width: 100%; }
 .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
 .form-error {
