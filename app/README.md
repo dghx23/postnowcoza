@@ -69,12 +69,31 @@ create a secret (put it in `BOBGO_WEBHOOK_SECRET`), then subscribe
   — there's no refresh flow built yet, so this needs manual (or scheduled)
   renewal.
 
+## Printing (Epson Connect)
+
+**Unverified integration** — implemented per a provided spec, never run
+against a live Epson account or checked against Epson's current API docs
+(https://developer.epsonconnect.com/). Confirm endpoint paths and payload
+field names before relying on this in production.
+
+- `src/lib/epson.ts` — OAuth token exchange/refresh, `printPdf()`,
+  `getDeviceInfo()`, `getJobs()`.
+- `src/pages/api/epson/callback.ts` — OAuth redirect target
+  (`EPSON_REDIRECT_URI`). Staff/admin only. Stores `access_token`/
+  `refresh_token` in HTTP-only cookies.
+- `src/pages/api/documents/[id]/print.ts` — sends a document's PDF straight
+  to the connected printer and marks it `PRINTED` on success. Returns
+  `auth_url` in a 401 if not yet connected; the print queue UI redirects the
+  browser there to start the OAuth flow.
+- `src/pages/api/epson/status.ts` — polled every 30s by the `PrinterStatus`
+  component (print queue + dashboard header, staff only) to show
+  online/busy/offline plus pending job count.
+
 ## Still to build
 
-- Staff dashboard UI (print queue, dispatch queue, exception handling for
-  `collection-exception`/`delivery-exception`/`failed-*` tracking statuses).
 - Data subject access/deletion endpoints (POPIA requirement).
 - Rate limiting / virus scanning on upload.
 - UI to launch a document's payment link and reflect `Payment.status` on
   the tracking page (the API exists, no UI yet).
 - Bob Pay API token refresh automation (currently a manual 30-day rotation).
+- Verify the Epson Connect integration against a real account/printer.

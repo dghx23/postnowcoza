@@ -101,10 +101,13 @@ production build.
 | `/dashboard` | Live metrics (active dispatches, in-transit, delivered, exceptions) + recent documents table | session required |
 | `/dispatch/new` | Upload form: file + recipient/address fields + return preference (Direct/Fully Managed) | session required |
 | `/tracking/[id]` | Real status timeline + chain-of-custody log + compliance badges for one document | session required, owner or staff |
-| `/print-queue` | Staff print queue: documents in `UPLOADED`/`QUEUED_FOR_PRINT`, download original file, mark as printed | STAFF/ADMIN |
+| `/print-queue` | Staff print queue: documents in `UPLOADED`/`QUEUED_FOR_PRINT`, download original file, mark as printed, one-click print via Epson Connect, live printer status | STAFF/ADMIN |
 | `/api/documents/upload` | POST — encrypts & stores file to S3/R2, creates `Document`, first `uploaded` audit event | session required |
 | `/api/documents/[id]/status` | PATCH — staff-only manual status transitions (`UPLOADED→QUEUED_FOR_PRINT`, `UPLOADED→PRINTED`, `QUEUED_FOR_PRINT→PRINTED`, etc.) | STAFF/ADMIN |
 | `/api/documents/[id]/download` | GET — presigned R2 download URL for the original file, audit-logs the download | owner or staff |
+| `/api/documents/[id]/print` | POST — sends the document's PDF to the connected Epson printer, marks `PRINTED` on success (see 6.3) | STAFF/ADMIN |
+| `/api/epson/callback` | GET — Epson OAuth redirect target, exchanges code for tokens, stores in HTTP-only cookies | STAFF/ADMIN |
+| `/api/epson/status` | GET — polled printer status (online/busy/offline + pending job count) | STAFF/ADMIN |
 | `/api/documents/[id]/dispatch` | POST — books the outbound Bob Go shipment (see 6.1) | STAFF/ADMIN |
 | `/api/documents/[id]/return` | POST — books the Bob Go managed return (see 6.1) | owner or STAFF/ADMIN |
 | `/api/documents/[id]/pay` | POST — creates/returns a Bob Pay payment link for the dispatch fee | owner or STAFF/ADMIN |
@@ -156,7 +159,42 @@ production build.
   be located in the account UI) are both still unset. Payment link
   creation/webhook verification will fail until these are in.
 
-### 6.3 Storage & auth
+### 6.3 Epson Connect (printing)
+
+**Unverified integration** — built from a provided implementation spec, never
+run against a live Epson account/printer or checked against Epson's current
+API docs (https://developer.epsonconnect.com/). Confirm endpoint paths and
+payload field names before relying on this in production. Two separate
+prompts supplied conflicting details for the same integration (different
+field names — `duplex`/`A4` vs `double_sided`/`ps_a4` — and one included an
+`x-api-key` header/`EPSON_API_KEY` the other didn't mention); the
+implementation picked one coherent version and made both the base URLs and
+the API key header optional/env-overridable rather than guessing which spec
+was authoritative.
+
+- `src/lib/epson.ts` — OAuth authorize URL, token exchange/refresh,
+  `printPdf()`, `getDeviceInfo()`, `getJobs()`.
+- `src/pages/api/epson/callback.ts` — OAuth redirect target
+  (`EPSON_REDIRECT_URI`). Staff/admin only (checked via `getSessionUser`, the
+  same pattern as every other API route — not `getServerSession` +
+  `session.user.role` directly, which the supplied specs used but which
+  doesn't work here: this app's NextAuth config has no `jwt`/`session`
+  callback copying `role` onto the session object, so `session.user.role`
+  is always `undefined` at runtime).
+- `src/pages/api/documents/[id]/print.ts` — validates the document is in a
+  printable status, downloads the PDF from R2, sends it to Epson, retries
+  once via refresh token on a 401, then updates `Document.status` to
+  `PRINTED` and appends an audit event through the existing
+  `appendAuditEvent()` hash-chain helper (the supplied spec instead wrote a
+  raw `prisma.auditEvent.create` with a literal `hash: 'pending'` string,
+  which would have broken the tamper-evident audit chain that's the whole
+  point of this table — not used).
+- `src/pages/api/epson/status.ts` + `PrinterStatus` component
+  (`src/components/ui.tsx`) — polls printer online/busy/offline + pending
+  job count every 30s, shown on the print queue and dashboard headers,
+  staff only.
+
+### 6.4 Storage & auth
 
 - **Postgres**: Neon (EU West London region). Note: the original connection
   string was accidentally pasted into a chat session and was rotated
@@ -175,7 +213,9 @@ Full reference: `app/.env.example`. Categories: `DATABASE_URL`,
 `NEXTAUTH_SECRET`/`NEXTAUTH_URL`, `S3_*` (5), `BOBGO_*` (3),
 `FACILITY_*` (8, the print facility's address/contact — used as the
 collection address for outbound and delivery address for returns),
-`BOBPAY_*` (3), `SEED_STAFF_EMAIL`/`SEED_STAFF_PASSWORD`.
+`BOBPAY_*` (3), `SEED_STAFF_EMAIL`/`SEED_STAFF_PASSWORD`, `EPSON_*` (up to 6:
+`CLIENT_ID`/`CLIENT_SECRET`/`REDIRECT_URI` required, `API_KEY` and the two
+base-URL overrides optional).
 
 **Operational lesson learned during setup**: Vercel's bulk `.env`-paste
 feature creates a row for every key even when no value is supplied. Twice
@@ -207,6 +247,8 @@ blank before assuming a code bug.
   issuance pending/retrying at time of writing.
 - Staff print queue (`/print-queue`) built and type-checked; not yet
   exercised against a live deployment (pending the next deploy landing).
+- Epson Connect printing + status indicator built and type-checked;
+  completely unverified against a real Epson account/printer (see 6.3).
 
 ## 10. Outstanding work
 
@@ -227,3 +269,7 @@ blank before assuming a code bug.
 9. **Print queue verification** — confirm the `20260102000000_return_preference`
    migration applies cleanly on the next production deploy, then test
    download + mark-as-printed against a real uploaded document.
+10. **Epson Connect verification** — confirm OAuth flow, print endpoint, and
+    status endpoint against Epson's real API docs and a live printer before
+    staff rely on the "Print (API)" button; the current implementation is
+    unverified (see 6.3).
