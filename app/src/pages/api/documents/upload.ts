@@ -56,7 +56,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     await putDocument(storageKey, body, contentType);
   } catch (err) {
-    console.error("Document upload: failed to store file in R2", { message: (err as Error).message });
+    // Region/endpoint/bucket aren't secret - logging them (never the access
+    // key/secret) lets us confirm which config this deployment is actually
+    // running with, without exposing credentials.
+    console.error("Document upload: failed to store file in R2", {
+      message: (err as Error).message,
+      region: process.env.S3_REGION,
+      endpoint: process.env.S3_ENDPOINT,
+      bucket: process.env.S3_BUCKET,
+      accessKeyIdLength: (process.env.S3_ACCESS_KEY_ID ?? "").length,
+      secretAccessKeyLength: (process.env.S3_SECRET_ACCESS_KEY ?? "").length,
+    });
     return res.status(502).json({ error: "Failed to store the uploaded file. Please try again shortly." });
   }
 
