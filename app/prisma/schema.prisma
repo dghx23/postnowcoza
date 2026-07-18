@@ -39,6 +39,14 @@ enum SubmissionStatus {
   FAILED_INDEFINITELY
 }
 
+enum PaymentStatus {
+  UNPAID
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
@@ -75,8 +83,14 @@ model Document {
   postalCode       String
   country          String         @default("ZA")
 
+  // Courier rate charged for the outbound dispatch, set once a shipment is
+  // booked (src/lib/dispatch.ts). The dispatch fee payment is created from
+  // this amount, not recomputed at payment time.
+  dispatchFee      Float?
+
   auditEvents      AuditEvent[]
   bobgoShipments   BobgoShipment[]
+  payments         Payment[]
 }
 
 // Append-only chain-of-custody log. Rows are never updated or deleted from
@@ -117,6 +131,24 @@ model BobgoShipment {
   rawPayload        Json?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
+
+  @@index([documentId])
+}
+
+// A Bob Pay payment intent for a document's dispatch fee.
+model Payment {
+  id              String        @id @default(cuid())
+  documentId      String
+  document        Document      @relation(fields: [documentId], references: [id])
+  customPaymentId String        @unique
+  bobpayUuid      String?
+  amount          Float
+  status          PaymentStatus @default(UNPAID)
+  paymentMethod   String?
+  paymentUrl      String?
+  rawPayload      Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([documentId])
 }

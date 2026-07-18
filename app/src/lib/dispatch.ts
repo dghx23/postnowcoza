@@ -68,7 +68,7 @@ export async function dispatchDocument(documentId: string, actorId: string) {
 
   await prisma.document.update({
     where: { id: document.id },
-    data: { status: "DISPATCHED" },
+    data: { status: "DISPATCHED", dispatchFee: chosen.total_price },
   });
 
   await appendAuditEvent({
