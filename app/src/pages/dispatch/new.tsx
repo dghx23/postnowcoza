@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GetServerSideProps } from "next";
 import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
@@ -25,6 +25,7 @@ const PENDING_EVENTS = [
 export default function NewDispatch({ userLabel }: { userLabel: string }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [recipientName, setRecipientName] = useState("");
   const [recipientEmail, setRecipientEmail] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
@@ -43,6 +44,29 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Local object URL for in-browser PDF preview (revoked when file changes / unmount).
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file]);
+
+  function handleFileChange(next: File | null) {
+    if (next && next.type && next.type !== "application/pdf" && !next.name.toLowerCase().endsWith(".pdf")) {
+      setError("Only PDF files can be previewed and dispatched.");
+      setFile(null);
+      return;
+    }
+    setError(null);
+    setFile(next);
+  }
 
   function handleStreetAddressChange(value: string) {
     setStreetAddress(value);
@@ -145,7 +169,7 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
                   type="file"
                   accept="application/pdf,.pdf"
                   style={{ display: "none" }}
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
                 />
               </label>
 
@@ -311,7 +335,36 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
 
               {error && <div className="form-error">{error}</div>}
 
-              <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
+              {/* Full-width preview (same width as submit) · ~9cm tall */}
+              <div className="dispatch-preview">
+                <div className="dispatch-preview-label">
+                  Document preview
+                  {file ? (
+                    <span className="dispatch-preview-filename">{file.name}</span>
+                  ) : (
+                    <span className="dispatch-preview-hint">Upload a PDF above to preview before submit</span>
+                  )}
+                </div>
+                <div className="dispatch-preview-frame" aria-live="polite">
+                  {previewUrl ? (
+                    <iframe
+                      title="Document preview"
+                      src={`${previewUrl}#toolbar=0&navpanes=0`}
+                      className="dispatch-preview-iframe"
+                    />
+                  ) : (
+                    <div className="dispatch-preview-empty">
+                      Your document will appear here once you attach a PDF.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary btn-full"
+                disabled={submitting || !file}
+              >
                 {submitting ? "Submitting…" : "Submit Secure Dispatch Request"}
               </button>
             </div>
