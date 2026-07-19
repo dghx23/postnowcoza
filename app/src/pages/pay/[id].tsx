@@ -257,21 +257,42 @@ export default function PayPage({
                 <div className="pay-brand">
                   <span className="pay-brand-label">Online</span>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/pay-logos/logo-payfast.svg" alt="Payfast" height={22} width={100} />
+                  <img src="/pay-logos/logo-payfast.svg" alt="Payfast" height={36} width={160} />
                 </div>
                 <div className="pay-brand">
                   <span className="pay-brand-label">In person</span>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/pay-logos/logo-network.svg" alt="Network International" height={22} width={130} />
+                  <img src="/pay-logos/logo-network.svg" alt="Network International" height={36} width={180} />
                 </div>
               </div>
-              <div className="pay-method-icons" aria-label="Accepted methods">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/pay-logos/pm-credit-card.svg" alt="Credit Card" title="Credit Card" height={28} width={42} />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/pay-logos/pm-instant-eft.svg" alt="Instant EFT" title="Instant EFT" height={28} width={42} />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/pay-logos/pm-amex.svg" alt="American Express" title="American Express" height={28} width={42} />
+              <div className="pay-method-icons" aria-label="Accepted payment methods">
+                {[
+                  ["pm-visa.svg", "Visa"],
+                  ["pm-mastercard.svg", "Mastercard"],
+                  ["pm-amex.svg", "American Express"],
+                  ["pm-instant-eft.svg", "Instant EFT"],
+                  ["pm-apple-pay.svg", "Apple Pay"],
+                  ["pm-samsung-pay.svg", "Samsung Pay"],
+                  ["pm-google-pay.svg", "Google Pay"],
+                  ["pm-capitec-pay.svg", "Capitec Pay"],
+                  ["pm-mobicred.svg", "Mobicred"],
+                  ["pm-moretyme.svg", "MoreTyme"],
+                  ["pm-scode.svg", "SCode"],
+                  ["pm-snapscan.svg", "SnapScan"],
+                  ["pm-zapper.svg", "Zapper"],
+                  ["pm-masterpass.svg", "Masterpass"],
+                  ["pm-rcs.svg", "RCS"],
+                ].map(([file, label]) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={file}
+                    src={`/pay-logos/${file}`}
+                    alt={label}
+                    title={label}
+                    height={44}
+                    width={64}
+                  />
+                ))}
               </div>
             </Card>
           </div>
