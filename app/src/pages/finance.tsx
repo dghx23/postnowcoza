@@ -14,11 +14,18 @@ import {
   type FinanceSummary,
   type FinanceStatusFilter,
 } from "@/lib/finance";
+import { getZohoBooksPublicConfig, zohoBooksAppUrl } from "@/lib/zohoBooks";
 
 interface FinancePageProps {
   userLabel: string;
   finance: FinanceSummary;
   statusFilter: FinanceStatusFilter;
+  zoho: {
+    configured: boolean;
+    organizationId: string | null;
+    region: string;
+    appUrl: string | null;
+  };
 }
 
 function timeAgo(iso: string): string {
@@ -78,13 +85,16 @@ export const getServerSideProps: GetServerSideProps<FinancePageProps> = async (c
       userLabel: `${user.email} · Finance`,
       finance,
       statusFilter,
+      zoho: getZohoBooksPublicConfig(),
     },
   };
 };
 
-export default function FinancePage({ userLabel, finance, statusFilter }: FinancePageProps) {
+export default function FinancePage({ userLabel, finance, statusFilter, zoho }: FinancePageProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -104,6 +114,46 @@ export default function FinancePage({ userLabel, finance, statusFilter }: Financ
     void router.push(next === "ALL" ? "/finance" : `/finance?status=${next}`);
   }
 
+  async function syncOne(paymentId: string) {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch("/api/finance/zoho", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? json.reason ?? "Sync failed");
+      setSyncMsg(json.skipped ? `Already in Zoho Books` : `Synced to Zoho Books`);
+      router.replace(router.asPath);
+    } catch (err) {
+      setSyncMsg((err as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function syncAllUnsynced() {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch("/api/finance/zoho", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allUnsynced: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Bulk sync failed");
+      setSyncMsg(`Synced ${json.count ?? 0} paid payment(s) to Zoho Books`);
+      router.replace(router.asPath);
+    } catch (err) {
+      setSyncMsg((err as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const listSum = rows.reduce((s, p) => s + p.amount, 0);
 
   return (
@@ -116,16 +166,59 @@ export default function FinancePage({ userLabel, finance, statusFilter }: Financ
               <span aria-hidden>💰</span> Financial
             </div>
             <div className="page-subtitle">
-              Facility-wide payments · staff only · full ledger
+              Facility-wide payments · staff only · mapped to Zoho Books
             </div>
           </div>
           <div className="finance-page-header-actions">
             <span className="finance-scope-badge staff">Staff full view</span>
+            {zoho.configured && zoho.appUrl ? (
+              <a
+                href={zoho.appUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary"
+                style={{ fontSize: 13 }}
+              >
+                Open Zoho Books ↗
+              </a>
+            ) : (
+              <span className="finance-zoho-hint" title="Set ZOHO_BOOKS_* env vars in Vercel">
+                Zoho Books not configured
+              </span>
+            )}
+            {zoho.configured && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: 13 }}
+                disabled={syncing}
+                onClick={() => void syncAllUnsynced()}
+              >
+                {syncing ? "Syncing…" : "Sync paid → Books"}
+              </button>
+            )}
             <Link href="/dashboard#finance" className="btn btn-secondary" style={{ fontSize: 13 }}>
               ← Dashboard
             </Link>
           </div>
         </header>
+
+        {syncMsg && <p className="finance-sync-msg">{syncMsg}</p>}
+
+        <div className="finance-zoho-bar">
+          <span className={`finance-zoho-pill${zoho.configured ? " on" : ""}`}>
+            {zoho.configured ? "● Zoho Books linked" : "○ Zoho Books not linked"}
+          </span>
+          <span className="finance-zoho-meta">
+            Paid dispatch fees create a contact + invoice (+ payment when paid) in Zoho Books.
+            {zoho.organizationId ? ` Org ${zoho.organizationId}` : ""}
+          </span>
+          {zoho.configured && zoho.appUrl && (
+            <a href={zoho.appUrl} target="_blank" rel="noopener noreferrer" className="finance-inline-link">
+              books.zoho →
+            </a>
+          )}
+        </div>
 
         <div className="finance-metrics finance-metrics-page">
           <div className="finance-metric">
@@ -217,6 +310,7 @@ export default function FinancePage({ userLabel, finance, statusFilter }: Financ
                     <th>Method</th>
                     <th>Status</th>
                     <th className="num">Amount</th>
+                    <th>Zoho Books</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -245,6 +339,25 @@ export default function FinancePage({ userLabel, finance, statusFilter }: Financ
                         <span className="finance-amount">{formatZar(p.amount)}</span>
                       </td>
                       <td>
+                        {p.zohoBooksInvoiceId ? (
+                          <a
+                            href={zohoBooksAppUrl(p.zohoBooksInvoiceId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="finance-action-link"
+                            title={p.zohoBooksSyncedAt ? `Synced ${p.zohoBooksSyncedAt}` : "Open invoice"}
+                          >
+                            Invoice ↗
+                          </a>
+                        ) : p.zohoBooksSyncError ? (
+                          <span className="finance-status failed" title={p.zohoBooksSyncError}>
+                            Sync error
+                          </span>
+                        ) : (
+                          <span className="finance-muted">—</span>
+                        )}
+                      </td>
+                      <td>
                         <div className="finance-row-actions">
                           <Link href={`/tracking/${p.documentId}`} className="finance-action-link">
                             Tracking
@@ -253,6 +366,23 @@ export default function FinancePage({ userLabel, finance, statusFilter }: Financ
                             <Link href={`/pay/${p.documentId}`} className="finance-action-link pay">
                               Collect
                             </Link>
+                          )}
+                          {zoho.configured && (
+                            <button
+                              type="button"
+                              className="finance-action-link"
+                              style={{
+                                background: "none",
+                                border: "none",
+                                padding: 0,
+                                cursor: syncing ? "wait" : "pointer",
+                                font: "inherit",
+                              }}
+                              disabled={syncing}
+                              onClick={() => void syncOne(p.id)}
+                            >
+                              Sync
+                            </button>
                           )}
                         </div>
                       </td>

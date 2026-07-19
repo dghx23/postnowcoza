@@ -24,6 +24,9 @@ export interface FinancePaymentRow {
   recipientName: string;
   /** Staff-only: document owner email */
   ownerEmail: string | null;
+  zohoBooksInvoiceId: string | null;
+  zohoBooksSyncedAt: string | null;
+  zohoBooksSyncError: string | null;
 }
 
 export interface FinanceSummary {
@@ -71,6 +74,9 @@ function mapPaymentRow(
     paymentMethod: string | null;
     createdAt: Date;
     updatedAt: Date;
+    zohoBooksInvoiceId?: string | null;
+    zohoBooksSyncedAt?: Date | null;
+    zohoBooksSyncError?: string | null;
     document: { recipientName: string; owner?: { email: string } | null };
   },
   isCustomer: boolean
@@ -86,6 +92,9 @@ function mapPaymentRow(
     updatedAt: p.updatedAt.toISOString(),
     recipientName: p.document.recipientName,
     ownerEmail: isCustomer ? null : p.document.owner?.email ?? null,
+    zohoBooksInvoiceId: p.zohoBooksInvoiceId ?? null,
+    zohoBooksSyncedAt: p.zohoBooksSyncedAt?.toISOString() ?? null,
+    zohoBooksSyncError: p.zohoBooksSyncError ?? null,
   };
 }
 

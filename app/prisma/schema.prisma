@@ -259,6 +259,12 @@ model Payment {
   paymentMethod   String?
   paymentUrl      String?
   rawPayload      Json?
+  // Zoho Books mapping (invoice + contact + customer payment)
+  zohoBooksInvoiceId  String?
+  zohoBooksContactId  String?
+  zohoBooksPaymentId  String?
+  zohoBooksSyncedAt   DateTime?
+  zohoBooksSyncError  String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

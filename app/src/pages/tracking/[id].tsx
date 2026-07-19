@@ -129,6 +129,8 @@ function formatAuditAction(action: string): string {
     epson_print_attention: "Printer needs attention (paper, ink, or stopped)",
     print_job_submitted: "Print job logged (settings recorded)",
     payment_request_sent: "Payment request emailed to customer",
+    zoho_books_synced: "Payment synced to Zoho Books",
+    zoho_books_sync_failed: "Zoho Books sync failed",
     bobgo_webhook_received: "Courier status update received",
     pod_fetch_failed: "Proof-of-delivery fetch failed",
     shipment_exception: "Courier reported a delivery exception",

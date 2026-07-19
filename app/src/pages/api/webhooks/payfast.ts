@@ -100,6 +100,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch (err) {
         console.error("PayFast ITN: auto-dispatch error", err);
       }
+
+      // Map paid fee into Zoho Books (contact + invoice + payment). Non-fatal.
+      try {
+        const { syncPaymentToZohoBooks } = await import("@/lib/zohoBooksSync");
+        await syncPaymentToZohoBooks(payment.id);
+      } catch (err) {
+        console.error("PayFast ITN: Zoho Books sync error", err);
+      }
     }
   } else if (pfStatus === "FAILED" || pfStatus === "CANCELLED") {
     await prisma.payment.update({

@@ -37,6 +37,11 @@ export function FinanceSection({ finance }: { finance: FinanceSummary }) {
 }
 
 function StaffFinance({ finance }: { finance: FinanceSummary }) {
+  const booksUrl =
+    typeof process !== "undefined" && process.env.NEXT_PUBLIC_ZOHO_BOOKS_URL
+      ? process.env.NEXT_PUBLIC_ZOHO_BOOKS_URL
+      : "https://books.zoho.com";
+
   return (
     <section className="finance-section finance-section-staff" aria-labelledby="finance-heading">
       <div className="finance-section-header">
@@ -52,8 +57,17 @@ function StaffFinance({ finance }: { finance: FinanceSummary }) {
           <p className="finance-section-sub">
             Facility-wide payments · staff only ·{" "}
             <Link href="/finance" className="finance-inline-link">
-              open full ledger →
+              full ledger
             </Link>
+            {" · "}
+            <a
+              href={booksUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="finance-inline-link"
+            >
+              Zoho Books ↗
+            </a>
           </p>
         </div>
         <div className="finance-section-header-right">
@@ -61,6 +75,14 @@ function StaffFinance({ finance }: { finance: FinanceSummary }) {
           <Link href="/finance" className="btn btn-secondary finance-drill-btn">
             Full ledger →
           </Link>
+          <a
+            href={booksUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-primary finance-drill-btn"
+          >
+            Zoho Books ↗
+          </a>
         </div>
       </div>
 
