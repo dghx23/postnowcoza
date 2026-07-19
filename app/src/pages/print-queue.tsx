@@ -167,7 +167,6 @@ export default function PrintQueue({
   const history = initialHistory;
   const [historySyncing, setHistorySyncing] = useState(false);
   const [historyMsg, setHistoryMsg] = useState<string | null>(null);
-  const [previewId, setPreviewId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -176,12 +175,6 @@ export default function PrintQueue({
       .then((data) => setPrintProvider(data.provider ?? "EPSON"))
       .catch(() => setPrintProvider("EPSON"));
   }, []);
-
-  useEffect(() => {
-    if (documents.length > 0 && !previewId) {
-      setPreviewId(documents[0]!.id);
-    }
-  }, [documents, previewId]);
 
   function showToast(message: string) {
     setToast(message);
@@ -211,8 +204,6 @@ export default function PrintQueue({
       setHistorySyncing(false);
     }
   }
-
-  const previewDoc = documents.find((d) => d.id === previewId) ?? documents[0] ?? null;
 
   const visibleDocuments = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -251,7 +242,6 @@ export default function PrintQueue({
   async function handlePrintApi(id: string) {
     setBusyId(id);
     setErrorId(null);
-    setPreviewId(id);
     try {
       const res = await fetch(`/api/documents/${id}/print`, { method: "POST" });
       const data = await res.json();
@@ -277,7 +267,6 @@ export default function PrintQueue({
 
   async function handleDownload(id: string) {
     setErrorId(null);
-    setPreviewId(id);
     try {
       const res = await fetch(`/api/documents/${id}/download`);
       if (!res.ok) throw new Error((await res.json()).error ?? "Download failed");
@@ -292,7 +281,6 @@ export default function PrintQueue({
   async function handleMarkPrinted(id: string) {
     setBusyId(id);
     setErrorId(null);
-    setPreviewId(id);
     try {
       const res = await fetch(`/api/documents/${id}/status`, {
         method: "PATCH",
@@ -424,13 +412,9 @@ export default function PrintQueue({
               </thead>
               <tbody>
                 {visibleDocuments.map((doc) => (
-                  <tr
-                    key={doc.id}
-                    className={previewId === doc.id ? "pq-row-active" : undefined}
-                    onClick={() => setPreviewId(doc.id)}
-                  >
+                  <tr key={doc.id}>
                     <td>
-                      <Link href={`/tracking/${doc.id}`} className="pq-doc-id" onClick={(e) => e.stopPropagation()}>
+                      <Link href={`/tracking/${doc.id}`} className="pq-doc-id">
                         #{doc.id.slice(0, 8).toUpperCase()}
                       </Link>
                     </td>
@@ -451,7 +435,7 @@ export default function PrintQueue({
                         {doc.status === "QUEUED_FOR_PRINT" ? "QUEUED" : doc.status}
                       </span>
                     </td>
-                    <td onClick={(e) => e.stopPropagation()}>
+                    <td>
                       <div className="pq-actions">
                         <button type="button" className="pq-btn pq-btn-download" onClick={() => void handleDownload(doc.id)}>
                           📄 Download
@@ -487,77 +471,6 @@ export default function PrintQueue({
               </tbody>
             </table>
           )}
-        </div>
-
-        {/* ═══ LABEL PREVIEW + FLOW ═══ */}
-        <div className="pq-label-section">
-          <h3>🖨️ What prints (document PDF → Epson)</h3>
-          <div className="pq-label-mock">
-            <div className="pq-label-head">
-              <span className="pq-label-brand">
-                Post<span>Now</span>
-              </span>
-              <span className="pq-label-badge">SECURE DISPATCH</span>
-            </div>
-            <div className="pq-label-tagline">Delivered reliably · POPIA chain of custody</div>
-            <div className="pq-label-address">
-              <div className="to-label">📬 DELIVER TO</div>
-              <div className="name">{previewDoc?.recipientName ?? "—"}</div>
-              <div className="addr">
-                {previewDoc
-                  ? [previewDoc.streetAddress, previewDoc.localArea, previewDoc.city, previewDoc.postalCode]
-                      .filter(Boolean)
-                      .join(", ")
-                  : "Select a row in the queue"}
-              </div>
-            </div>
-            <div className="pq-label-barcode">
-              <span className="tracking">
-                {previewDoc ? `PN-${previewDoc.id.slice(0, 7).toUpperCase()}` : "PN-———————"}
-              </span>
-              <div className="barcode-placeholder" />
-            </div>
-            <div className="pq-label-footer">
-              <span>🔒 PostNow Secure Dispatch</span>
-              <span className="mono">app.postnow.co.za/tracking</span>
-            </div>
-          </div>
-          <div className="pq-flow-box">
-            <h4>✅ Instant print flow</h4>
-            <div className="pq-flow-step">
-              <span className="num">1</span>
-              <span>
-                Staff clicks <span className="hl">Print Instant</span>
-                {printProvider === "EPSON_DIRECT" ? " / Email Print" : ""}
-              </span>
-            </div>
-            <div className="pq-flow-step">
-              <span className="num">2</span>
-              <span>PDF downloaded from secure storage (R2)</span>
-            </div>
-            <div className="pq-flow-step">
-              <span className="num">3</span>
-              <span>
-                Sent via{" "}
-                <span className="hl">
-                  {printProvider === "EPSON_DIRECT" ? "Epson Email Print" : "Epson Connect API"}
-                </span>
-                <span className="pq-epson-tag">Cloud</span>
-              </span>
-            </div>
-            <div className="pq-flow-step">
-              <span className="num">4</span>
-              <span>
-                Status → <span className="hl">PRINTED</span>; confirmation email syncs to Print history
-              </span>
-            </div>
-            <div className="pq-flow-step">
-              <span className="num">5</span>
-              <span>
-                Open <Link href="/printer">Printer Hub</Link> for live queue &amp; today’s stats
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* ═══ HISTORY ═══ */}

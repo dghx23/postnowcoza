@@ -31,26 +31,46 @@ async function main() {
   });
   console.log(`Epson Direct email ready: ${epsonDirectEmail}`);
 
-  // Staff roadmap tracker item — idempotent so every deploy keeps it present
-  // without duplicating rows if someone already added it by hand.
-  const voiceAgentName = "Grok Voice Agent";
-  const existingVoice = await prisma.feature.findFirst({
-    where: { name: voiceAgentName },
-  });
-  if (!existingVoice) {
-    await prisma.feature.create({
-      data: {
-        name: voiceAgentName,
-        priority: "HIGH",
-        status: "IN_PROGRESS",
-        comment:
-          "In-app voice assistant on /voice (xAI Grok Realtime). Read-only tools first: list documents, get status, live courier tracking, audit summary. Ephemeral client secrets keep XAI_API_KEY server-side. Next: customer actions (pay/return), staff ops tools, public marketing FAQ agent.",
-        createdBy: "seed",
-      },
-    });
-    console.log(`Roadmap feature ready: ${voiceAgentName}`);
-  } else {
-    console.log(`Roadmap feature already present: ${voiceAgentName}`);
+  // Staff roadmap tracker items — idempotent so every deploy keeps them present
+  // without duplicating rows if someone already added them by hand.
+  const roadmapItems: Array<{
+    name: string;
+    priority: "HIGH" | "MEDIUM" | "LOW";
+    status: "NOT_STARTED" | "IN_PROGRESS" | "READY" | "IMPLEMENTED";
+    comment: string;
+  }> = [
+    {
+      name: "Grok Voice Agent",
+      priority: "HIGH",
+      status: "IN_PROGRESS",
+      comment:
+        "In-app voice assistant on /voice (xAI Grok Realtime). Read-only tools first: list documents, get status, live courier tracking, audit summary. Ephemeral client secrets keep XAI_API_KEY server-side. Next: customer actions (pay/return), staff ops tools, public marketing FAQ agent.",
+    },
+    {
+      name: "Courier label maker (print-queue preview)",
+      priority: "MEDIUM",
+      status: "NOT_STARTED",
+      comment:
+        "Parked from Print Queue UI: shipping-label mock (PostNow / SECURE DISPATCH / deliver-to / tracking barcode) plus Instant Print flow diagram (PDF → Epson → PRINTED → history). Reintroduce when we generate real courier labels (Bob Go waybill) not just document PDF print.",
+    },
+  ];
+
+  for (const item of roadmapItems) {
+    const existing = await prisma.feature.findFirst({ where: { name: item.name } });
+    if (!existing) {
+      await prisma.feature.create({
+        data: {
+          name: item.name,
+          priority: item.priority,
+          status: item.status,
+          comment: item.comment,
+          createdBy: "seed",
+        },
+      });
+      console.log(`Roadmap feature ready: ${item.name}`);
+    } else {
+      console.log(`Roadmap feature already present: ${item.name}`);
+    }
   }
 }
 
