@@ -141,6 +141,13 @@ production build.
 | `/api/documents/[id]/live-tracking` | GET — live Bob Go tracking status/checkpoints for a document's most recent shipment (see 6.3.1) | owner or STAFF/ADMIN |
 | `/api/epson/details` | GET — device info + default settings + full capability matrix + notification settings in one call, powers `/printer` (see 6.3.2) | STAFF/ADMIN |
 | `/api/print-settings` | GET/PATCH — current printing backend (Epson Connect or Epson Direct) plus the configured Epson Direct email address, powers the toggle on `/printer` (see 6.3.3) | STAFF/ADMIN |
+| `/api/epson/notifications/sync` | GET/POST — IMAP-pull Epson owner-notification emails from the Zoho print-agent mailbox and reconcile `EpsonPrintJob` + audit trail (see 6.3.4) | STAFF/ADMIN or `CRON_SECRET` |
+| `/voice` | In-app Grok Voice Agent UI (mic session + transcript) — read-only status/tracking (see 6.7) | session required |
+| `/api/voice/session` | POST — mints a short-lived xAI ephemeral client secret for the browser WebSocket | session required |
+| `/api/voice/tools/list-documents` | GET/POST — recent documents the caller may see | session required |
+| `/api/voice/tools/get-document` | GET/POST — status + delivery summary (no PDF bytes / storage keys) | owner or staff |
+| `/api/voice/tools/live-tracking` | GET/POST — live Bob Go checkpoints for a document's latest shipment | owner or staff |
+| `/api/voice/tools/audit-summary` | GET/POST — chain-of-custody summary for voice narration | owner or staff |
 
 ## 6. Third-party integrations
 
@@ -356,6 +363,39 @@ migration history — the second migration cleanly supersedes the first
   the queue on success, since both are synchronous from the UI's
   perspective).
 
+### 6.3.4 Epson email notifications → platform (print confirmation)
+
+Epson can email the Connect account owner when a print request is sent,
+completed, expires, or errors (including "No printable data was sent" for
+Email Print). That owner mailbox is the same Zoho account used as SMTP
+sender for Epson Direct: `postnowprint.agent@postnow.co.za`
+(`Zoho_PrintAgent_User` + `SMTP_PASSWORD`).
+
+Pipeline:
+1. Email Print submit (`print.ts`, `EPSON_DIRECT`) creates an
+   `EpsonPrintJob` with `jobId` `email-print:<documentId>:<ts>` and status
+   `pending`, subject line `PostNow document <id>` so notifications can be
+   matched. Document still moves to `PRINTED` on successful SMTP submit
+   (workflow continues) while confirmation is pending.
+2. `src/lib/epsonNotifications.ts` connects over IMAP
+   (`IMAP_HOST` default `imappro.zoho.com:993`), reads unread mail that
+   looks Epson-related, classifies completed / error / expired / sent, and
+   extracts the document id from the subject/body.
+3. On **completed** → `EpsonPrintJob.status = completed`, audit
+   `epson_print_confirmed`.
+4. On **error/expired** → job settled, audit `epson_print_failed`; if the
+   document is still `PRINTED`, it is rolled back to `QUEUED_FOR_PRINT` so
+   staff can re-print.
+5. Triggers: (a) automatic when `/api/epson/status` sees pending jobs,
+   (b) manual "Check mailbox now" on `/printer`,
+   (c) Vercel Cron every 5 minutes → `/api/epson/notifications/sync`
+   (requires `CRON_SECRET` Bearer for unattended calls on Pro; staff session
+   works without it).
+
+UI: tracking page shows a "Print confirmation" card from the latest
+`EpsonPrintJob`; PrinterStatus recent-jobs includes confirmation failures
+and successes.
+
 ### 6.4 Courier Guy Quote Tool
 
 - `src/lib/courierguy.ts` — `getRates()` only (no shipment creation — this is
@@ -454,6 +494,36 @@ migration history — the second migration cleanly supersedes the first
   high-to-low; fixed with an explicit `PRIORITY_RANK` map used for sorting
   both server- and client-side.
 
+### 6.7 Grok Voice Agent (xAI Realtime)
+
+In-app speech-to-speech agent at `/voice`, powered by the Grok Voice Agent
+API (`wss://api.x.ai/v1/realtime`). Architecture:
+
+1. Browser (logged-in session) calls `POST /api/voice/session`.
+2. Server uses `XAI_API_KEY` to mint an ephemeral client secret via
+   `POST https://api.x.ai/v1/realtime/client_secrets` (default TTL 300s).
+3. Browser opens the realtime WebSocket with subprotocol
+   `xai-client-secret.<token>` — the real API key never reaches the client.
+4. Session is configured with PostNow-specific instructions and **custom
+   function tools**. When the model calls a tool, the client executes it
+   against our Next.js routes (with the user's session cookie) and returns
+   `function_call_output`.
+
+Read-only tools (v1): `list_documents`, `get_document`, `live_tracking`,
+`audit_summary`. Access control reuses owner-or-staff rules; document ids
+may be full cuids or short spoken prefixes (`findAccessibleDocument` in
+`src/lib/voiceAccess.ts`). Tools never return storage keys, checksums, or
+PDF bytes.
+
+Key files:
+- `src/pages/voice.tsx` — page shell
+- `src/components/VoiceAgent.tsx` — mic / WebSocket / playback
+- `src/lib/voiceAgentConfig.ts` — instructions + tool schemas + client executors
+- `src/pages/api/voice/**` — session mint + tool backends
+
+Requires `XAI_API_KEY` in Vercel. Optional `XAI_VOICE_MODEL` (defaults to
+`grok-voice-latest`).
+
 ## 7. Environment variables
 
 Full reference: `app/.env.example`. Categories: `DATABASE_URL`,
@@ -465,7 +535,8 @@ collection address for outbound and delivery address for returns),
 base-URL overrides optional), `COURIER_GUY_API` (required for the quote
 tool) / `COURIER_GUY_BASE_URL` (optional override), `SMTP_*` (4 required —
 `HOST`/`PORT`/`USER`/`PASSWORD` — plus optional `SMTP_FROM_EMAIL`; only
-needed if using Epson Direct instead of Epson Connect — see 6.3.3). No env
+needed if using Epson Direct instead of Epson Connect — see 6.3.3),
+`XAI_API_KEY` (required for `/voice`) / optional `XAI_VOICE_MODEL`. No env
 vars needed for address autocomplete (Nominatim requires no API key) or
 the roadmap tracker.
 

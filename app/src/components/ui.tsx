@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import type { PrintFeedbackDetail } from "@/lib/printFeedback";
+import { sourceLabel } from "@/lib/printFeedback";
 
-type NavKey = "dashboard" | "dispatch" | "tracking" | "print-queue" | "roadmap" | "printer";
+type NavKey = "dashboard" | "dispatch" | "tracking" | "voice" | "print-queue" | "roadmap" | "printer";
 
 export function AppHeader({
   active,
@@ -19,37 +21,38 @@ export function AppHeader({
     { key: "dashboard", label: "Dashboard", href: "/dashboard" },
     { key: "dispatch", label: "New Dispatch", href: "/dispatch/new" },
     { key: "tracking", label: "Tracking", href: "/dashboard" },
+    { key: "voice", label: "Voice", href: "/voice" },
     ...(showPrintQueue ? [{ key: "print-queue" as const, label: "Print Queue", href: "/print-queue" }] : []),
     ...(showPrintQueue ? [{ key: "printer" as const, label: "Printer", href: "/printer" }] : []),
     ...(showRoadmap ? [{ key: "roadmap" as const, label: "Roadmap", href: "/roadmap" }] : []),
   ];
 
   return (
-    <header className="app-header">
-      <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 20 }}>
-          Post<span style={{ color: "var(--teal-400)" }}>Now</span>
-          <span className="e2-tag" style={{ marginLeft: 6 }}>E2</span>
+    <aside className="app-sidebar" aria-label="Main navigation">
+      <div className="app-sidebar-brand">
+        <div className="app-sidebar-logo">
+          Post<span className="app-sidebar-logo-accent">Now</span>
+          <span className="e2-tag">E2</span>
         </div>
-        <nav>
-          {items.map((item) => (
-            <Link
-              key={item.key}
-              href={item.href}
-              className={`nav-pill${item.key === active ? " active" : ""}`}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,.75)" }}>{userLabel}</div>
-        <Link href="/" style={{ fontSize: 13, color: "rgba(255,255,255,.75)" }}>
+      <nav className="app-sidebar-nav">
+        {items.map((item) => (
+          <Link
+            key={item.key}
+            href={item.href}
+            className={`nav-pill${item.key === active ? " active" : ""}`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
+      <div className="app-sidebar-footer">
+        <div className="app-sidebar-user">{userLabel}</div>
+        <Link href="/" className="app-sidebar-exit">
           Exit to site
         </Link>
       </div>
-    </header>
+    </aside>
   );
 }
 
@@ -317,6 +320,116 @@ export function Modal({
         {children}
       </div>
     </div>
+  );
+}
+
+/**
+ * Clickable / hoverable chip for Epson email or API print outcomes.
+ * Hover shows a short summary; click opens a detail modal.
+ */
+export function PrintFeedbackChip({
+  feedback,
+  size = "md",
+}: {
+  feedback: PrintFeedbackDetail;
+  size?: "sm" | "md";
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`print-feedback-chip tone-${feedback.tone} size-${size}`}
+        title={feedback.summary}
+        onClick={() => setOpen(true)}
+        aria-label={`${feedback.label}. Click for printer feedback details.`}
+      >
+        <span className="print-feedback-chip-dot" aria-hidden />
+        {feedback.label}
+        <span className="print-feedback-chip-hint">ⓘ</span>
+      </button>
+      {open && (
+        <Modal title="Printer feedback" onClose={() => setOpen(false)}>
+          <div className="print-feedback-detail">
+            <div className="print-feedback-detail-row">
+              <span className="print-feedback-detail-key">Outcome</span>
+              <Badge tone={feedback.tone}>{feedback.label}</Badge>
+            </div>
+            <div className="print-feedback-detail-row">
+              <span className="print-feedback-detail-key">Status code</span>
+              <code>{feedback.status}</code>
+            </div>
+            <div className="print-feedback-detail-row">
+              <span className="print-feedback-detail-key">Source</span>
+              <span>{sourceLabel(feedback.source)}</span>
+            </div>
+            {feedback.updatedAt && (
+              <div className="print-feedback-detail-row">
+                <span className="print-feedback-detail-key">Updated</span>
+                <span>
+                  {new Date(feedback.updatedAt).toLocaleString([], {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </span>
+              </div>
+            )}
+            {feedback.jobId && (
+              <div className="print-feedback-detail-row">
+                <span className="print-feedback-detail-key">Job id</span>
+                <code className="print-feedback-mono">{feedback.jobId}</code>
+              </div>
+            )}
+            {feedback.from && (
+              <div className="print-feedback-detail-row">
+                <span className="print-feedback-detail-key">From</span>
+                <span>{feedback.from}</span>
+              </div>
+            )}
+            {feedback.subject && (
+              <div className="print-feedback-detail-row">
+                <span className="print-feedback-detail-key">Email subject</span>
+                <span>{feedback.subject}</span>
+              </div>
+            )}
+            {feedback.snippet && (
+              <div className="print-feedback-detail-block">
+                <div className="print-feedback-detail-key">Notification excerpt</div>
+                <p className="print-feedback-snippet">{feedback.snippet}</p>
+              </div>
+            )}
+            {!feedback.snippet && !feedback.subject && isPendingStatusLocal(feedback.status) && (
+              <p className="print-feedback-muted">
+                Waiting for Epson to email a completion or error notice to the print-agent mailbox.
+                Open Print Queue → History or check the mailbox sync on Printer.
+              </p>
+            )}
+            {feedback.status === "error_occurred" && (
+              <p className="print-feedback-error">
+                The printer reported a failure. Re-upload if the file is invalid, then print again from
+                the Print Queue.
+              </p>
+            )}
+            <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+              <button type="button" className="btn btn-primary" onClick={() => setOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+function isPendingStatusLocal(status: string) {
+  return (
+    status === "pending" ||
+    status === "processing" ||
+    status === "preparing" ||
+    status === "reserved" ||
+    status === "submitted"
   );
 }
 

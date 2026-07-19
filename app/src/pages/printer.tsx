@@ -64,6 +64,9 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   const [providerError, setProviderError] = useState<string | null>(null);
   const [epsonDirectEmail, setEpsonDirectEmail] = useState("");
   const [emailSaved, setEmailSaved] = useState(false);
+  const [notifSyncing, setNotifSyncing] = useState(false);
+  const [notifResult, setNotifResult] = useState<string | null>(null);
+  const [notifError, setNotifError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +137,24 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
     }
   }
 
+  async function syncPrintNotifications() {
+    setNotifSyncing(true);
+    setNotifError(null);
+    setNotifResult(null);
+    try {
+      const res = await fetch("/api/epson/notifications/sync", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Sync failed");
+      setNotifResult(
+        `Fetched ${json.fetched} notification(s), applied ${json.applied} update(s) to print jobs.`,
+      );
+    } catch (err) {
+      setNotifError((err as Error).message);
+    } finally {
+      setNotifSyncing(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <AppHeader active="printer" userLabel={userLabel} showPrintQueue showRoadmap />
@@ -196,6 +217,32 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               </div>
             )}
             {providerError && <div className="form-error" style={{ marginTop: 8 }}>{providerError}</div>}
+          </Card>
+
+          <Card title="Epson email notifications → platform">
+            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
+              Epson sends job completed/error emails to the same Zoho mailbox that sends Email Print jobs
+              (<code>Zoho_PrintAgent_User</code>). We poll that inbox over IMAP and update print confirmation
+              status + the audit trail. The print-queue status widget also syncs automatically when jobs are
+              pending.
+            </div>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={notifSyncing}
+                onClick={() => void syncPrintNotifications()}
+              >
+                {notifSyncing ? "Checking mailbox…" : "Check mailbox now"}
+              </button>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                IMAP <code>imappro.zoho.com:993</code> · password = <code>SMTP_PASSWORD</code>
+              </span>
+            </div>
+            {notifResult && (
+              <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)" }}>{notifResult}</div>
+            )}
+            {notifError && <div className="form-error" style={{ marginTop: 12 }}>{notifError}</div>}
           </Card>
 
           {error && <div className="form-error">{error}</div>}

@@ -67,8 +67,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(502).json({ error: "Stored document is not a valid PDF — re-upload it and try again." });
     }
 
+    // Subject must include the document id so Epson owner-notification emails
+    // (errors/completed) can be matched back via IMAP (see epsonNotifications.ts).
+    const emailSubject = `PostNow document ${document.id}`;
     try {
-      await sendPrintEmail(epsonDirectEmail, pdfBuffer, `${document.id}.pdf`, `PostNow document ${document.id}`);
+      await sendPrintEmail(
+        epsonDirectEmail,
+        pdfBuffer,
+        `${document.id}.pdf`,
+        emailSubject,
+      );
     } catch (err) {
       await appendAuditEvent({
         documentId: id,
@@ -80,15 +88,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(502).json({ error: "Failed to send print email" });
     }
 
+    // Track pending confirmation from Epson's email notifications.
+    await prisma.epsonPrintJob.create({
+      data: {
+        documentId: id,
+        jobId: `email-print:${document.id}:${Date.now()}`,
+        status: "pending",
+      },
+    });
+
     const updated = await prisma.document.update({ where: { id }, data: { status: "PRINTED" } });
     await appendAuditEvent({
       documentId: id,
       actorId: user.id,
       action: `status_changed:${document.status}->PRINTED`,
-      metadata: { via: "epson_direct", to: epsonDirectEmail },
+      metadata: {
+        via: "epson_direct",
+        to: epsonDirectEmail,
+        subject: emailSubject,
+        await_email_confirmation: true,
+      },
       ip: req.socket.remoteAddress ?? undefined,
     });
-    return res.status(200).json({ id: updated.id, status: updated.status });
+    return res.status(200).json({
+      id: updated.id,
+      status: updated.status,
+      printConfirmation: "pending",
+    });
   }
 
   const cookies = parse(req.headers.cookie ?? "");

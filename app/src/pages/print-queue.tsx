@@ -5,8 +5,19 @@ import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, Badge, StatusPill, Alert, PrinterStatus, DataTable, MetricTile } from "@/components/ui";
+import {
+  AppHeader,
+  Card,
+  Badge,
+  StatusPill,
+  Alert,
+  PrinterStatus,
+  DataTable,
+  MetricTile,
+  PrintFeedbackChip,
+} from "@/components/ui";
 import { FACILITY_ADDRESS } from "@/lib/facility";
+import { buildPrintFeedback, type PrintFeedbackDetail } from "@/lib/printFeedback";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -27,10 +38,21 @@ interface QueueDocument {
   status: string;
 }
 
+interface HistoryRow {
+  id: string;
+  documentId: string;
+  recipientName: string;
+  city: string;
+  documentStatus: string;
+  updatedAt: string;
+  feedback: PrintFeedbackDetail;
+}
+
 interface PrintQueueProps {
   userLabel: string;
   facilityLabel: string;
   documents: QueueDocument[];
+  history: HistoryRow[];
 }
 
 export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (context) => {
@@ -49,6 +71,63 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
     orderBy: { createdAt: "asc" },
   });
 
+  const printJobs = await prisma.epsonPrintJob.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 40,
+    include: {
+      document: {
+        select: {
+          id: true,
+          recipientName: true,
+          city: true,
+          status: true,
+        },
+      },
+    },
+  });
+
+  const docIds = [...new Set(printJobs.map((j) => j.documentId))];
+  const printAudits = docIds.length
+    ? await prisma.auditEvent.findMany({
+        where: {
+          documentId: { in: docIds },
+          action: {
+            in: ["epson_print_confirmed", "epson_print_failed", "email_print_failed"],
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
+
+  const latestAuditByDoc = new Map<string, (typeof printAudits)[0]>();
+  for (const a of printAudits) {
+    if (!latestAuditByDoc.has(a.documentId)) latestAuditByDoc.set(a.documentId, a);
+  }
+
+  const history: HistoryRow[] = [];
+  for (const job of printJobs) {
+    const audit = latestAuditByDoc.get(job.documentId);
+    const feedback = buildPrintFeedback({
+      jobStatus: job.status,
+      jobId: job.jobId,
+      jobUpdatedAt: job.updatedAt,
+      auditAction: audit?.action,
+      auditMetadata: audit?.metadata,
+      auditAt: audit?.createdAt,
+      documentStatus: job.document.status,
+    });
+    if (!feedback) continue;
+    history.push({
+      id: job.id,
+      documentId: job.documentId,
+      recipientName: job.document.recipientName,
+      city: job.document.city,
+      documentStatus: job.document.status,
+      updatedAt: job.updatedAt.toISOString(),
+      feedback,
+    });
+  }
+
   return {
     props: {
       userLabel: `${user.email} · Print Ops`,
@@ -61,11 +140,17 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
         returnPreference: d.returnPreference,
         status: d.status,
       })),
+      history,
     },
   };
 };
 
-export default function PrintQueue({ userLabel, facilityLabel, documents: initialDocuments }: PrintQueueProps) {
+export default function PrintQueue({
+  userLabel,
+  facilityLabel,
+  documents: initialDocuments,
+  history: initialHistory,
+}: PrintQueueProps) {
   const router = useRouter();
   const [documents, setDocuments] = useState(initialDocuments);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -75,6 +160,9 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
   const [returnFilter, setReturnFilter] = useState<"ALL" | "DIRECT" | "MANAGED">("ALL");
   const [sortKey, setSortKey] = useState<"oldest" | "newest" | "recipient">("oldest");
   const [printProvider, setPrintProvider] = useState<"EPSON" | "EPSON_DIRECT" | null>(null);
+  const history = initialHistory;
+  const [historySyncing, setHistorySyncing] = useState(false);
+  const [historyMsg, setHistoryMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/print-settings")
@@ -82,6 +170,25 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
       .then((data) => setPrintProvider(data.provider ?? "EPSON"))
       .catch(() => setPrintProvider("EPSON"));
   }, []);
+
+  async function refreshHistoryFromMailbox() {
+    setHistorySyncing(true);
+    setHistoryMsg(null);
+    try {
+      const res = await fetch("/api/epson/notifications/sync", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Mailbox sync failed");
+      setHistoryMsg(
+        `Mailbox checked: ${json.fetched ?? 0} notification(s), ${json.applied ?? 0} applied. Reloading…`,
+      );
+      // Full reload so history SSR rows + queue re-queueing stay consistent.
+      router.replace(router.asPath);
+    } catch (err) {
+      setHistoryMsg((err as Error).message);
+    } finally {
+      setHistorySyncing(false);
+    }
+  }
 
   const visibleDocuments = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -300,6 +407,86 @@ export default function PrintQueue({ userLabel, facilityLabel, documents: initia
               )}
             </Card>
           )}
+
+          <Card title="Print history">
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 14,
+                alignItems: "center",
+              }}
+            >
+              <div style={{ fontSize: 13, color: "var(--text-secondary)", maxWidth: 560 }}>
+                Outcomes from Epson Connect and Email Print notifications (success, failure, pending).
+                Each request ID links to the document tracking page. Hover or click the outcome chip for
+                the email/API detail.
+              </div>
+              <div className="print-history-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={historySyncing}
+                  onClick={() => void refreshHistoryFromMailbox()}
+                >
+                  {historySyncing ? "Checking mailbox…" : "↻ Refresh from mailbox"}
+                </button>
+              </div>
+            </div>
+            {historyMsg && (
+              <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>{historyMsg}</div>
+            )}
+            {history.length === 0 ? (
+              <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+                No print jobs recorded yet. After you print (API or Email Print), outcomes appear here —
+                including Epson email confirmations once the mailbox is synced.
+              </div>
+            ) : (
+              <DataTable
+                columns={["When", "Request ID", "Recipient", "Doc status", "Print outcome", "Detail"]}
+                rows={history.map((row) => [
+                  <span key={`${row.id}-when`} title={new Date(row.updatedAt).toISOString()}>
+                    {timeAgo(row.updatedAt)}
+                  </span>,
+                  <Link
+                    key={`${row.id}-ref`}
+                    href={`/tracking/${row.documentId}`}
+                    style={{
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontWeight: 700,
+                      color: "var(--accent-primary)",
+                    }}
+                    title={`Open tracking for ${row.documentId}`}
+                  >
+                    #{row.documentId.slice(0, 10).toUpperCase()}
+                  </Link>,
+                  <Link
+                    key={`${row.id}-name`}
+                    href={`/tracking/${row.documentId}`}
+                    style={{ color: "inherit" }}
+                    title="Open tracking"
+                  >
+                    <div>{row.recipientName}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{row.city}</div>
+                  </Link>,
+                  <StatusPill key={`${row.id}-doc`} status={row.documentStatus} />,
+                  <PrintFeedbackChip key={`${row.id}-fb`} feedback={row.feedback} size="sm" />,
+                  <span
+                    key={`${row.id}-detail`}
+                    title={row.feedback.summary}
+                    style={{ fontSize: 12, color: "var(--text-secondary)", maxWidth: 220, display: "inline-block" }}
+                  >
+                    {row.feedback.subject ||
+                      row.feedback.snippet?.slice(0, 80) ||
+                      row.feedback.summary}
+                    {(row.feedback.snippet?.length ?? 0) > 80 ? "…" : ""}
+                  </span>,
+                ])}
+              />
+            )}
+          </Card>
         </div>
       </main>
     </div>

@@ -4,7 +4,18 @@ import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, DataTable, Badge, StatusPill, TrackingTimeline, Alert, type TimelineEvent } from "@/components/ui";
+import {
+  AppHeader,
+  Card,
+  DataTable,
+  Badge,
+  StatusPill,
+  TrackingTimeline,
+  Alert,
+  PrintFeedbackChip,
+  type TimelineEvent,
+} from "@/components/ui";
+import { buildPrintFeedback, type PrintFeedbackDetail } from "@/lib/printFeedback";
 
 interface LiveCheckpoint {
   date: string;
@@ -52,6 +63,8 @@ interface TrackingProps {
   status: string;
   timeline: TimelineEvent[];
   logRows: Array<{ time: string; event: string }>;
+  /** Latest printer confirmation from Epson API or email notifications. */
+  printFeedback: PrintFeedbackDetail | null;
   dispatch: {
     recipientEmail: string;
     recipientPhone: string;
@@ -79,7 +92,9 @@ function formatAuditAction(action: string): string {
     document_downloaded: "Document downloaded by staff",
     dispatch_created: "Courier dispatch booked",
     return_requested: "Return dispatch requested",
-    epson_print_failed: "Print attempt failed (retried automatically)",
+    epson_print_failed: "Printer reported a print failure",
+    email_print_failed: "Email Print submission failed",
+    epson_print_confirmed: "Printer confirmed print completed",
     bobgo_webhook_received: "Courier status update received",
     pod_fetch_failed: "Proof-of-delivery fetch failed",
     shipment_exception: "Courier reported a delivery exception",
@@ -123,6 +138,27 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
     event: formatAuditAction(e.action),
   }));
 
+  const latestPrintJob = await prisma.epsonPrintJob.findFirst({
+    where: { documentId: id },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const printAudit = [...document.auditEvents]
+    .reverse()
+    .find((e) =>
+      ["epson_print_confirmed", "epson_print_failed", "email_print_failed"].includes(e.action),
+    );
+
+  const printFeedback = buildPrintFeedback({
+    jobStatus: latestPrintJob?.status,
+    jobId: latestPrintJob?.jobId,
+    jobUpdatedAt: latestPrintJob?.updatedAt,
+    auditAction: printAudit?.action,
+    auditMetadata: printAudit?.metadata,
+    auditAt: printAudit?.createdAt,
+    documentStatus: document.status,
+  });
+
   return {
     props: {
       userLabel: session.user.email,
@@ -131,6 +167,7 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
       status: document.status,
       timeline,
       logRows,
+      printFeedback,
       dispatch: {
         recipientEmail: document.recipientEmail,
         recipientPhone: document.recipientPhone,
@@ -153,6 +190,7 @@ export default function Tracking({
   status,
   timeline,
   logRows,
+  printFeedback: initialPrintFeedback,
   dispatch,
 }: TrackingProps) {
   const router = useRouter();
@@ -166,6 +204,8 @@ export default function Tracking({
   });
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [printFeedback, setPrintFeedback] = useState(initialPrintFeedback);
+  const [docStatus, setDocStatus] = useState(status);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -183,6 +223,29 @@ export default function Tracking({
       setTimeout(() => setLinkCopied(false), 2000);
     });
   }
+
+  // Refresh printer email confirmation while pending (IMAP sync runs server-side).
+  useEffect(() => {
+    let cancelled = false;
+    async function pollPrint() {
+      try {
+        const res = await fetch(`/api/documents/${documentId}/print-feedback`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled) return;
+        if (json.feedback) setPrintFeedback(json.feedback);
+        if (typeof json.documentStatus === "string") setDocStatus(json.documentStatus);
+      } catch {
+        /* ignore */
+      }
+    }
+    pollPrint();
+    const interval = setInterval(pollPrint, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [documentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,13 +301,41 @@ export default function Tracking({
               <div className="page-title">{documentId.slice(0, 10).toUpperCase()}</div>
               <div className="page-subtitle">{recipientName}</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <button type="button" className="btn btn-secondary" onClick={copyTrackingLink}>
                 {linkCopied ? "✓ Link copied" : "🔗 Copy tracking link"}
               </button>
-              <StatusPill status={status} />
+              <StatusPill status={docStatus} />
+              {printFeedback && <PrintFeedbackChip feedback={printFeedback} />}
             </div>
           </div>
+
+          {printFeedback &&
+            (printFeedback.status === "completed" ||
+              printFeedback.status === "error_occurred" ||
+              printFeedback.status === "expired") && (
+              <Alert
+                title={
+                  printFeedback.status === "completed"
+                    ? "Printer confirmed this document"
+                    : "Printer reported a problem"
+                }
+                tone={printFeedback.status === "completed" ? "success" : "danger"}
+              >
+                <span title={printFeedback.summary}>
+                  {printFeedback.label}
+                  {printFeedback.subject ? ` — ${printFeedback.subject}` : ""}
+                  {printFeedback.snippet && !printFeedback.subject
+                    ? ` — ${printFeedback.snippet.slice(0, 140)}${printFeedback.snippet.length > 140 ? "…" : ""}`
+                    : ""}{" "}
+                </span>
+                <PrintFeedbackChip feedback={printFeedback} size="sm" />
+                <span style={{ fontSize: 12, color: "inherit", opacity: 0.85 }}>
+                  {" "}
+                  Hover for a summary, click for full notification details.
+                </span>
+              </Alert>
+            )}
 
           <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
             <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -273,6 +364,12 @@ export default function Tracking({
                       timeStyle: "short",
                     })}
                   </div>
+                  {printFeedback && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+                      <span style={{ color: "var(--text-secondary)" }}>Printer: </span>
+                      <PrintFeedbackChip feedback={printFeedback} size="sm" />
+                    </div>
+                  )}
                 </div>
               </Card>
             </div>
