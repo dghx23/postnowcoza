@@ -3,7 +3,13 @@ import axios from "axios";
 import { parse } from "cookie";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
-import { getDeviceInfo, getJobStatus, EPSON_ACCESS_COOKIE, EPSON_DEVICE_ID_COOKIE } from "@/lib/epson";
+import {
+  getDeviceInfo,
+  getJobStatus,
+  getValidDeviceSession,
+  EPSON_ACCESS_COOKIE,
+  EPSON_REFRESH_COOKIE,
+} from "@/lib/epson";
 import { syncIfPendingJobs } from "@/lib/epsonNotifications";
 
 const IN_FLIGHT_STATUSES = new Set(["preparing", "reserved", "pending", "processing"]);
@@ -21,7 +27,6 @@ function isEmailPrintJob(jobId: string) {
 }
 
 async function pollPendingJobs(accessToken: string | null): Promise<number> {
-  // Pull Epson owner-notification emails when anything is still pending.
   try {
     await syncIfPendingJobs();
   } catch {
@@ -60,9 +65,6 @@ interface RecentJob {
   time: string;
 }
 
-// Print history from our audit trail + EpsonPrintJob confirmation outcomes.
-// Covers both Epson Connect API submits and Epson Direct (Email Print)
-// confirmations ingested from the Zoho mailbox.
 async function getRecentJobs(): Promise<{
   recentJobs: RecentJob[];
   today: { success: number; failed: number; pending: number };
@@ -122,8 +124,7 @@ async function getRecentJobs(): Promise<{
 
 // Polled by the print queue / dashboard every ~30s, so this always returns
 // 200 with a status payload rather than surfacing HTTP error codes for
-// ordinary "not connected yet" states — the caller shouldn't have to treat
-// that differently from any other status value.
+// ordinary "not connected yet" states.
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -136,15 +137,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const cookies = parse(req.headers.cookie ?? "");
-  const accessToken = cookies[EPSON_ACCESS_COOKIE];
-  const deviceId = cookies[EPSON_DEVICE_ID_COOKIE];
+  const session = await getValidDeviceSession({
+    accessToken: cookies[EPSON_ACCESS_COOKIE],
+    refreshToken: cookies[EPSON_REFRESH_COOKIE],
+  });
+  const accessToken = session?.accessToken ?? null;
 
-  // Reconcile IMAP + Connect job status before building recent-job history
-  // so a just-confirmed print shows up on the same poll.
-  const pendingFromJobs = await pollPendingJobs(accessToken ?? null);
+  const pendingFromJobs = await pollPendingJobs(accessToken);
   const { recentJobs, today } = await getRecentJobs();
 
-  if (!accessToken || !deviceId) {
+  if (!accessToken) {
     return res.status(200).json({
       status: pendingFromJobs > 0 ? "busy" : "not_connected",
       message:
@@ -152,6 +154,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ? `${pendingFromJobs} print confirmation${pendingFromJobs > 1 ? "s" : ""} pending`
           : "Not connected to Epson Connect (Email Print notifications still sync)",
       pendingJobs: pendingFromJobs,
+      /** OAuth device tokens present (DB/cookies) — distinct from printer network online. */
+      authorized: false,
       connected: false,
       recentJobs,
       today: { ...today, pending: pendingFromJobs },
@@ -181,13 +185,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       status,
       message,
       pendingJobs: pendingFromJobs,
+      authorized: true,
       connected,
       productName: device.productName ?? "Printer",
       serialNumber: device.serialNumber,
       recentJobs,
       today: { ...today, pending: pendingFromJobs },
-      // Everything the Epson device-info call returned, unfiltered - there's
-      // no raw "jobs list" to include since Epson has no such endpoint.
       raw: { device, pendingJobs: pendingFromJobs },
     });
   } catch (err) {
@@ -198,6 +201,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ? `${pendingFromJobs} print confirmation(s) pending`
           : "Unable to reach printer",
       pendingJobs: pendingFromJobs,
+      // Tokens exist but device API failed — still authorized for disconnect UI.
+      authorized: true,
       connected: false,
       recentJobs,
       today: { ...today, pending: pendingFromJobs },

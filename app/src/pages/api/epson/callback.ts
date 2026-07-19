@@ -3,6 +3,8 @@ import { serialize } from "cookie";
 import { getSessionUser } from "@/lib/session";
 import {
   exchangeCodeForTokens,
+  saveDeviceTokens,
+  describeCredentialHealth,
   epsonCookieOptions,
   epsonRefreshCookieOptions,
   EPSON_ACCESS_COOKIE,
@@ -20,47 +22,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.redirect(302, "/login");
   }
 
-  const { code, error } = req.query;
+  const { code, error, error_description } = req.query;
   if (error || typeof code !== "string") {
-    console.error("Epson OAuth callback: provider returned an error", { error });
-    return res.redirect(302, "/print-queue?epson=error");
+    console.error("Epson OAuth callback: provider returned an error", {
+      error,
+      error_description,
+    });
+    return res.redirect(302, "/printer?epson=error");
   }
 
   try {
     const tokens = await exchangeCodeForTokens(code);
-    if (!tokens.subject_id) {
-      console.error("Epson OAuth callback: token response had no subject_id", {
+    if (!tokens.access_token) {
+      console.error("Epson OAuth callback: token response had no access_token", {
         keys: Object.keys(tokens ?? {}),
       });
-      return res.redirect(302, "/print-queue?epson=error");
+      return res.redirect(302, "/printer?epson=error");
     }
 
-    res.setHeader("Set-Cookie", [
-      serialize(EPSON_ACCESS_COOKIE, tokens.access_token, epsonCookieOptions(tokens.expires_in ?? 3600)),
-      serialize(EPSON_REFRESH_COOKIE, tokens.refresh_token, epsonRefreshCookieOptions()),
-      serialize(EPSON_DEVICE_ID_COOKIE, tokens.subject_id, epsonRefreshCookieOptions()),
-    ]);
+    // Source of truth: DB (shared across staff). Cookies kept as a browser
+    // cache so older clients still see a "connected" cookie if they look.
+    await saveDeviceTokens(tokens);
 
-    return res.redirect(302, "/print-queue?epson=connected");
+    const cookieParts = [
+      serialize(EPSON_ACCESS_COOKIE, tokens.access_token, epsonCookieOptions(tokens.expires_in ?? 3600)),
+    ];
+    if (tokens.refresh_token) {
+      cookieParts.push(
+        serialize(EPSON_REFRESH_COOKIE, tokens.refresh_token, epsonRefreshCookieOptions())
+      );
+    }
+    // Official token response has no subject_id; device is bound to the token.
+    // Keep a present marker so any remaining cookie-only checks pass.
+    cookieParts.push(
+      serialize(EPSON_DEVICE_ID_COOKIE, tokens.subject_id ?? "device", epsonRefreshCookieOptions())
+    );
+    res.setHeader("Set-Cookie", cookieParts);
+
+    return res.redirect(302, "/printer?epson=connected");
   } catch (err) {
     const axiosErr = err as { response?: { status?: number; data?: unknown }; message?: string };
-    // client_id/client_secret aren't logged, only their lengths and whether
-    // they have leading/trailing whitespace - we've twice now found env vars
-    // corrupted by a stray copy-paste character (R2 secret, Courier Guy
-    // key), so ruling that out here directly instead of guessing again.
-    const clientId = process.env.EPSON_CLIENT_ID ?? "";
-    const clientSecret = process.env.EPSON_CLIENT_SECRET ?? "";
-    const redirectUri = process.env.EPSON_REDIRECT_URI ?? "";
     console.error("Epson OAuth callback: token exchange failed", {
       status: axiosErr.response?.status,
       data: axiosErr.response?.data,
       message: axiosErr.message,
-      clientIdLength: clientId.length,
-      clientIdHasWhitespace: clientId !== clientId.trim(),
-      clientSecretLength: clientSecret.length,
-      clientSecretHasWhitespace: clientSecret !== clientSecret.trim(),
-      redirectUri,
+      ...describeCredentialHealth(),
     });
-    return res.redirect(302, "/print-queue?epson=error");
+    return res.redirect(302, "/printer?epson=error");
   }
 }

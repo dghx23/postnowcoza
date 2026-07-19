@@ -7,17 +7,12 @@ import {
   getDefaultPrintSettings,
   getPrintCapability,
   getNotificationSettings,
+  getValidDeviceSession,
   EPSON_ACCESS_COOKIE,
-  EPSON_DEVICE_ID_COOKIE,
+  EPSON_REFRESH_COOKIE,
 } from "@/lib/epson";
 
-// Everything the Epson Connect API can report about the connected printer,
-// beyond the online/busy/offline summary in status.ts - device identity,
-// its current default print settings, its full print capability matrix for
-// both document and photo modes (every paper size/type/source/quality/
-// duplex combination it supports), and its webhook notification config.
-// This is a snapshot fetched on demand (not polled), since none of it
-// changes moment to moment the way job/pending-count status does.
+// Snapshot of everything Epson reports about the linked printer.
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -30,20 +25,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const cookies = parse(req.headers.cookie ?? "");
-  const accessToken = cookies[EPSON_ACCESS_COOKIE];
-  const deviceId = cookies[EPSON_DEVICE_ID_COOKIE];
+  const session = await getValidDeviceSession({
+    accessToken: cookies[EPSON_ACCESS_COOKIE],
+    refreshToken: cookies[EPSON_REFRESH_COOKIE],
+  });
 
-  if (!accessToken || !deviceId) {
+  if (!session?.accessToken) {
     return res.status(200).json({ connected: false });
   }
 
   try {
+    const accessToken = session.accessToken;
     const [device, defaults, documentCapability, photoCapability, notification] = await Promise.all([
       getDeviceInfo(accessToken),
       getDefaultPrintSettings(accessToken),
       getPrintCapability(accessToken, "document"),
       getPrintCapability(accessToken, "photo"),
-      getNotificationSettings(accessToken),
+      // Notification settings use app token (client_credentials), not device.
+      getNotificationSettings().catch(() => null),
     ]);
 
     return res.status(200).json({

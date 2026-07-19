@@ -199,13 +199,19 @@ model EpsonPrintJob {
 
 // Singleton row (id is always the fixed string "singleton") holding the
 // staff-configurable choice of which print backend the print queue's
-// "Print (API)" button uses, plus the destination address for EPSON_DIRECT.
-// Read/written via /api/print-settings.
+// "Print (API)" button uses, plus the destination address for EPSON_DIRECT,
+// and (when Epson Connect OAuth has succeeded) the shared device tokens.
+// Read/written via /api/print-settings and src/lib/epson.ts.
 model PrintSettings {
-  id               String        @id @default("singleton")
-  provider         PrintProvider @default(EPSON)
-  epsonDirectEmail String?
-  updatedAt        DateTime      @updatedAt
+  id                  String        @id @default("singleton")
+  provider            PrintProvider @default(EPSON)
+  epsonDirectEmail    String?
+  // Device tokens from OAuth authorization_code / refresh — server-side so
+  // any staff browser and any serverless invocation can print/status-check.
+  epsonAccessToken    String?
+  epsonRefreshToken   String?
+  epsonTokenExpiresAt DateTime?
+  updatedAt           DateTime      @updatedAt
 }
 
 // A Bob Pay payment intent for a document's dispatch fee.

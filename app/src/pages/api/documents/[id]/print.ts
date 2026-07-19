@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import axios from "axios";
-import { parse, serialize } from "cookie";
+import { parse } from "cookie";
 import { prisma } from "@/lib/db";
 import { appendAuditEvent } from "@/lib/audit";
 import { getSessionUser } from "@/lib/session";
@@ -10,12 +10,9 @@ import { sendPrintEmail } from "@/lib/emailPrint";
 import {
   buildAuthorizeUrl,
   printPdf,
-  refreshTokens,
-  epsonCookieOptions,
-  epsonRefreshCookieOptions,
+  getValidDeviceSession,
   EPSON_ACCESS_COOKIE,
   EPSON_REFRESH_COOKIE,
-  EPSON_DEVICE_ID_COOKIE,
 } from "@/lib/epson";
 import { maybeAutoDispatchIfPaid } from "@/lib/autoDispatch";
 
@@ -125,11 +122,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const cookies = parse(req.headers.cookie ?? "");
-  let accessToken = cookies[EPSON_ACCESS_COOKIE];
-  const refreshToken = cookies[EPSON_REFRESH_COOKIE];
-  const deviceId = cookies[EPSON_DEVICE_ID_COOKIE];
+  const session = await getValidDeviceSession({
+    accessToken: cookies[EPSON_ACCESS_COOKIE],
+    refreshToken: cookies[EPSON_REFRESH_COOKIE],
+  });
 
-  if (!accessToken || !deviceId) {
+  if (!session?.accessToken) {
     return res.status(401).json({
       error: "Not connected to Epson Connect",
       auth_url: buildAuthorizeUrl(document.id),
@@ -155,40 +153,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let epsonJobId: string;
   try {
-    epsonJobId = await printPdf(accessToken, pdfBuffer, jobName);
+    epsonJobId = await printPdf(session.accessToken, pdfBuffer, jobName);
   } catch (err) {
-    if (axios.isAxiosError(err) && err.response?.status === 401 && refreshToken) {
-      try {
-        const refreshed = await refreshTokens(refreshToken);
-        accessToken = refreshed.access_token;
-        res.setHeader("Set-Cookie", [
-          serialize(EPSON_ACCESS_COOKIE, refreshed.access_token, epsonCookieOptions(refreshed.expires_in ?? 3600)),
-          serialize(EPSON_REFRESH_COOKIE, refreshed.refresh_token ?? refreshToken, epsonRefreshCookieOptions()),
-        ]);
-        epsonJobId = await printPdf(accessToken, pdfBuffer, jobName);
-      } catch (retryErr) {
-        await appendAuditEvent({
-          documentId: id,
-          actorId: user.id,
-          action: "epson_print_failed",
-          metadata: { via: "epson_connect", reason: "session_expired", error: (retryErr as Error).message },
-          ip: req.socket.remoteAddress ?? undefined,
-        });
-        return res.status(401).json({
-          error: "Epson session expired, please reconnect",
-          auth_url: buildAuthorizeUrl(document.id),
-        });
-      }
-    } else {
+    // getValidDeviceSession already refreshed near-expiry tokens; a 401 here
+    // usually means the refresh token itself is dead — force re-auth.
+    if (axios.isAxiosError(err) && err.response?.status === 401) {
       await appendAuditEvent({
         documentId: id,
         actorId: user.id,
         action: "epson_print_failed",
-        metadata: { via: "epson_connect", reason: "request_failed", error: (err as Error).message },
+        metadata: {
+          via: "epson_connect",
+          reason: "session_expired",
+          error: (err as Error).message,
+          epson: err.response?.data,
+        },
         ip: req.socket.remoteAddress ?? undefined,
       });
-      return res.status(502).json({ error: "Epson Connect print request failed" });
+      return res.status(401).json({
+        error: "Epson session expired, please reconnect",
+        auth_url: buildAuthorizeUrl(document.id),
+      });
     }
+    await appendAuditEvent({
+      documentId: id,
+      actorId: user.id,
+      action: "epson_print_failed",
+      metadata: {
+        via: "epson_connect",
+        reason: "request_failed",
+        error: (err as Error).message,
+        epson: axios.isAxiosError(err) ? err.response?.data : undefined,
+      },
+      ip: req.socket.remoteAddress ?? undefined,
+    });
+    return res.status(502).json({ error: "Epson Connect print request failed" });
   }
 
   await prisma.epsonPrintJob.create({

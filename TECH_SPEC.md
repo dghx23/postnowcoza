@@ -584,10 +584,10 @@ type-checked):
   courier tracking card (correctly shows "not booked yet" for a document
   with no shipment), chain-of-custody log with plain-language event labels,
   and compliance badges all render correctly for a real document.
-- The Epson Connect OAuth round-trip *reaches* both Epson's `/auth/authorize`
-  and `/auth/token` endpoints (confirmed via live logs) — but every attempt
-  so far is rejected with `invalid_client` (see outstanding work #10); no
-  successful connection or live print has happened yet.
+- The Epson Connect OAuth round-trip reaches both Epson's `/auth/authorize`
+  and `/auth/token` endpoints. Earlier `invalid_client` failures were from
+  missing HTTP Basic auth on the token call (fixed — see outstanding work
+  #10); a successful live connect/print still needs a post-deploy retest.
 - The Courier Guy Quote Tool reaches `api.portal.thecourierguy.co.za/rates`
   for real — but every attempt is rejected with a 401 (see outstanding work
   #11); no successful quote has come back yet.
@@ -624,23 +624,17 @@ integrations, or simply not tried yet):
 9. **Print queue verification** — ✅ done. Migration applied cleanly; a real
    document was uploaded, appeared on `/print-queue`, and was successfully
    marked `PRINTED` via the manual button.
-10. **Epson Connect live test — actively blocked, in progress.** The
-    OAuth flow now reaches Epson's token endpoint (confirmed via live
-    logging), but every attempt fails with `invalid_client` from
-    `auth.epsonconnect.com/auth/token` — Epson is rejecting the
-    `client_id`/`client_secret` pair itself, not anything about our request
-    shape. Tried so far: regenerating a brand-new app in the Epson developer
-    console (developer.epsonconnect.com) and updating
-    `EPSON_CLIENT_ID`/`EPSON_CLIENT_SECRET`/`EPSON_API_KEY` in Vercel — still
-    `invalid_client` after redeploying. Added temporary diagnostic logging
-    to `callback.ts` (credential lengths + leading/trailing-whitespace
-    flags, never the actual values, plus the exact `EPSON_REDIRECT_URI`
-    being sent) to rule out the same "corrupted copy-paste" bug class that
-    hit the R2 secret and Courier Guy key (see 6.6) — not yet confirmed
-    whether that's the cause here too, or whether the Redirect URI
-    registered against the Epson app doesn't exactly match
-    `EPSON_REDIRECT_URI`. Next step: re-check that diagnostic log output
-    after the next connection attempt.
+10. **Epson Connect live test.** Root cause of `invalid_client` fixed
+    (2026-07-19): the token endpoint requires `Authorization: Basic`
+    (base64 of `client_id:client_secret`) per Epson's official tutorial —
+    we had been sending credentials only in the form body, which Epson
+    rejects. Also: store device tokens on the `PrintSettings` singleton
+    (not cookies alone), do not require `subject_id` (not in the OAuth
+    response), use app token for notification settings, and expose
+    `/api/epson/connect` + disconnect on Printer Hub. After deploy, staff
+    should re-run **Connect Epson Connect** on `/printer` and confirm a
+    live print. Still verify Redirect URI matches exactly and env vars
+    have no paste whitespace.
 11. **Courier Guy Quote Tool live test — actively blocked.** Base URL and
     Bearer-header auth are confirmed correct from a real Postman collection
     (see 6.4), but every real call to `/rates` gets a 401 "Authentication

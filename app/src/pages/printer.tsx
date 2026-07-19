@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GetServerSideProps } from "next";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, Badge, DataTable } from "@/components/ui";
+import { AppHeader, Card, Badge, DataTable, Alert } from "@/components/ui";
 import type {
   EpsonDeviceInfo,
   EpsonPrintSettings,
@@ -42,6 +43,8 @@ interface StatusResponse {
   status: string;
   message: string;
   pendingJobs: number;
+  /** True when Epson device OAuth tokens are stored (not the same as online). */
+  authorized?: boolean;
   connected: boolean;
   productName?: string;
   serialNumber?: string;
@@ -78,6 +81,7 @@ function jobStatusClass(status: string): "success" | "failed" | "pending" {
 }
 
 export default function PrinterPage({ userLabel }: PrinterPageProps) {
+  const router = useRouter();
   const [data, setData] = useState<DetailsResponse | null>(null);
   const [hub, setHub] = useState<StatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +97,8 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   const [notifError, setNotifError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [epsonBanner, setEpsonBanner] = useState<"connected" | "error" | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const loadHub = useCallback(async () => {
     try {
@@ -135,6 +141,17 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   }, [refreshAll, loadHub]);
 
   useEffect(() => {
+    if (!router.isReady) return;
+    const epson = router.query.epson;
+    if (epson === "connected" || epson === "error") {
+      setEpsonBanner(epson);
+      // Drop query so a refresh doesn't re-show the banner forever.
+      void router.replace("/printer", undefined, { shallow: true });
+      if (epson === "connected") void refreshAll();
+    }
+  }, [router.isReady, router.query.epson, router, refreshAll]);
+
+  useEffect(() => {
     fetch("/api/print-settings")
       .then((res) => res.json())
       .then((json) => {
@@ -143,6 +160,20 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
       })
       .catch(() => setProvider("EPSON"));
   }, []);
+
+  async function handleDisconnectEpson() {
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/epson/disconnect", { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Disconnect failed");
+      setData({ connected: false });
+      await loadHub();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDisconnecting(false);
+    }
+  }
 
   async function updateProvider(next: "EPSON" | "EPSON_DIRECT") {
     setProviderSaving(true);
@@ -220,6 +251,8 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
     hub?.status === "online" ||
     hub?.status === "busy" ||
     (hub?.connected === true && hub?.status !== "offline");
+  // OAuth linked (tokens in DB) — not the same as printer network online.
+  const epsonLinked = hub?.authorized === true || data?.connected === true;
   const todayTotal = (hub?.today?.success ?? 0) + (hub?.today?.failed ?? 0);
   const successRate =
     todayTotal === 0 ? null : Math.round(((hub?.today?.success ?? 0) / todayTotal) * 100);
@@ -254,11 +287,38 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
             >
               {refreshing ? "⏳ Refreshing…" : "↻ Refresh"}
             </button>
+            {epsonLinked ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: 13 }}
+                disabled={disconnecting}
+                onClick={() => void handleDisconnectEpson()}
+              >
+                {disconnecting ? "Disconnecting…" : "Disconnect Epson"}
+              </button>
+            ) : (
+              <a href="/api/epson/connect" className="btn btn-primary" style={{ fontSize: 13 }}>
+                Connect Epson Connect
+              </a>
+            )}
             <Link href="/print-queue" className="btn btn-secondary" style={{ fontSize: 13 }}>
               Print Queue →
             </Link>
           </div>
         </header>
+
+        {epsonBanner === "connected" && (
+          <Alert title="Epson Connect linked">
+            Device authorized. Tokens are stored server-side so any staff browser can print.
+          </Alert>
+        )}
+        {epsonBanner === "error" && (
+          <Alert title="Epson Connect failed" tone="danger">
+            Could not complete OAuth. Check EPSON_CLIENT_ID / CLIENT_SECRET / API_KEY / REDIRECT_URI in
+            Vercel (exact match to the Epson developer console, no extra spaces), then try Connect again.
+          </Alert>
+        )}
 
         {/* ═══ TOP STATS ═══ */}
         <div className="printer-hub-grid">
@@ -467,10 +527,10 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               <Card>
                 <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
                   Not connected to Epson Connect yet.{" "}
-                  <Link href="/print-queue" style={{ color: "var(--accent-primary)", fontWeight: 600 }}>
-                    Connect from the Print Queue
-                  </Link>
-                  .
+                  <a href="/api/epson/connect" style={{ color: "var(--accent-primary)", fontWeight: 600 }}>
+                    Connect Epson Connect
+                  </a>{" "}
+                  to authorize a printer for this facility.
                 </div>
               </Card>
             ) : (
