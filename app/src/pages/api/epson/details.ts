@@ -38,11 +38,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const accessToken = session.accessToken;
-    const [device, defaults, documentCapability, photoCapability, notification] = await Promise.all([
+    // Document mode only — we don't print photos via this hub.
+    const [device, defaults, documentCapability, notification] = await Promise.all([
       getDeviceInfo(accessToken),
       getDefaultPrintSettings(accessToken),
       getPrintCapability(accessToken, "document"),
-      getPrintCapability(accessToken, "photo"),
       getNotificationSettings().catch(() => null),
     ]);
 
@@ -55,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       deviceOnline,
       device,
       defaults,
-      capability: { document: documentCapability, photo: photoCapability },
+      capability: { document: documentCapability },
       notification,
     });
   } catch (err) {

@@ -799,19 +799,6 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
                   </Card>
                 )}
 
-                {data.capability?.photo && (
-                  <Card title="Print Capability — Photo Mode">
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
-                      Color modes: {data.capability.photo.colorModes.join(", ")} · Resolutions:{" "}
-                      {data.capability.photo.resolutions.join(", ")} dpi
-                    </div>
-                    <DataTable
-                      columns={["Paper Size", "Paper Type", "Borderless", "Paper Sources", "Print Qualities", "Duplex"]}
-                      rows={capabilityRows(data.capability.photo)}
-                    />
-                  </Card>
-                )}
-
                 {data.notification && (
                   <Card title="Notification Settings">
                     <DataTable
