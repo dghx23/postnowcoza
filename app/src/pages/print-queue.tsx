@@ -281,6 +281,8 @@ export default function PrintQueue({
   const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
   const [printPreviewLoading, setPrintPreviewLoading] = useState(false);
   const [printPreviewError, setPrintPreviewError] = useState<string | null>(null);
+  /** Which queue row has the Print method dropdown open */
+  const [printMenuDocId, setPrintMenuDocId] = useState<string | null>(null);
   const [markModal, setMarkModal] = useState<{
     id: string;
     recipientName: string;

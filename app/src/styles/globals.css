@@ -2252,8 +2252,66 @@ table.data-table tr:last-child td {
 .pq-btn-print { background: #00A8A8; color: #fff; }
 .pq-btn-print:hover:not(:disabled) { background: #009090; }
 .pq-btn-print .sparkle { font-size: 10px; margin-left: 4px; }
-.pq-btn-print-mail { background: #0D9488; color: #fff; border: 1px solid #0F766E; }
-.pq-btn-print-mail:hover:not(:disabled) { background: #0F766E; }
+.pq-print-menu {
+  position: relative;
+  display: inline-flex;
+}
+.pq-print-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: default;
+}
+.pq-print-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 220px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 28px rgba(8, 24, 38, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pq-print-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--navy-900);
+}
+.pq-print-menu-item:hover {
+  background: var(--teal-050, #eefaf8);
+}
+.pq-print-menu-item-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+.pq-print-menu-item-label .sparkle {
+  font-size: 10px;
+  margin-left: 2px;
+}
+.pq-print-menu-item-hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
 .pq-btn-mark { background: #0A2540; color: #fff; }
 .pq-btn-mark:hover:not(:disabled) { background: #1A3A5A; }
 .pq-mark-intro {
