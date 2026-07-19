@@ -22,6 +22,14 @@ async function main() {
     create: { email, passwordHash, role: "STAFF" },
   });
   console.log(`Staff user ready: ${user.email}`);
+
+  const epsonDirectEmail = "postnow@print.epsonconnect.com";
+  await prisma.printSettings.upsert({
+    where: { id: "singleton" },
+    update: { epsonDirectEmail },
+    create: { id: "singleton", provider: "EPSON_DIRECT", epsonDirectEmail },
+  });
+  console.log(`Epson Direct email ready: ${epsonDirectEmail}`);
 }
 
 main()
