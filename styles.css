@@ -576,74 +576,108 @@ footer.site-footer .copyright {
   line-height: 1.65;
 }
 
-/* Quiet payments strip — under FAQ / before closing CTA */
+/* Quiet payments strip — Network → Payfast online / Network in-person */
 .payments-strip {
-  padding-top: 28px;
-  padding-bottom: 28px;
+  padding-top: 32px;
+  padding-bottom: 32px;
 }
 .payments-inner {
-  max-width: 720px;
+  max-width: 640px;
   margin: 0 auto;
   text-align: center;
 }
-.payments-kicker {
+.payments-network-parent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
-  margin: 0 0 16px;
+  margin-bottom: 18px;
+  opacity: 0.7;
+}
+.payments-network-parent svg {
+  color: var(--text-muted);
 }
 .payments-rows {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  gap: 28px;
+  gap: 36px;
   flex-wrap: wrap;
 }
 .payments-row {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  min-width: 160px;
+  gap: 8px;
+  min-width: 180px;
 }
 .payments-kind {
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-weight: 500;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .payments-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.78;
-  filter: grayscale(0.15);
+  opacity: 0.85;
+  min-height: 28px;
 }
 .payments-logo:hover {
   opacity: 1;
-  filter: none;
 }
 .payments-logo-mark {
   display: block;
   height: 22px;
   width: auto;
 }
-.payments-methods {
-  font-size: 11px;
-  color: var(--text-muted);
+.payments-method-pills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.payments-method-pills li {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--gray-050);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  padding: 3px 9px;
   letter-spacing: 0.01em;
 }
 .payments-divider {
   width: 1px;
-  height: 40px;
+  height: 56px;
   background: var(--border-default);
+  align-self: center;
+  flex-shrink: 0;
 }
-.payments-fineprint {
-  margin: 16px 0 0;
-  font-size: 11px;
-  color: var(--text-muted);
-  line-height: 1.45;
+.payments-brand-end {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-default);
+}
+.payments-postnow {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--navy-900);
+  letter-spacing: -0.02em;
+  opacity: 0.55;
+}
+.payments-postnow span {
+  color: var(--teal-600);
 }
 
 .site-footer .footer-payments {

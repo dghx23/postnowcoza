@@ -251,9 +251,13 @@ export default function PayPage({
               </ol>
               <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <Badge tone="success">POPIA</Badge>
-                <Badge tone="navy">PayFast</Badge>
+                <Badge tone="navy">Payfast</Badge>
                 <Badge tone="teal">Next-day collection</Badge>
               </div>
+              <p style={{ margin: "14px 0 0", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>
+                Online checkout via <strong>Payfast</strong> (Credit Card, Instant EFT, American Express).
+                In-person card payments via <strong>Network International</strong> where offered.
+              </p>
             </Card>
           </div>
 
