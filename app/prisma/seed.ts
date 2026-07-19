@@ -53,6 +53,13 @@ async function main() {
       comment:
         "Parked from Print Queue UI: shipping-label mock (PostNow / SECURE DISPATCH / deliver-to / tracking barcode) plus Instant Print flow diagram (PDF → Epson → PRINTED → history). Reintroduce when we generate real courier labels (Bob Go waybill) not just document PDF print.",
     },
+    {
+      name: "Customer portal (self-serve dispatch + pay)",
+      priority: "HIGH",
+      status: "NOT_STARTED",
+      comment:
+        "PARKED. Live app is staff ops. Reserved: /portal hub, /portal/dispatch/new (customer new dispatch → classic Pay dispatch fee self-serve), and /pay/[id] customer/guest mode (not staff request-payment email). Wire sidebar + auth for CUSTOMER when ready; staff keeps /dispatch/new → request payment by email.",
+    },
   ];
 
   for (const item of roadmapItems) {

@@ -1,33 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import type { GetServerSideProps } from "next";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
-import { AppHeader, Card, Stepper, TrackingTimeline } from "@/components/ui";
+import { AppHeader, Card, Stepper, TrackingTimeline, Badge } from "@/components/ui";
 import type { AddressSuggestion } from "@/pages/api/geocode/autocomplete";
 
-export const getServerSideProps: GetServerSideProps<{
-  userLabel: string;
-  isStaff: boolean;
-}> = async (context) => {
+/**
+ * PARKED — Customer portal: self-serve new dispatch.
+ * Same fields as staff job entry, but after submit → classic Pay dispatch fee
+ * (customer pays themselves), not staff payment-request email.
+ * Not linked from staff nav; entry via /portal.
+ */
+export const getServerSideProps: GetServerSideProps<{ userLabel: string }> = async (context) => {
   const session = await getServerSession(context.req, context.res, authOptions);
   if (!session?.user?.email) {
-    return { redirect: { destination: "/login", permanent: false } };
+    return {
+      redirect: { destination: "/login?callbackUrl=/portal/dispatch/new", permanent: false },
+    };
   }
-  // Live app surface is staff ops. Customer self-serve dispatch is parked at
-  // /portal/dispatch/new for the future customer portal.
-  const { prisma } = await import("@/lib/db");
-  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-  const isStaff = user?.role === "STAFF" || user?.role === "ADMIN";
-  if (!isStaff) {
-    return { redirect: { destination: "/portal/dispatch/new", permanent: false } };
-  }
-  return {
-    props: {
-      userLabel: `${session.user.email} · Staff job entry`,
-      isStaff: true,
-    },
-  };
+  return { props: { userLabel: session.user.email } };
 };
 
 const STEPS = ["Submission", "Secure Intake", "Dispatch", "Delivery", "Return", "Record"];
@@ -38,13 +31,7 @@ const PENDING_EVENTS = [
   { label: "Delivered", state: "pending" as const },
 ];
 
-export default function NewDispatch({
-  userLabel,
-  isStaff,
-}: {
-  userLabel: string;
-  isStaff: boolean;
-}) {
+export default function CustomerPortalNewDispatch({ userLabel }: { userLabel: string }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -62,12 +49,10 @@ export default function NewDispatch({
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Local object URL for in-browser PDF preview (revoked when file changes / unmount).
   useEffect(() => {
     if (!file) {
       setPreviewUrl(null);
@@ -75,9 +60,7 @@ export default function NewDispatch({
     }
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
-    return () => {
-      URL.revokeObjectURL(url);
-    };
+    return () => URL.revokeObjectURL(url);
   }, [file]);
 
   function handleFileChange(next: File | null) {
@@ -93,12 +76,10 @@ export default function NewDispatch({
   function handleStreetAddressChange(value: string) {
     setStreetAddress(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
     if (value.trim().length < 3) {
       setSuggestions([]);
       return;
     }
-
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/geocode/autocomplete?q=${encodeURIComponent(value)}`);
@@ -133,7 +114,6 @@ export default function NewDispatch({
     }
     setSubmitting(true);
     setError(null);
-
     try {
       const res = await fetch("/api/documents/upload", {
         method: "POST",
@@ -156,15 +136,13 @@ export default function NewDispatch({
         },
         body: file,
       });
-
       if (!res.ok) {
         const body = await res.json();
         throw new Error(body.error ?? "Upload failed");
       }
-
       const { id } = await res.json();
-      // Staff: request-payment screen. Customer (if any): self-serve PayFast.
-      router.push(isStaff ? `/pay/${id}?from=staff` : `/pay/${id}?from=upload`);
+      // Customer portal: classic self-serve Pay dispatch fee (not staff request-email).
+      router.push(`/pay/${id}?from=portal&pay=1`);
     } catch (err) {
       setError((err as Error).message);
       setSubmitting(false);
@@ -173,35 +151,30 @@ export default function NewDispatch({
 
   return (
     <div className="app-shell">
-      <AppHeader
-        active="dispatch"
-        userLabel={userLabel}
-        showPrintQueue={isStaff}
-        showRoadmap={isStaff}
-      />
+      <AppHeader active="dispatch" userLabel={userLabel} />
       <main className="app-main">
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div>
-            <div className="page-title">
-              {isStaff ? "Create New Secure Dispatch" : "Create New Secure Dispatch"}
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div className="page-title">Create New Secure Dispatch</div>
+              <div className="page-subtitle">Customer portal (parked) · self-serve · pay your own fee</div>
             </div>
-            <div className="page-subtitle">
-              {isStaff
-                ? "Staff · manual job entry — same details a customer would provide online. After submit you’ll request payment by email."
-                : "Secure physical document dispatch"}
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Badge tone="navy">Parked</Badge>
+              <Link href="/portal" className="btn btn-secondary" style={{ fontSize: 13 }}>
+                Portal home
+              </Link>
             </div>
           </div>
 
-          {isStaff && (
-            <div className="dispatch-staff-banner">
-              <strong>Staff job entry</strong>
-              <span>
-                Fill this as if you were the customer (document, delivery address, print options). On
-                submit you’ll land on <em>Request payment of dispatch fee</em> to email a PayFast link
-                with the full order summary.
-              </span>
-            </div>
-          )}
+          <div className="dispatch-staff-banner" style={{ background: "#FFFBEB", borderColor: "#FCD34D" }}>
+            <strong style={{ color: "#B45309" }}>Parked customer experience</strong>
+            <span>
+              Reserved for the future customer portal. After submit you go to{" "}
+              <strong>Pay dispatch fee</strong> (self-serve PayFast), not the staff payment-request
+              screen. Staff ops: use <Link href="/dispatch/new">/dispatch/new</Link>.
+            </span>
+          </div>
 
           <Stepper steps={STEPS} activeIndex={0} />
 
@@ -289,9 +262,7 @@ export default function NewDispatch({
                   Print options
                 </div>
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 10 }}>
-                  {isStaff
-                    ? "Print options for this job (customer choices if taking an order over the counter / phone)."
-                    : "How should we print your document at the facility? We will honour these settings."}
+                  How should we print your document at the facility?
                 </div>
                 <div className="radio-cards">
                   <label className={`radio-card${printColorMode === "mono" ? " selected" : ""}`}>
@@ -322,9 +293,9 @@ export default function NewDispatch({
                   </label>
                 </div>
                 <div className="field" style={{ marginTop: 14, maxWidth: 200 }}>
-                  <label htmlFor="print-copies">Number of copies</label>
+                  <label htmlFor="portal-print-copies">Number of copies</label>
                   <input
-                    id="print-copies"
+                    id="portal-print-copies"
                     type="number"
                     min={1}
                     max={10}
@@ -381,7 +352,6 @@ export default function NewDispatch({
 
               {error && <div className="form-error">{error}</div>}
 
-              {/* Full-width preview (same width as submit) · ~9cm tall */}
               <div className="dispatch-preview">
                 <div className="dispatch-preview-label">
                   Document preview
@@ -391,7 +361,7 @@ export default function NewDispatch({
                     <span className="dispatch-preview-hint">Upload a PDF above to preview before submit</span>
                   )}
                 </div>
-                <div className="dispatch-preview-frame" aria-live="polite">
+                <div className="dispatch-preview-frame">
                   {previewUrl ? (
                     <iframe
                       title="Document preview"
@@ -406,29 +376,14 @@ export default function NewDispatch({
                 </div>
               </div>
 
-              <button
-                type="submit"
-                className="btn btn-primary btn-full"
-                disabled={submitting || !file}
-              >
-                {submitting
-                  ? "Submitting…"
-                  : isStaff
-                    ? "Submit job · request payment next"
-                    : "Submit Secure Dispatch Request"}
+              <button type="submit" className="btn btn-primary btn-full" disabled={submitting || !file}>
+                {submitting ? "Submitting…" : "Submit Secure Dispatch Request"}
               </button>
             </div>
 
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
               <Card title="Real-time Tracking">
                 <TrackingTimeline events={PENDING_EVENTS} />
-              </Card>
-              <Card title="Secure Facility">
-                <img
-                  src="/assets/e2-facility-dashboard.jpg"
-                  alt="PostNow E2 secure facility"
-                  style={{ width: "100%", borderRadius: "var(--radius-md)", display: "block" }}
-                />
               </Card>
             </div>
           </div>
