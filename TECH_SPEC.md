@@ -591,19 +591,23 @@ Requires `XAI_API_KEY` in Vercel. Optional `XAI_VOICE_MODEL` (defaults to
 
 ## 7. Environment variables
 
-Full reference: `app/.env.example`. Categories: `DATABASE_URL`,
-`NEXTAUTH_SECRET`/`NEXTAUTH_URL`, `S3_*` (5), `BOBGO_*` (3),
-`FACILITY_*` (8, the print facility's address/contact — used as the
-collection address for outbound and delivery address for returns),
-`BOBPAY_*` (3), `SEED_STAFF_EMAIL`/`SEED_STAFF_PASSWORD`, `EPSON_*` (up to 6:
-`CLIENT_ID`/`CLIENT_SECRET`/`REDIRECT_URI` required, `API_KEY` and the two
-base-URL overrides optional), `COURIER_GUY_API` (required for the quote
-tool) / `COURIER_GUY_BASE_URL` (optional override), `SMTP_*` (4 required —
-`HOST`/`PORT`/`USER`/`PASSWORD` — plus optional `SMTP_FROM_EMAIL`; only
-needed if using Epson Direct instead of Epson Connect — see 6.3.3),
-`XAI_API_KEY` (required for `/voice`) / optional `XAI_VOICE_MODEL`. No env
-vars needed for address autocomplete (Nominatim requires no API key) or
-the roadmap tracker.
+Full reference: `app/.env.example`. Major groups:
+
+| Group | Keys (summary) |
+|-------|----------------|
+| Core | `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` |
+| Storage | `S3_*` (region must be `auto` for R2) |
+| Facility | `FACILITY_*` address/contact for dispatch/returns |
+| PayFast | `Merchant_ID_Payfast` / `Merchant_Key_Payfast` (or `PAYFAST_*`), optional passphrase/sandbox, `DEFAULT_DISPATCH_FEE` |
+| Zoho Books | `ZOHO_BOOKS_CLIENT_ID`, `CLIENT_SECRET`, `REFRESH_TOKEN`, **`ORGANIZATION_ID`**, `REGION`, optional `ITEM_ID`, app URLs |
+| Bob Go / Bob Pay | `BOBGO_*`, legacy `BOBPAY_*` |
+| Epson | `EPSON_*` OAuth + API key |
+| SMTP / IMAP | `SMTP_*`, `Zoho_PrintAgent_User`, IMAP/POP for print notifications |
+| WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION`, `WHATSAPP_VERIFY_TOKEN` |
+| Voice | `XAI_API_KEY`, optional `XAI_VOICE_MODEL` |
+| Ops | `SEED_STAFF_*`, `CRON_SECRET`, `COURIER_GUY_API` |
+
+No API key for Nominatim autocomplete.
 
 **Operational lesson learned during setup**: Vercel's bulk `.env`-paste
 feature creates a row for every key even when no value is supplied. Twice
@@ -671,59 +675,33 @@ integrations, or simply not tried yet):
 
 ## 10. Outstanding work
 
-1. **Bob Go API token** — blocked on account access; may need Bob Go support
-   to unlock, or a plan upgrade.
-2. **Bob Pay API token & passphrase** — need the manual login API call and to
-   locate the passphrase in account settings.
-3. **`app.postnow.co.za` SSL** — ✅ resolved. Confirmed working in production;
-   the earlier intermittent "Failed to Load Cert" issue cleared on its own.
-4. **End-to-end test of a real document** — upload → dispatch → payment →
-   tracking has not yet been exercised against live Bob Go/Bob Pay sandbox
-   APIs (blocked on items 1–2).
-5. **POPIA data subject rights** — export/deletion endpoints not built.
-6. **Upload hardening** — no virus scanning or rate limiting yet.
-7. **Payment UI** — the `/pay` endpoint exists but there's no button on the
-   tracking page to trigger it yet.
-8. **Bob Pay token refresh** — the JWT expires after 30 days; no automated
-   renewal exists.
-9. **Print queue verification** — ✅ done. Migration applied cleanly; a real
-   document was uploaded, appeared on `/print-queue`, and was successfully
-   marked `PRINTED` via the manual button.
-10. **Epson Connect live test.** Root cause of `invalid_client` fixed
-    (2026-07-19): the token endpoint requires `Authorization: Basic`
-    (base64 of `client_id:client_secret`) per Epson's official tutorial —
-    we had been sending credentials only in the form body, which Epson
-    rejects. Also: store device tokens on the `PrintSettings` singleton
-    (not cookies alone), do not require `subject_id` (not in the OAuth
-    response), use app token for notification settings, and expose
-    `/api/epson/connect` + disconnect on Printer Hub. After deploy, staff
-    should re-run **Connect Epson Connect** on `/printer` and confirm a
-    live print. Still verify Redirect URI matches exactly and env vars
-    have no paste whitespace.
-11. **Courier Guy Quote Tool live test — actively blocked.** Base URL and
-    Bearer-header auth are confirmed correct from a real Postman collection
-    (see 6.4), but every real call to `/rates` gets a 401 "Authentication
-    failed" from Courier Guy. Diagnostic logging (`courierguy.ts`) showed
-    `COURIER_GUY_API` is 33 characters where a standard key is 32 —
-    the same trailing-character-from-paste bug hit twice already elsewhere
-    (see 6.6). Needs the value re-pasted carefully in Vercel and confirmed
-    at exactly 32 characters before retesting.
-12. **Deliberately not built** — a later prompt asked for: a `labelStatus`
-    field on `Document`, a home-grown courier label generator (a Python
-    agent using `reportlab` to draw a label PDF with its own fabricated
-    tracking number, polling a `GET /api/labels/pending` endpoint and
-    storing Epson tokens in a flat file `~/.epson_tokens.json`), and an
-    "Instant Print" button distinct from the existing "Print (API)" one.
-    Not implemented because: (a) file-based token storage cannot work at
-    all on Vercel's serverless model — there is no persistent filesystem
-    across function invocations; (b) it duplicates functionality Bob Go
-    already provides properly (`BobgoShipment.waybillUrl`, the courier's own
-    official tracking reference) with a fabricated fallback tracking number
-    instead, which risks real packages carrying labels the courier's own
-    system doesn't recognize; (c) it introduces a third status enum
-    overlapping `Document.status` and `BobgoShipment.submissionStatus`. If a
-    genuine local-print-agent (a script on a machine physically connected to
-    a printer, for when Epson Connect Cloud isn't reliable) is still wanted,
-    it needs scoping as its own feature with a real auth mechanism suited to
-    an unattended script — not a reuse of the browser-session OAuth cookie
-    flow.
+1. **Zoho Books Vercel env** — code path live; set `ZOHO_BOOKS_*` when Vercel
+   unlock allows (Roadmap HIGH item has full checklist). Smoke: push paid →
+   pull status → auto-PAID inbound.
+2. **Payment structure auto-wire** — BillingItem workspace exists; still need
+   auto-apply to new payments + Zoho `item_id` on invoice lines.
+3. **SMTP From → `info@postnow.co.za`** — payment-request emails use existing
+   SMTP; reconfigure later (Roadmap).
+4. **WhatsApp prod token + webhook** — Cloud API helpers exist; permanent
+   token + prod callback cutover on Roadmap (operator-owned message logic).
+5. **Bob Go API token** — may need account/plan unlock for live booking.
+6. **POPIA data subject rights** — export/deletion endpoints not built.
+7. **Upload hardening** — no virus scanning or rate limiting yet.
+8. **Epson Connect** — Basic auth token fix shipped; re-verify live connect/
+   print after env hygiene. Native scan API pull still roadmap (upload path
+   on `/finance` is live).
+9. **Courier Guy Quote Tool** — watch `COURIER_GUY_API` length (32 chars);
+   paste errors caused 401s historically.
+10. **Customer portal** — parked; staff ops primary (see `docs/CUSTOMER_PORTAL_PARKED.md`).
+11. **Voice agent** — partial `/voice`; seed as in-progress roadmap.
+12. **Deliberately not built** — home-grown courier label agent with file-based
+    Epson tokens / fabricated tracking numbers (see prior analysis: serverless
+    + courier integrity). Prefer Bob Go waybills when token available.
+
+### Done since earlier drafts (do not re-open as missing)
+
+- Staff tracking **Arrange Dispatch Fee** CTA + STAFF badge for staff-created jobs
+- PayFast pay UI + payment-request email/WhatsApp + branded email template
+- `/finance` ledger, Zoho push/pull, SyncException ⚙ panel, BillingItem + scans
+- Epson Direct email print, IMAP confirmation pipeline, print job detail log
+- PayFast ITN → Zoho push hook
