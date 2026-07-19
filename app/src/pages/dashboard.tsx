@@ -550,7 +550,7 @@ export default function Dashboard({
                     <span className="label">Exceptions</span>
                     {today.exceptions > 0 && <span className="trend down">⚠️ needs review</span>}
                   </Link>
-                  <a href="#finance" className="ops-score" title="Open financial section">
+                  <Link href="/finance" className="ops-score" title="Open Financial ledger">
                     <span className="number">
                       R {today.revenue.toLocaleString("en-ZA", { maximumFractionDigits: 0 })}
                     </span>
@@ -561,7 +561,7 @@ export default function Dashboard({
                         {finance.outstanding.toLocaleString("en-ZA", { maximumFractionDigits: 0 })}
                       </span>
                     )}
-                  </a>
+                  </Link>
                 </div>
               </div>
 

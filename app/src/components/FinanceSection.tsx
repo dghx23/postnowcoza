@@ -42,51 +42,66 @@ function StaffFinance({ finance }: { finance: FinanceSummary }) {
       <div className="finance-section-header">
         <div>
           <h2 id="finance-heading" className="finance-section-title">
-            <span className="finance-icon" aria-hidden>
-              💰
-            </span>{" "}
-            Financial
+            <Link href="/finance" className="finance-section-title-link">
+              <span className="finance-icon" aria-hidden>
+                💰
+              </span>{" "}
+              Financial
+            </Link>
           </h2>
           <p className="finance-section-sub">
-            Facility-wide payments · staff only · full ledger view
+            Facility-wide payments · staff only ·{" "}
+            <Link href="/finance" className="finance-inline-link">
+              open full ledger →
+            </Link>
           </p>
         </div>
-        <span className="finance-scope-badge staff">Staff full view</span>
+        <div className="finance-section-header-right">
+          <span className="finance-scope-badge staff">Staff full view</span>
+          <Link href="/finance" className="btn btn-secondary finance-drill-btn">
+            Full ledger →
+          </Link>
+        </div>
       </div>
 
       <div className="finance-metrics">
-        <div className="finance-metric">
+        <Link href="/finance" className="finance-metric finance-metric-link">
           <span className="finance-metric-value">{formatZar(finance.paidToday, 0)}</span>
           <span className="finance-metric-label">Paid today</span>
-        </div>
-        <div className="finance-metric">
+        </Link>
+        <Link href="/finance" className="finance-metric finance-metric-link">
           <span className="finance-metric-value">{formatZar(finance.paidMonth, 0)}</span>
           <span className="finance-metric-label">Paid this month</span>
-        </div>
-        <div className="finance-metric">
+        </Link>
+        <Link href="/finance" className="finance-metric finance-metric-link">
           <span className="finance-metric-value">{formatZar(finance.paidAllTime, 0)}</span>
           <span className="finance-metric-label">
             All-time paid · {finance.paidCount} txn{finance.paidCount === 1 ? "" : "s"}
           </span>
-        </div>
-        <div className={`finance-metric${finance.outstanding > 0 ? " warn" : ""}`}>
+        </Link>
+        <Link
+          href="/finance?status=UNPAID"
+          className={`finance-metric finance-metric-link${finance.outstanding > 0 ? " warn" : ""}`}
+        >
           <span className="finance-metric-value">{formatZar(finance.outstanding, 0)}</span>
           <span className="finance-metric-label">
             Outstanding · {finance.unpaidCount} open
           </span>
-        </div>
+        </Link>
         {finance.failedCount > 0 && (
-          <div className="finance-metric danger">
+          <Link href="/finance?status=FAILED" className="finance-metric finance-metric-link danger">
             <span className="finance-metric-value">{finance.failedCount}</span>
             <span className="finance-metric-label">Failed payments</span>
-          </div>
+          </Link>
         )}
       </div>
 
       <div className="finance-table-wrap">
         <div className="finance-table-head">
           <span className="finance-table-title">Recent payments</span>
-          <span className="finance-table-hint">Click a row to open tracking / pay context</span>
+          <Link href="/finance" className="finance-table-hint finance-inline-link">
+            View all on Financial page →
+          </Link>
         </div>
         {finance.recentPayments.length === 0 ? (
           <div className="finance-empty">No payment records yet.</div>
@@ -150,7 +165,11 @@ function CustomerFinance({ finance }: { finance: FinanceSummary }) {
   const hasDue = finance.unpaidCount > 0;
 
   return (
-    <section className="finance-section finance-section-customer" aria-labelledby="billing-heading">
+    <section
+      id="billing"
+      className="finance-section finance-section-customer"
+      aria-labelledby="billing-heading"
+    >
       <Card>
         <div className="finance-section-header finance-section-header-card">
           <div>

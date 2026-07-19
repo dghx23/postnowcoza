@@ -60,6 +60,35 @@ function startOfLocalMonth(d = new Date()): Date {
   return x;
 }
 
+export type FinanceStatusFilter = "ALL" | PaymentStatus;
+
+function mapPaymentRow(
+  p: {
+    id: string;
+    documentId: string;
+    amount: number;
+    status: PaymentStatus;
+    paymentMethod: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    document: { recipientName: string; owner?: { email: string } | null };
+  },
+  isCustomer: boolean
+): FinancePaymentRow {
+  return {
+    id: p.id,
+    documentId: p.documentId,
+    shortId: p.documentId.slice(0, 8).toUpperCase(),
+    amount: p.amount,
+    status: p.status,
+    paymentMethod: p.paymentMethod,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+    recipientName: p.document.recipientName,
+    ownerEmail: isCustomer ? null : p.document.owner?.email ?? null,
+  };
+}
+
 /**
  * @param ownerId - when set, limit to that customer's documents (customer view).
  *                  when null/undefined, all documents (staff full view).
@@ -67,6 +96,8 @@ function startOfLocalMonth(d = new Date()): Date {
 export async function getFinanceSummary(options: {
   ownerId?: string | null;
   recentLimit?: number;
+  /** When set, only list payments in this status (metrics still facility-wide). */
+  statusFilter?: FinanceStatusFilter;
 }): Promise<FinanceSummary> {
   const ownerId = options.ownerId ?? null;
   const isCustomer = Boolean(ownerId);
@@ -74,6 +105,8 @@ export async function getFinanceSummary(options: {
   const documentFilter = ownerId ? { ownerId } : {};
   const paymentWhere = { document: documentFilter };
   const recentLimit = options.recentLimit ?? (isCustomer ? 8 : 12);
+  const statusFilter = options.statusFilter && options.statusFilter !== "ALL" ? options.statusFilter : null;
+  const listWhere = statusFilter ? { ...paymentWhere, status: statusFilter } : paymentWhere;
 
   const dayStart = startOfLocalDay();
   const monthStart = startOfLocalMonth();
@@ -109,7 +142,7 @@ export async function getFinanceSummary(options: {
     prisma.payment.count({ where: { ...paymentWhere, status: "FAILED" } }),
     prisma.payment.count({ where: { ...paymentWhere, status: "REFUNDED" } }),
     prisma.payment.findMany({
-      where: paymentWhere,
+      where: listWhere,
       orderBy: { updatedAt: "desc" },
       take: recentLimit,
       include: {
@@ -117,7 +150,6 @@ export async function getFinanceSummary(options: {
           select: {
             id: true,
             recipientName: true,
-            // Staff ledger shows who paid; customers never see other owners.
             ...(isCustomer ? {} : { owner: { select: { email: true } } }),
           },
         },
@@ -125,24 +157,21 @@ export async function getFinanceSummary(options: {
     }),
   ]);
 
-  const recentPayments: FinancePaymentRow[] = recent.map((p) => {
-    const doc = p.document as {
-      recipientName: string;
-      owner?: { email: string } | null;
-    };
-    return {
-      id: p.id,
-      documentId: p.documentId,
-      shortId: p.documentId.slice(0, 8).toUpperCase(),
-      amount: p.amount,
-      status: p.status,
-      paymentMethod: p.paymentMethod,
-      createdAt: p.createdAt.toISOString(),
-      updatedAt: p.updatedAt.toISOString(),
-      recipientName: doc.recipientName,
-      ownerEmail: doc.owner?.email ?? null,
-    };
-  });
+  const recentPayments: FinancePaymentRow[] = recent.map((p) =>
+    mapPaymentRow(
+      p as {
+        id: string;
+        documentId: string;
+        amount: number;
+        status: PaymentStatus;
+        paymentMethod: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        document: { recipientName: string; owner?: { email: string } | null };
+      },
+      isCustomer
+    )
+  );
 
   return {
     scope,

@@ -4,25 +4,37 @@ import type { ReactNode } from "react";
 import type { PrintFeedbackDetail } from "@/lib/printFeedback";
 import { sourceLabel } from "@/lib/printFeedback";
 
-type NavKey = "dashboard" | "dispatch" | "tracking" | "print-queue" | "roadmap" | "printer";
+type NavKey =
+  | "dashboard"
+  | "dispatch"
+  | "tracking"
+  | "print-queue"
+  | "roadmap"
+  | "printer"
+  | "finance";
 
 export function AppHeader({
   active,
   userLabel,
   showPrintQueue,
   showRoadmap,
+  showFinance,
 }: {
   active: NavKey;
   userLabel: string;
   showPrintQueue?: boolean;
   showRoadmap?: boolean;
+  /** Staff-only Financial ledger. Defaults to showPrintQueue (staff chrome). */
+  showFinance?: boolean;
 }) {
+  const financeNav = showFinance ?? showPrintQueue;
   // Voice agent is parked on the staff Roadmap (seeded as "Grok Voice Agent")
   // until that feature is ready to ship — intentionally not linked here.
   const items: Array<{ key: NavKey; label: string; href: string }> = [
     { key: "dashboard", label: "Dashboard", href: "/dashboard" },
     { key: "dispatch", label: "New Dispatch", href: "/dispatch/new" },
     { key: "tracking", label: "Tracking", href: "/tracking" },
+    ...(financeNav ? [{ key: "finance" as const, label: "Financial", href: "/finance" }] : []),
     ...(showPrintQueue ? [{ key: "print-queue" as const, label: "Print Queue", href: "/print-queue" }] : []),
     ...(showPrintQueue ? [{ key: "printer" as const, label: "Printer", href: "/printer" }] : []),
     ...(showRoadmap ? [{ key: "roadmap" as const, label: "Roadmap", href: "/roadmap" }] : []),
