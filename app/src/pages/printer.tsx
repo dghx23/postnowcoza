@@ -973,9 +973,10 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               <div className="epson-notif-panel-body">
                 <p className="epson-notif-panel-desc">
                   Pull completed/error notices from the Zoho print-agent mailbox (
-                  <code>postnowprint.agent@postnow.co.za</code>) for Email Print and owner emails. IMAP is
-                  polled automatically every <strong>5 minutes</strong> (Vercel Cron), or immediately when
-                  you press the buttons below. Separate from Connect webhooks on the left.
+                  <code>postnowprint.agent@postnow.co.za</code>) for Email Print and owner emails.
+                  Auto-poll every <strong>5 minutes</strong> via GitHub Actions, plus a daily Vercel
+                  Cron backup — or immediately with the buttons below. Separate from Connect webhooks
+                  on the left.
                 </p>
                 <div className="epson-notif-panel-actions">
                   <button
@@ -998,10 +999,11 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
                   </button>
                 </div>
                 <p className="epson-notif-panel-foot">
-                  After enabling IMAP in Zoho for this mailbox, use the same password as SMTP (
-                  <code>SMTP_PASSWORD</code> / optional <code>IMAP_PASSWORD</code>). Cron hits{" "}
-                  <code>GET/POST /api/epson/notifications/sync</code> with{" "}
-                  <code>Authorization: Bearer CRON_SECRET</code>.
+                  Enable IMAP in Zoho for this mailbox. Vercel needs{" "}
+                  <code>Zoho_PrintAgent_User</code>, <code>SMTP_PASSWORD</code> (or{" "}
+                  <code>IMAP_PASSWORD</code>), and <code>CRON_SECRET</code>. For 5‑minute polls, set
+                  GitHub Actions secrets <code>CRON_SECRET</code> (same value) and{" "}
+                  <code>APP_URL=https://app.postnow.co.za</code>.
                 </p>
                 {notifResult && (
                   <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)" }}>

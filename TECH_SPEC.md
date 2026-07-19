@@ -452,11 +452,13 @@ Pipeline:
    document is still `PRINTED`, it is rolled back to `QUEUED_FOR_PRINT` so
    staff can re-print.
 5. Triggers:
-   (a) **Vercel Cron every 5 minutes** → `GET/POST /api/epson/notifications/sync`
-       (`vercel.json` schedule `*/5 * * * *`; needs `CRON_SECRET` Bearer for
-       unattended calls — set in Vercel; Pro plan required for sub-daily crons),
-   (b) manual **Check mailbox now** / re-scan on `/printer` (staff session),
-   (c) status hub no longer runs IMAP on poll (keeps the page fast).
+   (a) **GitHub Actions every 5 minutes** (`.github/workflows/imap-mailbox-sync.yml`)
+       → `POST /api/epson/notifications/sync` with `Authorization: Bearer CRON_SECRET`
+       (repo secrets `CRON_SECRET` + `APP_URL`; works on Vercel Hobby),
+   (b) **Vercel Cron daily 06:00 UTC** backup (`vercel.json` — Hobby only allows
+       one daily cron; upgrade to Pro for native sub-daily Vercel crons),
+   (c) manual **Check mailbox now** / re-scan on `/printer` (staff session),
+   (d) status hub no longer runs IMAP on poll (keeps the page fast).
 
 UI: tracking page shows a "Print confirmation" card from the latest
 `EpsonPrintJob`; PrinterStatus recent-jobs includes confirmation failures
