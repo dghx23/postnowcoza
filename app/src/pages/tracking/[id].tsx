@@ -108,6 +108,7 @@ function formatAuditAction(action: string): string {
     epson_print_failed: "Printer reported a print failure",
     email_print_failed: "Email Print submission failed",
     epson_print_confirmed: "Printer confirmed print completed",
+    epson_print_attention: "Printer needs attention (paper, ink, or stopped)",
     bobgo_webhook_received: "Courier status update received",
     pod_fetch_failed: "Proof-of-delivery fetch failed",
     shipment_exception: "Courier reported a delivery exception",
@@ -159,7 +160,9 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
   const printAudit = [...document.auditEvents]
     .reverse()
     .find((e) =>
-      ["epson_print_confirmed", "epson_print_failed", "email_print_failed"].includes(e.action),
+      ["epson_print_confirmed", "epson_print_failed", "email_print_failed", "epson_print_attention"].includes(
+        e.action,
+      ),
     );
 
   const printFeedback = buildPrintFeedback({

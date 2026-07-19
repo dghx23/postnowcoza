@@ -407,6 +407,46 @@ export async function getNotificationSettings(): Promise<EpsonNotificationSettin
   return res.data;
 }
 
+/**
+ * Enable/disable Epson Connect job-status webhooks for this API client.
+ * Per Epson tutorial this is App Authentication (not device token).
+ * Body field names are camelCase on v2 (notification + callbackUri).
+ */
+export async function setNotificationSettings(input: {
+  notification: boolean;
+  callbackUri: string;
+}): Promise<EpsonNotificationSettings> {
+  const appToken = await getAppToken();
+  // Official samples use POST for notification settings (same shape as GET response).
+  const res = await axios.post<EpsonNotificationSettings>(
+    `${API_BASE}/printing/settings/notification`,
+    {
+      notification: input.notification,
+      callbackUri: input.callbackUri,
+    },
+    { headers: { ...epsonHeaders(appToken), "Content-Type": "application/json" } }
+  );
+  return res.data;
+}
+
+/**
+ * Public HTTPS URL Epson will POST job status to.
+ * Optional `EPSON_WEBHOOK_SECRET` (or CRON_SECRET) is appended as ?key= so the
+ * webhook can reject unauthenticated traffic.
+ */
+export function buildEpsonWebhookCallbackUri(baseUrl?: string): string {
+  const raw =
+    (baseUrl && baseUrl.trim()) ||
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+    "https://app.postnow.co.za";
+  const origin = raw.replace(/\/$/, "");
+  const url = new URL(`${origin}/api/epson/webhooks/job`);
+  const secret = (process.env.EPSON_WEBHOOK_SECRET || process.env.CRON_SECRET || "").trim();
+  if (secret) url.searchParams.set("key", secret);
+  return url.toString();
+}
+
 interface CreateJobResponse {
   jobId: string;
   uploadUri: string;

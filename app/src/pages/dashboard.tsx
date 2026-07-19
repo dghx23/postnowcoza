@@ -83,7 +83,8 @@ function feedIcon(action: string): { icon: string; highlight?: boolean; danger?:
   if (action === "uploaded") return { icon: "📥" };
   if (action.includes("DISPATCHED") || action.includes("->DISPATCHED") || action === "dispatch_created")
     return { icon: "🚚", highlight: true };
-  if (action === "shipment_exception" || action === "epson_print_failed") return { icon: "⚠️", danger: true };
+  if (action === "shipment_exception" || action === "epson_print_failed" || action === "epson_print_attention")
+    return { icon: "⚠️", danger: true };
   if (action.includes("RETURN")) return { icon: "🔄" };
   return { icon: "📋" };
 }
@@ -96,6 +97,7 @@ function feedMessage(action: string, recipientName: string, city: string): strin
   if (action.includes("->DELIVERED")) return `DELIVERED – ${city || recipientName}`;
   if (action === "shipment_exception") return `DELIVERY EXCEPTION – ${recipientName}`;
   if (action === "epson_print_failed") return `PRINT FAILED – ${recipientName}`;
+  if (action === "epson_print_attention") return `PRINTER ATTENTION – ${recipientName}`;
   return `${action.replace(/_/g, " ")} – ${recipientName}`;
 }
 

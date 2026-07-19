@@ -44,7 +44,7 @@ interface DetailsResponse {
   deviceOnline?: boolean;
   device?: EpsonDeviceInfo;
   defaults?: { printSettings: EpsonPrintSettings };
-  capability?: { document: EpsonPrintCapability; photo: EpsonPrintCapability };
+  capability?: { document: EpsonPrintCapability; photo?: EpsonPrintCapability };
   notification?: EpsonNotificationSettings | null;
   error?: string;
 }
@@ -110,6 +110,10 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   const [printBorderless, setPrintBorderless] = useState(false);
   const [printDoubleSided, setPrintDoubleSided] = useState("none");
   const [defaultsSaved, setDefaultsSaved] = useState(false);
+  const [notifConfiguring, setNotifConfiguring] = useState(false);
+  const [notifConfigMsg, setNotifConfigMsg] = useState<string | null>(null);
+  const [notifConfigError, setNotifConfigError] = useState<string | null>(null);
+  const [webhookUri, setWebhookUri] = useState<string | null>(null);
   const [notifSyncing, setNotifSyncing] = useState(false);
   const [notifResult, setNotifResult] = useState<string | null>(null);
   const [notifError, setNotifError] = useState<string | null>(null);
@@ -283,6 +287,37 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
       setProviderError((err as Error).message);
     } finally {
       setProviderSaving(false);
+    }
+  }
+
+  async function configureEpsonWebhook(enabled: boolean) {
+    setNotifConfiguring(true);
+    setNotifConfigError(null);
+    setNotifConfigMsg(null);
+    try {
+      const res = await fetch("/api/epson/notifications/configure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (json.error ?? "Failed to update Epson notification settings") +
+            (json.detail ? ` — ${typeof json.detail === "string" ? json.detail : JSON.stringify(json.detail)}` : ""),
+        );
+      }
+      setWebhookUri(json.registeredCallbackUri ?? json.recommendedCallbackUri ?? json.callbackUri ?? null);
+      setNotifConfigMsg(
+        enabled
+          ? `Notifications enabled. Epson will POST job status to ${json.callbackUri ?? json.registeredCallbackUri ?? "callback URI"}.`
+          : "Notifications disabled at Epson.",
+      );
+      await loadDetails();
+    } catch (err) {
+      setNotifConfigError((err as Error).message);
+    } finally {
+      setNotifConfiguring(false);
     }
   }
 
@@ -799,17 +834,60 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
                   </Card>
                 )}
 
-                {data.notification && (
-                  <Card title="Notification Settings">
-                    <DataTable
-                      columns={["Setting", "Value"]}
-                      rows={[
-                        ["Notifications enabled", data.notification.notification ? "Yes" : "No"],
-                        ["Callback URI", data.notification.callbackUri ?? "—"],
-                      ]}
-                    />
-                  </Card>
-                )}
+                <Card title="Epson Connect job webhooks (recommended)">
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.5 }}>
+                    When enabled, Epson POSTs print job status (completed, error, delayed, paper jam, etc.) to
+                    our platform. We match the Connect <code>jobId</code> to the queue job, update tracking, and
+                    surface failures — same outcome path as mailbox sync, but real-time for{" "}
+                    <strong>Print EpsonAPI</strong> jobs.
+                  </div>
+                  <DataTable
+                    columns={["Setting", "Value"]}
+                    rows={[
+                      [
+                        "Notifications enabled",
+                        data.notification?.notification ? "Yes" : "No",
+                      ],
+                      [
+                        "Callback URI (registered)",
+                        data.notification?.callbackUri || webhookUri || "— not set —",
+                      ],
+                    ]}
+                  />
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={notifConfiguring}
+                      onClick={() => void configureEpsonWebhook(true)}
+                    >
+                      {notifConfiguring ? "Saving…" : "Enable & register callback"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={notifConfiguring}
+                      onClick={() => void configureEpsonWebhook(false)}
+                    >
+                      Disable notifications
+                    </button>
+                  </div>
+                  {notifConfigMsg && (
+                    <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)" }}>
+                      {notifConfigMsg}
+                    </div>
+                  )}
+                  {notifConfigError && (
+                    <div className="form-error" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
+                      {notifConfigError}
+                    </div>
+                  )}
+                  <p style={{ marginTop: 14, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                    Optional: set <code>EPSON_WEBHOOK_SECRET</code> (or reuse <code>CRON_SECRET</code>) in Vercel so
+                    the callback URL includes <code>?key=…</code> and rejects random traffic. Endpoint health
+                    check: <code>/api/epson/webhooks/job</code> (GET).
+                  </p>
+                </Card>
 
                 <Card>
                   <button type="button" className="printer-panel-raw-toggle" onClick={() => setShowRaw((v) => !v)}>

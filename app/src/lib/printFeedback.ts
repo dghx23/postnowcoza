@@ -26,7 +26,7 @@ export interface PrintFeedbackDetail {
   from: string | null;
   via: string | null;
   outcome: string | null;
-  source: "epson_connect" | "epson_direct" | "email_notification" | "unknown";
+  source: "epson_connect" | "epson_direct" | "email_notification" | "epson_webhook" | "unknown";
 }
 
 export function printOutcomeLabel(status: string): {
@@ -106,6 +106,7 @@ export function buildPrintFeedback(input: {
 
   let source: PrintFeedbackDetail["source"] = "unknown";
   if (via === "email_notification") source = "email_notification";
+  else if (via === "epson_connect_webhook") source = "epson_webhook";
   else if (via === "epson_direct") source = "epson_direct";
   else if (via === "epson_connect") source = "epson_connect";
   else if (input.jobId?.startsWith("email-print:") || input.jobId?.startsWith("email-notify:")) {
@@ -144,6 +145,8 @@ export function sourceLabel(source: PrintFeedbackDetail["source"]): string {
   switch (source) {
     case "email_notification":
       return "Epson email";
+    case "epson_webhook":
+      return "Epson Connect webhook";
     case "epson_direct":
       return "Email Print";
     case "epson_connect":
