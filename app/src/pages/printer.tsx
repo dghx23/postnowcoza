@@ -540,7 +540,29 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
         {/* ═══ TOP STATS ═══ */}
         <div className="printer-hub-grid">
           <div className="printer-hub-card">
-            <div className="printer-hub-card-title">🖨️ Printer</div>
+            <div className="printer-hub-card-title-row">
+              <div className="printer-hub-card-title" style={{ marginBottom: 0 }}>
+                🖨️ Printer
+              </div>
+              <button
+                type="button"
+                className="printer-hub-settings-btn"
+                aria-label={
+                  showAdvanced
+                    ? "Hide advanced Epson Connect details"
+                    : "Show advanced Epson Connect details"
+                }
+                aria-expanded={showAdvanced}
+                title={
+                  showAdvanced
+                    ? "Hide advanced Epson Connect details"
+                    : "Advanced Epson Connect details"
+                }
+                onClick={() => setShowAdvanced((v) => !v)}
+              >
+                ⚙
+              </button>
+            </div>
             <div className="printer-hub-card-number printer-hub-card-name">
               {hubLoading && !hub && !data ? "…" : productName}
             </div>
@@ -988,18 +1010,19 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
           </section>
         </div>
 
-        <div>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => setShowAdvanced((v) => !v)}
-          >
-            {showAdvanced ? "Hide" : "Show"} advanced Epson Connect details
-          </button>
-        </div>
-
         {showAdvanced && (
-          <>
+          <div className="printer-advanced-section" id="printer-advanced-details">
+            <div className="printer-advanced-section-head">
+              <strong>Advanced Epson Connect details</strong>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: 12, padding: "6px 12px" }}
+                onClick={() => setShowAdvanced(false)}
+              >
+                Close
+              </button>
+            </div>
             {error && <div className="form-error">{error}</div>}
             {!data ? (
               <Card>
@@ -1065,7 +1088,7 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
                 </Card>
               </>
             )}
-          </>
+          </div>
         )}
       </main>
     </div>

@@ -1894,6 +1894,13 @@ table.data-table tr:last-child td {
   padding: 18px 20px 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
+.printer-hub-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
 .printer-hub-card-title {
   font-size: 13px;
   font-weight: 600;
@@ -1901,6 +1908,42 @@ table.data-table tr:last-child td {
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-bottom: 8px;
+}
+.printer-hub-settings-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: var(--gray-050, #eef2f4);
+  color: var(--navy-900);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+.printer-hub-settings-btn:hover {
+  background: var(--gray-100, #e1e7ea);
+}
+.printer-hub-settings-btn[aria-expanded="true"] {
+  background: var(--navy-900);
+  color: #fff;
+}
+.printer-advanced-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+.printer-advanced-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .printer-hub-card-number {
   font-size: 36px;
