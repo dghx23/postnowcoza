@@ -2549,6 +2549,47 @@ a.ops-feed-item-link:hover .ops-feed-doc {
   align-items: center;
 }
 .pay-btn { min-width: 220px; }
+.pay-brand-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-default);
+}
+.pay-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.pay-brand-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.pay-brand img {
+  display: block;
+  height: 22px;
+  width: auto;
+}
+.pay-method-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.pay-method-icons img {
+  display: block;
+  height: 28px;
+  width: auto;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: #fff;
+  padding: 2px 4px;
+}
 .pay-steps {
   margin: 0;
   padding-left: 18px;

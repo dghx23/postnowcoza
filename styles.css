@@ -596,10 +596,11 @@ footer.site-footer .copyright {
   text-transform: uppercase;
   color: var(--text-muted);
   margin-bottom: 18px;
-  opacity: 0.7;
+  opacity: 0.75;
 }
-.payments-network-parent svg {
-  color: var(--text-muted);
+.payments-network-mark {
+  display: block;
+  opacity: 0.85;
 }
 .payments-rows {
   display: flex;
@@ -612,7 +613,7 @@ footer.site-footer .copyright {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 180px;
 }
 .payments-kind {
@@ -626,35 +627,43 @@ footer.site-footer .copyright {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.85;
   min-height: 28px;
+  text-decoration: none;
+  opacity: 0.92;
+  transition: opacity 0.15s ease;
 }
 .payments-logo:hover {
   opacity: 1;
 }
-.payments-logo-mark {
+.payments-logo-img {
   display: block;
-  height: 22px;
+  height: 24px;
   width: auto;
 }
-.payments-method-pills {
+.payments-method-logos {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
 }
-.payments-method-pills li {
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--gray-050);
+.payments-method-logos li {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--white);
   border: 1px solid var(--border-default);
-  border-radius: 999px;
-  padding: 3px 9px;
-  letter-spacing: 0.01em;
+  border-radius: 6px;
+  padding: 4px 6px;
+  box-shadow: var(--shadow-sm);
+  line-height: 0;
+}
+.payments-method-logos img {
+  display: block;
+  height: 26px;
+  width: auto;
 }
 .payments-divider {
   width: 1px;
@@ -708,7 +717,7 @@ footer.site-footer .copyright {
   .wrap, .section, header.site-header, .hero, footer.site-footer, .trust-bar { padding-left: 20px; padding-right: 20px; }
   .team-grid, .values-grid, .faq-grid { grid-template-columns: 1fr; }
   .payments-divider { display: none; }
-  .payments-rows { gap: 20px; }
+  .payments-rows { gap: 24px; flex-direction: column; align-items: center; }
 }
 
 @media (max-width: 640px) {

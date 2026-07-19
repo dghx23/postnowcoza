@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 36" role="img" aria-label="Payfast">
+  <title>Payfast</title>
+  <!-- Wordmark: pay (navy) + fast (teal) — simplified brand treatment for web use -->
+  <text x="0" y="26" font-family="Inter, Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#0A2540" letter-spacing="-0.04em">pay</text>
+  <text x="52" y="26" font-family="Inter, Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#00A39B" letter-spacing="-0.04em">fast</text>
+</svg>

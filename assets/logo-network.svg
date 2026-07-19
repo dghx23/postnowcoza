@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 36" role="img" aria-label="Network International">
+  <title>Network International</title>
+  <!-- Chevron mark + wordmark -->
+  <g transform="translate(2,4)">
+    <path d="M2 26 L14 2 L26 26 Z" fill="none" stroke="#0A2540" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="M8 26 L14 12 L20 26 Z" fill="#00A39B"/>
+  </g>
+  <text x="36" y="16" font-family="Inter, Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#0A2540">Network</text>
+  <text x="36" y="30" font-family="Inter, Arial, Helvetica, sans-serif" font-size="10" font-weight="500" fill="#5A6D78" letter-spacing="0.06em">INTERNATIONAL</text>
+</svg>

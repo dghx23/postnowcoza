@@ -251,13 +251,28 @@ export default function PayPage({
               </ol>
               <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <Badge tone="success">POPIA</Badge>
-                <Badge tone="navy">Payfast</Badge>
                 <Badge tone="teal">Next-day collection</Badge>
               </div>
-              <p style={{ margin: "14px 0 0", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>
-                Online checkout via <strong>Payfast</strong> (Credit Card, Instant EFT, American Express).
-                In-person card payments via <strong>Network International</strong> where offered.
-              </p>
+              <div className="pay-brand-row" aria-label="Payment providers">
+                <div className="pay-brand">
+                  <span className="pay-brand-label">Online</span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/pay-logos/logo-payfast.svg" alt="Payfast" height={22} width={100} />
+                </div>
+                <div className="pay-brand">
+                  <span className="pay-brand-label">In person</span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/pay-logos/logo-network.svg" alt="Network International" height={22} width={130} />
+                </div>
+              </div>
+              <div className="pay-method-icons" aria-label="Accepted methods">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/pay-logos/pm-credit-card.svg" alt="Credit Card" title="Credit Card" height={28} width={42} />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/pay-logos/pm-instant-eft.svg" alt="Instant EFT" title="Instant EFT" height={28} width={42} />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/pay-logos/pm-amex.svg" alt="American Express" title="American Express" height={28} width={42} />
+              </div>
             </Card>
           </div>
 
