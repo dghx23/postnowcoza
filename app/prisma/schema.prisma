@@ -120,6 +120,11 @@ model Document {
   printColorMode   String         @default("mono")
   printCopies      Int            @default(1)
 
+  // Who created the job: staff manual entry vs customer/portal self-serve.
+  // staffCreatorEmail is set when createdVia is STAFF (for tracking badge).
+  createdVia         String         @default("CUSTOMER") // STAFF | CUSTOMER | PORTAL
+  staffCreatorEmail  String?
+
   // Courier rate charged for the outbound dispatch, set once a shipment is
   // booked (src/lib/dispatch.ts). The dispatch fee payment is created from
   // this amount, not recomputed at payment time.

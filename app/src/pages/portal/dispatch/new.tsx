@@ -120,6 +120,7 @@ export default function CustomerPortalNewDispatch({ userLabel }: { userLabel: st
         headers: {
           "Content-Type": file.type || "application/octet-stream",
           "x-filename": file.name,
+          "x-created-via": "PORTAL",
           "x-delivery-address": JSON.stringify({
             recipientName,
             recipientEmail,

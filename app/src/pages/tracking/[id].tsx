@@ -63,6 +63,10 @@ interface TrackingProps {
   recipientName: string;
   status: string;
   isStaff: boolean;
+  /** Job entered by facility staff (manual entry), not customer portal. */
+  createdByStaff: boolean;
+  staffCreatorEmail: string | null;
+  createdVia: string;
   timeline: TimelineEvent[];
   logRows: Array<{ time: string; event: string }>;
   /** Latest printer confirmation from Epson API or email notifications. */
@@ -146,7 +150,10 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
   const id = context.params?.id as string;
   const document = await prisma.document.findUnique({
     where: { id },
-    include: { auditEvents: { orderBy: { createdAt: "asc" } } },
+    include: {
+      auditEvents: { orderBy: { createdAt: "asc" } },
+      owner: { select: { email: true, role: true } },
+    },
   });
 
   if (!document) return { notFound: true };
@@ -156,6 +163,17 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
   if (!isStaff && document.ownerId !== user?.id) {
     return { redirect: { destination: "/dashboard", permanent: false } };
   }
+
+  // Prefer explicit flags; fall back to owner role for older rows pre-migration.
+  const createdVia = document.createdVia || "CUSTOMER";
+  const createdByStaff =
+    createdVia === "STAFF" ||
+    Boolean(document.staffCreatorEmail) ||
+    ((document.owner.role === "STAFF" || document.owner.role === "ADMIN") &&
+      createdVia !== "PORTAL");
+  const staffCreatorEmail =
+    document.staffCreatorEmail ||
+    (createdByStaff ? document.owner.email : null);
 
   const currentIndex = STAGE_ORDER.indexOf(document.status);
   const timeline: TimelineEvent[] = STAGE_ORDER.slice(0, 6).map((stage, i) => ({
@@ -168,6 +186,14 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
     if (e.action === "print_job_submitted" && e.metadata && typeof e.metadata === "object") {
       const summary = (e.metadata as { summary?: string }).summary;
       if (summary) event = `Print job logged — ${summary}`;
+    }
+    if (e.action === "uploaded" && e.metadata && typeof e.metadata === "object") {
+      const meta = e.metadata as { createdVia?: string; staffCreatorEmail?: string };
+      if (meta.createdVia === "STAFF") {
+        event = `Document uploaded by STAFF${meta.staffCreatorEmail ? ` (${meta.staffCreatorEmail})` : ""}`;
+      } else if (meta.createdVia === "PORTAL") {
+        event = "Document uploaded via customer portal";
+      }
     }
     return {
       time: e.createdAt.toISOString().slice(11, 16),
@@ -229,6 +255,9 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
       recipientName: document.recipientName,
       status: document.status,
       isStaff,
+      createdByStaff,
+      staffCreatorEmail,
+      createdVia,
       timeline,
       logRows,
       printFeedback,
@@ -270,6 +299,9 @@ export default function Tracking({
   recipientName,
   status,
   isStaff,
+  createdByStaff,
+  staffCreatorEmail,
+  createdVia,
   timeline,
   logRows,
   printFeedback: initialPrintFeedback,
@@ -396,6 +428,25 @@ export default function Tracking({
       <AppHeader active="tracking" userLabel={userLabel} showPrintQueue={isStaff} showRoadmap={isStaff} />
       <main className="app-main">
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {createdByStaff && (
+            <div className="track-staff-created" role="status">
+              <span className="track-staff-created-badge">STAFF</span>
+              <div className="track-staff-created-body">
+                <strong>Created by staff</strong>
+                <span>
+                  Manual job entry
+                  {staffCreatorEmail ? (
+                    <>
+                      {" "}
+                      · <span className="track-staff-username">{staffCreatorEmail}</span>
+                    </>
+                  ) : null}
+                  {createdVia === "STAFF" ? " · facility ops" : null}
+                </span>
+              </div>
+            </div>
+          )}
+
           {(justSubmitted || isEarly) && (
             <Card title={justSubmitted ? "✅ Document received securely" : "Your dispatch hub"}>
               <div className="post-submit-panel">
@@ -494,10 +545,23 @@ export default function Tracking({
 
           <div className="page-head">
             <div>
-              <div className="page-title">{documentId.slice(0, 10).toUpperCase()}</div>
+              <div className="page-title" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                {documentId.slice(0, 10).toUpperCase()}
+                {createdByStaff && (
+                  <span className="track-staff-created-badge" title={staffCreatorEmail ?? "Staff job entry"}>
+                    STAFF
+                  </span>
+                )}
+              </div>
               <div className="page-subtitle">
                 {recipientName}
                 <span style={{ color: "var(--text-secondary)", fontWeight: 500 }}> · {stageLabel}</span>
+                {createdByStaff && staffCreatorEmail && (
+                  <span className="track-staff-inline">
+                    {" "}
+                    · Created by <strong>{staffCreatorEmail}</strong>
+                  </span>
+                )}
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -564,6 +628,15 @@ export default function Tracking({
                     {dispatch.printColorMode === "color" ? "Colour" : "Black & white"} ·{" "}
                     {dispatch.printCopies} {dispatch.printCopies === 1 ? "copy" : "copies"}
                   </div>
+                  {createdByStaff && (
+                    <div>
+                      <span style={{ color: "var(--text-secondary)" }}>Created by: </span>
+                      <span className="track-staff-created-badge" style={{ marginRight: 6 }}>
+                        STAFF
+                      </span>
+                      <strong>{staffCreatorEmail ?? "Facility staff"}</strong>
+                    </div>
+                  )}
                   <div>
                     <span style={{ color: "var(--text-secondary)" }}>Submitted: </span>
                     {new Date(dispatch.createdAt).toLocaleString([], {

@@ -82,6 +82,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(502).json({ error: "Failed to store the uploaded file. Please try again shortly." });
   }
 
+  const isStaffUploader = user.role === "STAFF" || user.role === "ADMIN";
+  // Header set by portal form so we don't label portal uploads as STAFF when
+  // a staff account is testing the parked customer flow.
+  const viaHeader = req.headers["x-created-via"];
+  const createdVia =
+    typeof viaHeader === "string" && viaHeader.toUpperCase() === "PORTAL"
+      ? "PORTAL"
+      : isStaffUploader
+        ? "STAFF"
+        : "CUSTOMER";
+
   const document = await prisma.document.create({
     data: {
       ownerId: user.id,
@@ -100,6 +111,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       returnPreference: deliveryAddress.returnPreference ?? "MANAGED",
       printColorMode,
       printCopies,
+      createdVia,
+      staffCreatorEmail: createdVia === "STAFF" ? user.email : null,
     },
   });
 
@@ -110,6 +123,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     metadata: {
       filename,
       checksum,
+      createdVia,
+      ...(createdVia === "STAFF"
+        ? { staffCreatorEmail: user.email, staffCreatorRole: user.role }
+        : {}),
       printPreferences: {
         colorMode: printColorMode,
         colorLabel: printColorMode === "color" ? "Colour" : "Black & white",
