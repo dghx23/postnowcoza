@@ -8,8 +8,11 @@ import nodemailer from "nodemailer";
 // this only needs an SMTP account to send from.
 const SMTP_HOST = process.env.SMTP_HOST ?? "";
 const SMTP_PORT = Number(process.env.SMTP_PORT ?? "587");
-const SMTP_USER = process.env.SMTP_USER ?? "";
-const SMTP_PASSWORD = process.env.SMTP_PASSWORD ?? "";
+// Dedicated Zoho mailbox (postnowprint.agent@postnow.co.za) that sends print
+// jobs to the printer's Epson Email Print address - named to match the
+// Vercel env vars as configured in the Zoho admin console.
+const SMTP_USER = process.env.Zoho_PrintAgent_User ?? process.env.SMTP_USER ?? "";
+const SMTP_PASSWORD = process.env.Zoho_PrintAgent_Pass ?? process.env.SMTP_PASSWORD ?? "";
 const SMTP_FROM_EMAIL = process.env.SMTP_FROM_EMAIL || SMTP_USER;
 
 function getTransport() {
