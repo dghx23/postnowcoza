@@ -5,7 +5,9 @@ import Link from "next/link";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
 import { AppHeader, Alert, Card, DataTable, StatusPill, PrinterStatus } from "@/components/ui";
+import { FinanceSection } from "@/components/FinanceSection";
 import { FACILITY_ADDRESS } from "@/lib/facility";
+import { getFinanceSummary, type FinanceSummary } from "@/lib/finance";
 import type { AddressSuggestion } from "@/pages/api/geocode/autocomplete";
 
 interface QuoteRate {
@@ -60,6 +62,8 @@ interface DashboardProps {
   feed: FeedItem[];
   rows: Array<{ id: string; recipientName: string; status: string }>;
   exceptions: number;
+  /** Role-scoped: staff = facility full ledger; customer = own billing only. */
+  finance: FinanceSummary;
 }
 
 function timeAgo(iso: string): string {
@@ -121,9 +125,9 @@ export const getServerSideProps: GetServerSideProps<DashboardProps> = async (con
     returned,
     exceptions,
     processedToday,
-    revenueAgg,
     printQueueDocs,
     recentEvents,
+    finance,
   ] = await Promise.all([
     prisma.document.findMany({ where, orderBy: { createdAt: "desc" }, take: 10 }),
     prisma.document.count({ where: { ...where, status: { in: ["UPLOADED", "QUEUED_FOR_PRINT"] } } }),
@@ -146,14 +150,6 @@ export const getServerSideProps: GetServerSideProps<DashboardProps> = async (con
         updatedAt: { gte: startOfToday },
       },
     }),
-    prisma.payment.aggregate({
-      where: {
-        status: "PAID",
-        updatedAt: { gte: startOfToday },
-        document: where,
-      },
-      _sum: { amount: true },
-    }),
     prisma.document.findMany({
       where: { ...where, status: { in: ["UPLOADED", "QUEUED_FOR_PRINT"] } },
       orderBy: { createdAt: "asc" },
@@ -165,6 +161,8 @@ export const getServerSideProps: GetServerSideProps<DashboardProps> = async (con
       orderBy: { createdAt: "desc" },
       take: 12,
     }),
+    // Staff: all payments (full view). Customer: only their documents.
+    getFinanceSummary({ ownerId: isStaff ? null : user.id }),
   ]);
 
   const facilityLabel = [FACILITY_ADDRESS.local_area, FACILITY_ADDRESS.city, FACILITY_ADDRESS.street_address]
@@ -200,7 +198,7 @@ export const getServerSideProps: GetServerSideProps<DashboardProps> = async (con
       today: {
         processed: processedToday,
         exceptions,
-        revenue: revenueAgg._sum.amount ?? 0,
+        revenue: finance.paidToday,
       },
       printQueue: printQueueDocs.map((d) => ({
         id: d.id,
@@ -213,6 +211,7 @@ export const getServerSideProps: GetServerSideProps<DashboardProps> = async (con
       feed,
       rows: documents.map((d) => ({ id: d.id, recipientName: d.recipientName, status: d.status })),
       exceptions,
+      finance,
     },
   };
 };
@@ -227,6 +226,7 @@ export default function Dashboard({
   feed,
   rows,
   exceptions,
+  finance,
 }: DashboardProps) {
   const [clock, setClock] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
@@ -354,6 +354,7 @@ export default function Dashboard({
                 <div className="pq-stat-label">Delivered today</div>
               </div>
             </div>
+            <FinanceSection finance={finance} />
             <Card title="Recent dispatches">
               {rows.length === 0 ? (
                 <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
@@ -549,12 +550,18 @@ export default function Dashboard({
                     <span className="label">Exceptions</span>
                     {today.exceptions > 0 && <span className="trend down">⚠️ needs review</span>}
                   </Link>
-                  <div className="ops-score">
+                  <a href="#finance" className="ops-score" title="Open financial section">
                     <span className="number">
                       R {today.revenue.toLocaleString("en-ZA", { maximumFractionDigits: 0 })}
                     </span>
                     <span className="label">Revenue (paid today)</span>
-                  </div>
+                    {finance.outstanding > 0 && (
+                      <span className="trend down">
+                        {finance.unpaidCount} due · R{" "}
+                        {finance.outstanding.toLocaleString("en-ZA", { maximumFractionDigits: 0 })}
+                      </span>
+                    )}
+                  </a>
                 </div>
               </div>
 
@@ -610,6 +617,10 @@ export default function Dashboard({
                 </div>
               </div>
             </div>
+          </div>
+
+          <div id="finance" className="ops-finance-slot">
+            <FinanceSection finance={finance} />
           </div>
 
           <footer className="ops-footer">
