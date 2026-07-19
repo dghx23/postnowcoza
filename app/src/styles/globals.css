@@ -2153,6 +2153,16 @@ table.data-table tr:last-child td {
   text-align: center;
   border: 1px solid var(--border-default);
   box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+  cursor: pointer;
+}
+a.ops-pipe:hover {
+  border-color: var(--teal-400);
+  box-shadow: var(--shadow-sm), 0 0 0 1px rgba(14, 140, 130, 0.12);
+  transform: translateY(-1px);
 }
 .ops-pipe .icon { font-size: 22px; margin-bottom: 2px; }
 .ops-pipe .count {
@@ -2204,6 +2214,72 @@ table.data-table tr:last-child td {
   color: var(--navy-900);
 }
 .ops-panel-title .icon { margin-right: 6px; }
+a.ops-panel-title-link {
+  text-decoration: none;
+  color: var(--navy-900);
+}
+a.ops-panel-title-link:hover {
+  color: var(--teal-600);
+}
+.ops-logo {
+  text-decoration: none;
+}
+.ops-badge-hub {
+  text-decoration: none;
+}
+.ops-badge-hub:hover {
+  background: var(--teal-100);
+}
+.ops-printer-link {
+  text-decoration: none;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+}
+.ops-printer-link:hover {
+  opacity: 0.9;
+}
+.ops-queue-row:hover {
+  background: var(--teal-050);
+}
+.ops-row-link {
+  text-decoration: none;
+  color: inherit;
+  display: inline;
+}
+.ops-row-link:hover .ops-recipient {
+  color: var(--teal-600);
+}
+.ops-facility-line {
+  color: inherit;
+  text-decoration: none;
+  display: block;
+}
+.ops-facility-line:hover {
+  color: var(--teal-700);
+}
+a.ops-score {
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease;
+}
+a.ops-score:hover {
+  border-color: var(--teal-400);
+}
+a.ops-feed-item-link {
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--radius-sm);
+  margin: 0 -4px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+a.ops-feed-item-link:hover {
+  background: var(--teal-050);
+}
+a.ops-feed-item-link:hover .ops-feed-doc {
+  color: var(--teal-600);
+}
 .ops-panel-sub {
   font-size: 12px;
   color: var(--text-muted);

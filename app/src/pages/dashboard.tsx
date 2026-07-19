@@ -390,15 +390,23 @@ export default function Dashboard({
         <div className="ops-dashboard">
           <header className="ops-header">
             <div className="ops-header-left">
-              <div className="ops-logo">
+              <Link href="/dashboard" className="ops-logo">
                 Post<span>Now</span>
-              </div>
+              </Link>
               <span className="ops-tagline">Delivered reliably.</span>
             </div>
             <div className="ops-header-right">
-              <span className="ops-badge-hub">📍 {facilityLabel}</span>
-              <span className="ops-clock">{clock || "—:—:—"}</span>
-              {isStaff && <PrinterStatus />}
+              <Link href="/printer" className="ops-badge-hub" title="Open Printer Hub">
+                📍 {facilityLabel}
+              </Link>
+              <span className="ops-clock" title="Local time">
+                {clock || "—:—:—"}
+              </span>
+              {isStaff && (
+                <Link href="/printer" className="ops-printer-link" title="Printer Hub">
+                  <PrinterStatus />
+                </Link>
+              )}
               <Link href="/dispatch/new" className="ops-cta">
                 + New Dispatch
               </Link>
@@ -408,55 +416,60 @@ export default function Dashboard({
           <div className="ops-main-grid">
             <div className="ops-left">
               <div className="ops-pipeline">
-                <div className="ops-pipe pending">
+                <Link href="/print-queue" className="ops-pipe pending" title="Open print queue">
                   <div className="icon">📥</div>
                   <div className="count">{pipeline.pending}</div>
                   <div className="label">Pending</div>
                   <div className="sub">UPLOADED / QUEUED</div>
-                </div>
-                <div className="ops-pipe printing">
+                </Link>
+                <Link href="/print-queue" className="ops-pipe printing" title="Print queue &amp; recent prints">
                   <div className="icon">🖨️</div>
                   <div className="count">{pipeline.printing}</div>
                   <div className="label">Printing</div>
                   <div className="sub">PRINTED (1h)</div>
-                </div>
-                <div className="ops-pipe dispatched">
+                </Link>
+                <Link href="/print-queue" className="ops-pipe dispatched" title="View facility ops">
                   <div className="icon">📦</div>
                   <div className="count">{pipeline.dispatched}</div>
                   <div className="label">Dispatched</div>
                   <div className="sub">AWAITING PICKUP</div>
-                </div>
-                <div className="ops-pipe transit">
+                </Link>
+                <Link href="/dashboard" className="ops-pipe transit" title="In transit">
                   <div className="icon">🚚</div>
                   <div className="count">{pipeline.inTransit}</div>
                   <div className="label">In Transit</div>
                   <div className="sub">COURIER</div>
-                </div>
-                <div className="ops-pipe delivered">
+                </Link>
+                <Link href="/dashboard" className="ops-pipe delivered" title="Delivered today">
                   <div className="icon">✅</div>
                   <div className="count">{pipeline.deliveredToday}</div>
                   <div className="label">Delivered</div>
                   <div className="sub">TODAY</div>
-                </div>
-                <div className="ops-pipe returned">
+                </Link>
+                <Link href="/dashboard" className="ops-pipe returned" title="Returns">
                   <div className="icon">🔄</div>
                   <div className="count">{pipeline.returned}</div>
                   <div className="label">Returned</div>
                   <div className="sub">CLOSED / IN RETURN</div>
-                </div>
+                </Link>
               </div>
 
               <div className="ops-panel ops-panel-grow">
                 <div className="ops-panel-header">
-                  <span className="ops-panel-title">
+                  <Link href="/print-queue" className="ops-panel-title ops-panel-title-link">
                     <span className="icon">🖨️</span> Print Queue · Next Documents
-                  </span>
+                  </Link>
                   <Link href="/print-queue" className="ops-panel-sub ops-link">
                     {pipeline.pending} pending · open queue →
                   </Link>
                 </div>
                 {printQueue.length === 0 ? (
-                  <div className="ops-empty">Print queue is clear.</div>
+                  <div className="ops-empty">
+                    Print queue is clear.{" "}
+                    <Link href="/print-queue" className="ops-link">
+                      Open queue
+                    </Link>
+                  </div>
                 ) : (
                   <table className="ops-queue-table">
                     <thead>
@@ -474,25 +487,37 @@ export default function Dashboard({
                           (Date.now() - new Date(doc.createdAt).getTime()) / (1000 * 60 * 60);
                         const urgent = hours >= 4;
                         return (
-                          <tr key={doc.id}>
+                          <tr key={doc.id} className="ops-queue-row">
                             <td>
                               <Link href={`/tracking/${doc.id}`} className="ops-doc-id">
                                 #{doc.id.slice(0, 8).toUpperCase()}
                               </Link>
                             </td>
                             <td>
-                              <span className="ops-recipient">{doc.recipientName}</span>{" "}
-                              <span className="ops-city">{doc.city}</span>
+                              <Link href={`/tracking/${doc.id}`} className="ops-row-link">
+                                <span className="ops-recipient">{doc.recipientName}</span>{" "}
+                                <span className="ops-city">{doc.city}</span>
+                              </Link>
                             </td>
-                            <td className="ops-time">{timeAgo(doc.createdAt)}</td>
                             <td>
-                              <span
-                                className={`ops-return ${doc.returnPreference === "DIRECT" ? "direct" : "via"}`}
-                              >
-                                {doc.returnPreference === "DIRECT" ? "Direct" : "Via PostNow"}
-                              </span>
+                              <Link href={`/tracking/${doc.id}`} className="ops-time ops-row-link">
+                                {timeAgo(doc.createdAt)}
+                              </Link>
                             </td>
-                            <td>{urgent || i === 0 ? <span className="ops-urgent">URGENT</span> : null}</td>
+                            <td>
+                              <Link href={`/print-queue`} className="ops-row-link">
+                                <span
+                                  className={`ops-return ${doc.returnPreference === "DIRECT" ? "direct" : "via"}`}
+                                >
+                                  {doc.returnPreference === "DIRECT" ? "Direct" : "Via PostNow"}
+                                </span>
+                              </Link>
+                            </td>
+                            <td>
+                              <Link href={`/tracking/${doc.id}`} className="ops-row-link">
+                                {urgent || i === 0 ? <span className="ops-urgent">URGENT</span> : null}
+                              </Link>
+                            </td>
                           </tr>
                         );
                       })}
@@ -511,19 +536,19 @@ export default function Dashboard({
                   <span className="ops-panel-sub">as of now</span>
                 </div>
                 <div className="ops-scoreboard">
-                  <div className="ops-score">
+                  <Link href="/print-queue" className="ops-score" title="Processed work">
                     <span className="number">{today.processed}</span>
                     <span className="label">Total Processed</span>
-                  </div>
-                  <div className="ops-score">
+                  </Link>
+                  <Link href="/dashboard" className="ops-score" title="Active outbound">
                     <span className="number">{pipeline.inTransit + pipeline.dispatched}</span>
                     <span className="label">Active Outbound</span>
-                  </div>
-                  <div className="ops-score">
+                  </Link>
+                  <Link href="/print-queue" className="ops-score" title="Exceptions">
                     <span className="number">{today.exceptions}</span>
                     <span className="label">Exceptions</span>
                     {today.exceptions > 0 && <span className="trend down">⚠️ needs review</span>}
-                  </div>
+                  </Link>
                   <div className="ops-score">
                     <span className="number">
                       R {today.revenue.toLocaleString("en-ZA", { maximumFractionDigits: 0 })}
@@ -545,18 +570,21 @@ export default function Dashboard({
                     <div className="ops-empty">No activity yet.</div>
                   ) : (
                     feed.map((item, i) => (
-                      <div key={i} className="ops-feed-item">
+                      <Link
+                        key={i}
+                        href={`/tracking/${item.documentId}`}
+                        className="ops-feed-item ops-feed-item-link"
+                        title={`Open tracking #${item.shortId}`}
+                      >
                         <span className="time">{item.time}</span>
                         <span className="icon">{item.icon}</span>
                         <span className="msg">
-                          <Link href={`/tracking/${item.documentId}`} className="ops-feed-doc">
-                            #{item.shortId}
-                          </Link>{" "}
+                          <span className="ops-feed-doc">#{item.shortId}</span>{" "}
                           <span className={item.danger ? "danger" : item.highlight ? "highlight" : undefined}>
                             {item.message}
                           </span>
                         </span>
-                      </div>
+                      </Link>
                     ))
                   )}
                 </div>
@@ -564,17 +592,20 @@ export default function Dashboard({
 
               <div className="ops-panel">
                 <div className="ops-panel-header">
-                  <span className="ops-panel-title">
+                  <Link href="/printer" className="ops-panel-title ops-panel-title-link">
                     <span className="icon">🗺️</span> Facility
-                  </span>
+                  </Link>
                   <span className="ops-panel-sub">print &amp; dispatch hub</span>
                 </div>
                 <div className="ops-map-placeholder">
-                  📍 {facilityLabel || "Set FACILITY_* env vars for hub address"}
+                  <Link href="/printer" className="ops-facility-line">
+                    📍 {facilityLabel || "Set FACILITY_* env vars for hub address"}
+                  </Link>
                   <div className="ops-map-links">
                     <Link href="/print-queue">Print Queue</Link>
                     <Link href="/printer">Printer Hub</Link>
                     <Link href="/roadmap">Roadmap</Link>
+                    <Link href="/dispatch/new">New Dispatch</Link>
                   </div>
                 </div>
               </div>
