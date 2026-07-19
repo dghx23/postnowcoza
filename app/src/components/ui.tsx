@@ -197,6 +197,9 @@ export function AppHeader({
               <Link href="/finance#payment-structure" onClick={() => setSettingsOpen(false)}>
                 Payment structure →
               </Link>
+              <Link href="/finance/mapping" onClick={() => setSettingsOpen(false)}>
+                Finance Mapping →
+              </Link>
               <Link href="/roadmap" onClick={() => setSettingsOpen(false)}>
                 Roadmap (Zoho env) →
               </Link>
@@ -243,7 +246,13 @@ export function Alert({
   );
 }
 
-export function Badge({ children, tone }: { children: ReactNode; tone: "teal" | "navy" | "success" }) {
+export function Badge({
+  children,
+  tone,
+}: {
+  children: ReactNode;
+  tone: "teal" | "navy" | "success" | "danger" | "warn";
+}) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }
 

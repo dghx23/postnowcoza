@@ -137,6 +137,7 @@ Migrations (selected):
 | `/portal`, `/portal/dispatch/new` | **Parked** customer self-serve (see `docs/CUSTOMER_PORTAL_PARKED.md`) | session |
 | `/pay/[id]` | Staff: request payment (email + WhatsApp). Guest/token or `?pay=1`: PayFast checkout | staff / owner / token |
 | `/finance` | Staff ledger, Zoho two-way, payment structure | STAFF/ADMIN |
+| `/finance/mapping` | Zoho ↔ PostNow field mapping, push/pull flow docs, manual sync, sync history, exceptions | STAFF/ADMIN |
 | `/roadmap` | Internal feature tracker (+ ensure-seed of known items) | STAFF/ADMIN |
 | `/tracking`, `/tracking/[id]` | Tracking hub + document home (timeline, pay CTA, print log, courier, custody). Staff-created: STAFF badge, **Arrange Dispatch Fee** CTA | owner or staff |
 | `/print-queue` | Staff print queue | STAFF/ADMIN |
@@ -161,6 +162,7 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
 | `/api/finance/zoho` | GET config; POST push/pull Zoho Books | STAFF/ADMIN |
 | `/api/finance/exceptions` | GET/POST SyncException list + resolve | STAFF/ADMIN |
 | `/api/finance/billing-items` | CRUD payment-structure lines | STAFF/ADMIN |
+| `/api/finance/sync-history` | GET recent Zoho push/pull audit events (all documents) | STAFF/ADMIN |
 | `/api/webhooks/payfast` | PayFast ITN → PAID + Zoho push | IP/signature, no session |
 | `/api/webhooks/bobgo` | Courier webhooks | HMAC |
 | `/api/webhooks/bobpay` | Legacy Bob Pay (if used) | IP + signature |
@@ -254,6 +256,36 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
 - Failures: `Payment.zohoBooksSyncError` + `logSyncException` (`src/lib/syncExceptions.ts`).
 - API: `/api/finance/zoho` — push one / push unsynced PAID / pull one / pullAll.
 - UI: `/finance` bar + ledger Zoho column (Invoice ↗, status badge, Push/Pull).
+
+#### 6.2.5 Finance Mapping page
+
+`/finance/mapping` — linked from the sidebar's ⚙ **settings drawer** (bottom
+links, alongside "Payment structure" and "Roadmap"). One reference/ops page
+covering everything about the Zoho relationship in one place, since it was
+previously spread across `/finance`, the ⚙ drawer, and this doc:
+
+- **Where things live** — table mapping each PostNow concept to its Zoho
+  Books counterpart and which side is source of truth (Document/dispatch
+  never syncs at all; Payment amount/status push then pull; BillingItem →
+  Item is staff-mapped via `zohoItemId`, not auto-created; SyncException is
+  PostNow-only, Zoho has no visibility into our failures).
+- **Process & flow** — the push and pull step lists straight from
+  `zohoBooksSync.ts` (6.2.4), so this page can't drift from what the code
+  actually does.
+- **Scheduling** — states plainly that Zoho sync is **manual-only today**,
+  no cron; contrasts with the Epson email-notification sync
+  (`/api/epson/notifications/sync`), which does run on a schedule, as the
+  template to follow if this needs to stop being manual.
+- **Manual sync** — "Push all unsynced" / "Pull all linked" buttons calling
+  the same `/api/finance/zoho` bulk actions `/finance` already exposes.
+- **Sync history** — new `GET /api/finance/sync-history`: the last 50
+  `zoho_books_synced` / `zoho_books_sync_failed` / `zoho_books_paid_inbound`
+  audit events across *all* documents (existing `/api/audit/[documentId]`
+  is per-document only).
+- **Exceptions — highlighting & investigation** — reuses
+  `/api/finance/exceptions`, with a toggle for resolved history and a
+  severity-colored (`Badge` gained `danger`/`warn` tones for this) row per
+  exception, each linking to its document's tracking page to investigate.
 
 ### 6.2.5 Financial ledger & payment structure
 
