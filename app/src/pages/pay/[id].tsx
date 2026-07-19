@@ -135,7 +135,9 @@ export default function PayPage({
   const [error, setError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [requestEmail, setRequestEmail] = useState(recipientEmail || "");
+  const [requestPhone, setRequestPhone] = useState(recipientPhone || "");
   const [requestSent, setRequestSent] = useState<string | null>(null);
+  const [sendingChannel, setSendingChannel] = useState<"email" | "whatsapp" | null>(null);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -191,23 +193,34 @@ export default function PayPage({
     }
   }
 
-  async function sendPaymentRequest() {
+  async function sendPaymentRequest(channel: "email" | "whatsapp") {
     setLoading(true);
+    setSendingChannel(channel);
     setError(null);
     setRequestSent(null);
     try {
+      const body =
+        channel === "whatsapp"
+          ? { channel: "whatsapp", phone: requestPhone.trim() }
+          : { channel: "email", email: requestEmail.trim() };
       const res = await fetch(`/api/documents/${documentId}/request-payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: requestEmail.trim() }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not send payment request");
-      setRequestSent(data.message ?? `Payment request sent to ${requestEmail}`);
+      setRequestSent(
+        data.message ??
+          (channel === "whatsapp"
+            ? `Payment request WhatsApp sent to ${requestPhone}`
+            : `Payment request sent to ${requestEmail}`)
+      );
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
+      setSendingChannel(null);
     }
   }
 
@@ -321,7 +334,6 @@ export default function PayPage({
                     value={requestEmail}
                     onChange={(e) => setRequestEmail(e.target.value)}
                     placeholder="customer@example.com"
-                    required
                     autoComplete="email"
                   />
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
@@ -329,9 +341,24 @@ export default function PayPage({
                   </div>
                 </div>
 
+                <div className="field" style={{ marginTop: 16 }}>
+                  <label htmlFor="pay-request-phone">WhatsApp number to send the payment request to</label>
+                  <input
+                    id="pay-request-phone"
+                    type="tel"
+                    value={requestPhone}
+                    onChange={(e) => setRequestPhone(e.target.value)}
+                    placeholder="0731234567 or +27731234567"
+                    autoComplete="tel"
+                  />
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+                    Defaults to the recipient phone from the job. SA numbers starting with 0 are sent as +27.
+                  </div>
+                </div>
+
                 <p className="pay-note" style={{ marginTop: 14 }}>
-                  The email includes full order details (recipient, address, print options, amount) and a
-                  one-time secure link to pay R {amount.toFixed(2)}.
+                  Email and WhatsApp both include full order details (recipient, address, print options,
+                  amount) and a one-time secure link to pay R {amount.toFixed(2)}. You can send either or both.
                 </p>
 
                 <div className="pay-actions">
@@ -339,9 +366,21 @@ export default function PayPage({
                     type="button"
                     className="btn btn-primary pay-btn"
                     disabled={loading || !requestEmail.trim()}
-                    onClick={() => void sendPaymentRequest()}
+                    onClick={() => void sendPaymentRequest("email")}
                   >
-                    {loading ? "Sending…" : "Send payment request email"}
+                    {loading && sendingChannel === "email"
+                      ? "Sending email…"
+                      : "Send payment request email"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-whatsapp pay-btn"
+                    disabled={loading || !requestPhone.trim()}
+                    onClick={() => void sendPaymentRequest("whatsapp")}
+                  >
+                    {loading && sendingChannel === "whatsapp"
+                      ? "Sending WhatsApp…"
+                      : "Send payment request WhatsApp"}
                   </button>
                   <Link
                     href={`/pay/${documentId}?pay=1`}

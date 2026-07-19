@@ -1,8 +1,9 @@
 import nodemailer from "nodemailer";
 import { randomBytes } from "crypto";
-import type { Prisma } from "@prisma/client";
+import type { Document, Payment, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { appendAuditEvent } from "@/lib/audit";
+import { sendWhatsAppText, normalizeWhatsAppTo } from "@/lib/whatsapp";
 
 const SMTP_HOST = process.env.SMTP_HOST ?? "";
 const SMTP_PORT = Number(process.env.SMTP_PORT ?? "587");
@@ -37,13 +38,24 @@ export function getStoredPaymentRequestToken(raw: unknown): string | null {
   return typeof t === "string" && t.length >= 16 ? t : null;
 }
 
-export async function sendDispatchPaymentRequest(input: {
-  documentId: string;
-  toEmail: string;
-  actorId?: string;
-  ip?: string;
-}): Promise<{ paymentId: string; token: string; payUrl: string; amount: number }> {
-  const document = await prisma.document.findUnique({ where: { id: input.documentId } });
+type PreparedPaymentRequest = {
+  document: Document;
+  payment: Payment;
+  token: string;
+  payUrl: string;
+  amount: number;
+  ref: string;
+  colour: string;
+  returnPref: string;
+  address: string;
+};
+
+/** Ensure fee, unpaid payment row, and a fresh one-time pay token/link. */
+async function preparePaymentRequest(
+  documentId: string,
+  extraPayload: Record<string, unknown> = {}
+): Promise<PreparedPaymentRequest> {
+  const document = await prisma.document.findUnique({ where: { id: documentId } });
   if (!document) throw new Error("Document not found");
 
   let fee = document.dispatchFee;
@@ -73,8 +85,8 @@ export async function sendDispatchPaymentRequest(input: {
 
   const rawPayload = {
     paymentRequestToken: token,
-    paymentRequestEmail: input.toEmail.trim().toLowerCase(),
     paymentRequestSentAt: new Date().toISOString(),
+    ...extraPayload,
   };
 
   if (!payment) {
@@ -118,6 +130,55 @@ export async function sendDispatchPaymentRequest(input: {
     .filter(Boolean)
     .join(", ");
 
+  return {
+    document,
+    payment,
+    token,
+    payUrl,
+    amount: fee,
+    ref,
+    colour,
+    returnPref,
+    address,
+  };
+}
+
+function buildWhatsAppMessage(p: PreparedPaymentRequest): string {
+  const { document, amount, ref, colour, returnPref, address, payUrl } = p;
+  return [
+    `PostNow — payment request`,
+    ``,
+    `Hi${document.recipientName ? ` ${document.recipientName.split(" ")[0]}` : ""},`,
+    ``,
+    `We've prepared a secure document dispatch. Please pay the dispatch fee so we can print and book courier collection.`,
+    ``,
+    `Reference: #${ref}`,
+    `Recipient: ${document.recipientName}`,
+    `Deliver to: ${address}`,
+    `Print: ${colour} · ${document.printCopies} cop${document.printCopies === 1 ? "y" : "ies"}`,
+    `Return: ${returnPref}`,
+    `Amount due: R ${amount.toFixed(2)}`,
+    ``,
+    `Pay securely here:`,
+    payUrl,
+    ``,
+    `— PostNow E2`,
+  ].join("\n");
+}
+
+export async function sendDispatchPaymentRequest(input: {
+  documentId: string;
+  toEmail: string;
+  actorId?: string;
+  ip?: string;
+}): Promise<{ paymentId: string; token: string; payUrl: string; amount: number }> {
+  const prepared = await preparePaymentRequest(input.documentId, {
+    paymentRequestEmail: input.toEmail.trim().toLowerCase(),
+    paymentRequestChannel: "email",
+  });
+
+  const { document, payment, token, payUrl, amount, ref, colour, returnPref, address } = prepared;
+
   const subject = `PostNow — payment request for dispatch #${ref}`;
   const text = [
     `Hello,`,
@@ -133,7 +194,7 @@ export async function sendDispatchPaymentRequest(input: {
     `Contact email: ${document.recipientEmail || "—"}`,
     `Print: ${colour} · ${document.printCopies} cop${document.printCopies === 1 ? "y" : "ies"}`,
     `Return: ${returnPref}`,
-    `Amount due: R ${fee.toFixed(2)}`,
+    `Amount due: R ${amount.toFixed(2)}`,
     ``,
     `Pay securely here:`,
     payUrl,
@@ -157,7 +218,7 @@ export async function sendDispatchPaymentRequest(input: {
         <tr><td style="padding:8px 0;color:#6B7280">Phone</td><td style="padding:8px 0;text-align:right">${escapeHtml(document.recipientPhone || "—")}</td></tr>
         <tr><td style="padding:8px 0;color:#6B7280">Print</td><td style="padding:8px 0;text-align:right">${colour} · ${document.printCopies} cop${document.printCopies === 1 ? "y" : "ies"}</td></tr>
         <tr><td style="padding:8px 0;color:#6B7280">Return</td><td style="padding:8px 0;text-align:right">${returnPref}</td></tr>
-        <tr><td style="padding:12px 0;border-top:1px solid #E5E7EB;font-weight:700">Amount due</td><td style="padding:12px 0;border-top:1px solid #E5E7EB;font-weight:800;text-align:right;color:#0D9488;font-size:18px">R ${fee.toFixed(2)}</td></tr>
+        <tr><td style="padding:12px 0;border-top:1px solid #E5E7EB;font-weight:700">Amount due</td><td style="padding:12px 0;border-top:1px solid #E5E7EB;font-weight:800;text-align:right;color:#0D9488;font-size:18px">R ${amount.toFixed(2)}</td></tr>
       </table>
       <p style="text-align:center;margin:28px 0">
         <a href="${payUrl}" style="display:inline-block;background:#0D9488;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px">
@@ -186,15 +247,59 @@ export async function sendDispatchPaymentRequest(input: {
     actorId: input.actorId,
     action: "payment_request_sent",
     metadata: {
+      channel: "email",
       to: input.toEmail.trim().toLowerCase(),
-      amount: fee,
+      amount,
       paymentId: payment.id,
       payUrl,
     },
     ip: input.ip,
   });
 
-  return { paymentId: payment.id, token, payUrl, amount: fee };
+  return { paymentId: payment.id, token, payUrl, amount };
+}
+
+export async function sendDispatchPaymentRequestWhatsApp(input: {
+  documentId: string;
+  toPhone: string;
+  actorId?: string;
+  ip?: string;
+}): Promise<{ paymentId: string; token: string; payUrl: string; amount: number; to: string }> {
+  const toNorm = normalizeWhatsAppTo(input.toPhone);
+  if (!toNorm || toNorm.length < 10) {
+    throw new Error("A valid phone number is required for WhatsApp");
+  }
+
+  const prepared = await preparePaymentRequest(input.documentId, {
+    paymentRequestPhone: toNorm,
+    paymentRequestChannel: "whatsapp",
+  });
+
+  const message = buildWhatsAppMessage(prepared);
+  const result = await sendWhatsAppText({ to: toNorm, message });
+
+  await appendAuditEvent({
+    documentId: prepared.document.id,
+    actorId: input.actorId,
+    action: "payment_request_sent",
+    metadata: {
+      channel: "whatsapp",
+      to: toNorm,
+      amount: prepared.amount,
+      paymentId: prepared.payment.id,
+      payUrl: prepared.payUrl,
+      whatsappMessageId: result.messageId,
+    },
+    ip: input.ip,
+  });
+
+  return {
+    paymentId: prepared.payment.id,
+    token: prepared.token,
+    payUrl: prepared.payUrl,
+    amount: prepared.amount,
+    to: toNorm,
+  };
 }
 
 function escapeHtml(s: string): string {

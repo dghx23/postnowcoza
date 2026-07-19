@@ -138,6 +138,20 @@ a:hover {
   opacity: 0.7;
   cursor: not-allowed;
 }
+/* WhatsApp send CTA */
+.btn-whatsapp {
+  background: #128c7e;
+  color: #fff;
+  padding: 14px 26px;
+}
+.btn-whatsapp:hover {
+  background: #075e54;
+  text-decoration: none;
+}
+.btn-whatsapp:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 .btn-secondary {
   background: transparent;
   color: var(--navy-900);
