@@ -451,11 +451,12 @@ Pipeline:
 4. On **error/expired** → job settled, audit `epson_print_failed`; if the
    document is still `PRINTED`, it is rolled back to `QUEUED_FOR_PRINT` so
    staff can re-print.
-5. Triggers: (a) automatic when `/api/epson/status` sees pending jobs,
-   (b) manual "Check mailbox now" on `/printer`,
-   (c) Vercel Cron every 5 minutes → `/api/epson/notifications/sync`
-   (requires `CRON_SECRET` Bearer for unattended calls on Pro; staff session
-   works without it).
+5. Triggers:
+   (a) **Vercel Cron every 5 minutes** → `GET/POST /api/epson/notifications/sync`
+       (`vercel.json` schedule `*/5 * * * *`; needs `CRON_SECRET` Bearer for
+       unattended calls — set in Vercel; Pro plan required for sub-daily crons),
+   (b) manual **Check mailbox now** / re-scan on `/printer` (staff session),
+   (c) status hub no longer runs IMAP on poll (keeps the page fast).
 
 UI: tracking page shows a "Print confirmation" card from the latest
 `EpsonPrintJob`; PrinterStatus recent-jobs includes confirmation failures

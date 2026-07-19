@@ -972,8 +972,10 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
             {emailNotifPanelOpen && (
               <div className="epson-notif-panel-body">
                 <p className="epson-notif-panel-desc">
-                  Pull completed/error notices from the Zoho print-agent mailbox (for Email Print and owner
-                  emails). Separate from Connect webhooks on the left.
+                  Pull completed/error notices from the Zoho print-agent mailbox (
+                  <code>postnowprint.agent@postnow.co.za</code>) for Email Print and owner emails. IMAP is
+                  polled automatically every <strong>5 minutes</strong> (Vercel Cron), or immediately when
+                  you press the buttons below. Separate from Connect webhooks on the left.
                 </p>
                 <div className="epson-notif-panel-actions">
                   <button
@@ -995,6 +997,12 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
                     Re-scan recent (incl. read)
                   </button>
                 </div>
+                <p className="epson-notif-panel-foot">
+                  After enabling IMAP in Zoho for this mailbox, use the same password as SMTP (
+                  <code>SMTP_PASSWORD</code> / optional <code>IMAP_PASSWORD</code>). Cron hits{" "}
+                  <code>GET/POST /api/epson/notifications/sync</code> with{" "}
+                  <code>Authorization: Bearer CRON_SECRET</code>.
+                </p>
                 {notifResult && (
                   <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)" }}>
                     {notifResult}

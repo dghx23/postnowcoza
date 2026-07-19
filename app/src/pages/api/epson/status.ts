@@ -192,7 +192,7 @@ async function getRecentJobs(): Promise<{
  * Polled every ~30s by Printer Hub / dashboard.
  * Fast path: device info + DB job counts. IMAP only when ?sync=1 or
  * fire-and-forget after response isn't possible on Vercel — so mailbox
- * sync stays on the dedicated notifications/sync button and daily cron.
+ * sync stays on the dedicated notifications/sync button and 5-minute cron.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
