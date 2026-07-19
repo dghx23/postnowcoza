@@ -253,48 +253,38 @@ export default function PayPage({
                 <Badge tone="success">POPIA</Badge>
                 <Badge tone="teal">Next-day collection</Badge>
               </div>
-              <div className="pay-brand-row" aria-label="Payment providers">
-                <div className="pay-brand">
-                  <span className="pay-brand-label">Online</span>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/pay-logos/logo-payfast.svg" alt="Payfast" height={36} width={160} />
-                </div>
-                <div className="pay-brand">
-                  <span className="pay-brand-label">In person</span>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/pay-logos/logo-network.svg" alt="Network International" height={36} width={180} />
-                </div>
-              </div>
-              <div className="pay-method-icons" aria-label="Accepted payment methods">
-                {[
-                  ["pm-visa.svg", "Visa"],
-                  ["pm-mastercard.svg", "Mastercard"],
-                  ["pm-amex.svg", "American Express"],
-                  ["pm-instant-eft.svg", "Instant EFT"],
-                  ["pm-apple-pay.svg", "Apple Pay"],
-                  ["pm-samsung-pay.svg", "Samsung Pay"],
-                  ["pm-google-pay.svg", "Google Pay"],
-                  ["pm-capitec-pay.svg", "Capitec Pay"],
-                  ["pm-mobicred.svg", "Mobicred"],
-                  ["pm-moretyme.svg", "MoreTyme"],
-                  ["pm-scode.svg", "SCode"],
-                  ["pm-snapscan.svg", "SnapScan"],
-                  ["pm-zapper.svg", "Zapper"],
-                  ["pm-masterpass.svg", "Masterpass"],
-                  ["pm-rcs.svg", "RCS"],
-                ].map(([file, label]) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={file}
-                    src={`/pay-logos/${file}`}
-                    alt={label}
-                    title={label}
-                    height={56}
-                    width={80}
-                  />
-                ))}
-              </div>
             </Card>
+          </div>
+
+          {/* Full-width payment method logos along the bottom */}
+          <div className="pay-methods-strip" aria-label="Accepted payment methods">
+            {[
+              ["pm-visa.svg", "Visa"],
+              ["pm-mastercard.svg", "Mastercard"],
+              ["pm-amex.svg", "American Express"],
+              ["pm-instant-eft.svg", "Instant EFT"],
+              ["pm-apple-pay.svg", "Apple Pay"],
+              ["pm-samsung-pay.svg", "Samsung Pay"],
+              ["pm-google-pay.svg", "Google Pay"],
+              ["pm-capitec-pay.svg", "Capitec Pay"],
+              ["pm-mobicred.svg", "Mobicred"],
+              ["pm-moretyme.svg", "MoreTyme"],
+              ["pm-scode.svg", "SCode"],
+              ["pm-snapscan.svg", "SnapScan"],
+              ["pm-zapper.svg", "Zapper"],
+              ["pm-masterpass.svg", "Masterpass"],
+              ["pm-rcs.svg", "RCS"],
+            ].map(([file, label]) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={file}
+                src={`/pay-logos/${file}`}
+                alt={label}
+                title={label}
+                height={48}
+                width={72}
+              />
+            ))}
           </div>
 
           {/* Hidden form used for PayFast POST redirect */}
