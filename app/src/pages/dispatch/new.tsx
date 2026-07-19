@@ -138,6 +138,7 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
                 {file ? file.name : "Drag & drop your wet-ink signature document here, or click to choose a file"}
                 <input
                   type="file"
+                  accept="application/pdf,.pdf"
                   style={{ display: "none" }}
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 />

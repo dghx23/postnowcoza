@@ -56,6 +56,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const fileRes = await axios.get<ArrayBuffer>(downloadUrl, { responseType: "arraybuffer" });
     const pdfBuffer = Buffer.from(fileRes.data);
 
+    if (pdfBuffer.length === 0 || pdfBuffer.subarray(0, 5).toString("latin1") !== "%PDF-") {
+      await appendAuditEvent({
+        documentId: id,
+        actorId: user.id,
+        action: "email_print_failed",
+        metadata: { via: "epson_direct", to: epsonDirectEmail, error: `Stored file is not a valid PDF (${pdfBuffer.length} bytes)` },
+        ip: req.socket.remoteAddress ?? undefined,
+      });
+      return res.status(502).json({ error: "Stored document is not a valid PDF — re-upload it and try again." });
+    }
+
     try {
       await sendPrintEmail(epsonDirectEmail, pdfBuffer, `${document.id}.pdf`, `PostNow document ${document.id}`);
     } catch (err) {
@@ -95,6 +106,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const downloadUrl = await getDocumentDownloadUrl(document.storageKey);
   const fileRes = await axios.get<ArrayBuffer>(downloadUrl, { responseType: "arraybuffer" });
   const pdfBuffer = Buffer.from(fileRes.data);
+
+  if (pdfBuffer.length === 0 || pdfBuffer.subarray(0, 5).toString("latin1") !== "%PDF-") {
+    await appendAuditEvent({
+      documentId: id,
+      actorId: user.id,
+      action: "epson_print_failed",
+      metadata: { via: "epson_connect", reason: "invalid_pdf", error: `Stored file is not a valid PDF (${pdfBuffer.length} bytes)` },
+      ip: req.socket.remoteAddress ?? undefined,
+    });
+    return res.status(502).json({ error: "Stored document is not a valid PDF — re-upload it and try again." });
+  }
+
   const jobName = `postnow-${document.id}`;
 
   let epsonJobId: string;

@@ -46,9 +46,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const body = Buffer.concat(chunks);
   if (body.length === 0) return res.status(400).json({ error: "Empty upload" });
+  if (body.subarray(0, 5).toString("latin1") !== "%PDF-") {
+    return res.status(400).json({ error: "Only PDF files are accepted — the uploaded file is not a valid PDF." });
+  }
 
   const filename = (req.headers["x-filename"] as string) ?? "document";
-  const contentType = req.headers["content-type"] ?? "application/octet-stream";
+  const contentType = "application/pdf";
   const checksum = createHash("sha256").update(body).digest("hex");
   const storageKey = newStorageKey(user.id, filename);
   const encryptionKeyRef = randomBytes(16).toString("hex");
