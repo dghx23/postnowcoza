@@ -52,6 +52,12 @@ interface TrackingProps {
   status: string;
   timeline: TimelineEvent[];
   logRows: Array<{ time: string; event: string }>;
+  /** Latest printer confirmation from Epson API or email notifications. */
+  printJob: {
+    status: string;
+    jobId: string;
+    updatedAt: string;
+  } | null;
   dispatch: {
     recipientEmail: string;
     recipientPhone: string;
@@ -79,7 +85,9 @@ function formatAuditAction(action: string): string {
     document_downloaded: "Document downloaded by staff",
     dispatch_created: "Courier dispatch booked",
     return_requested: "Return dispatch requested",
-    epson_print_failed: "Print attempt failed (retried automatically)",
+    epson_print_failed: "Printer reported a print failure",
+    email_print_failed: "Email Print submission failed",
+    epson_print_confirmed: "Printer confirmed print completed",
     bobgo_webhook_received: "Courier status update received",
     pod_fetch_failed: "Proof-of-delivery fetch failed",
     shipment_exception: "Courier reported a delivery exception",
@@ -123,6 +131,11 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
     event: formatAuditAction(e.action),
   }));
 
+  const latestPrintJob = await prisma.epsonPrintJob.findFirst({
+    where: { documentId: id },
+    orderBy: { createdAt: "desc" },
+  });
+
   return {
     props: {
       userLabel: session.user.email,
@@ -131,6 +144,13 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
       status: document.status,
       timeline,
       logRows,
+      printJob: latestPrintJob
+        ? {
+            status: latestPrintJob.status,
+            jobId: latestPrintJob.jobId,
+            updatedAt: latestPrintJob.updatedAt.toISOString(),
+          }
+        : null,
       dispatch: {
         recipientEmail: document.recipientEmail,
         recipientPhone: document.recipientPhone,
@@ -146,6 +166,25 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
   };
 };
 
+function printJobLabel(status: string): { label: string; tone: "success" | "navy" | "teal" } {
+  switch (status) {
+    case "completed":
+      return { label: "Printer confirmed", tone: "success" };
+    case "error_occurred":
+      return { label: "Printer reported error", tone: "navy" };
+    case "expired":
+    case "canceled":
+      return { label: `Print ${status}`, tone: "navy" };
+    case "pending":
+    case "processing":
+    case "preparing":
+    case "reserved":
+      return { label: "Awaiting printer confirmation", tone: "teal" };
+    default:
+      return { label: status, tone: "navy" };
+  }
+}
+
 export default function Tracking({
   userLabel,
   documentId,
@@ -153,6 +192,7 @@ export default function Tracking({
   status,
   timeline,
   logRows,
+  printJob,
   dispatch,
 }: TrackingProps) {
   const router = useRouter();
@@ -275,6 +315,31 @@ export default function Tracking({
                   </div>
                 </div>
               </Card>
+              {printJob && (
+                <Card title="Print confirmation">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
+                    <Badge tone={printJobLabel(printJob.status).tone}>
+                      {printJobLabel(printJob.status).label}
+                    </Badge>
+                    <div style={{ color: "var(--text-secondary)" }}>
+                      Job status: <code>{printJob.status}</code>
+                    </div>
+                    <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+                      Updated{" "}
+                      {new Date(printJob.updatedAt).toLocaleString([], {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </div>
+                    {printJob.status === "error_occurred" && (
+                      <div style={{ color: "var(--danger, #b42318)" }}>
+                        Epson rejected or failed this print. If status is back in the queue, re-upload or
+                        re-print from Print Queue.
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
             </div>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
               <Card title="Live Courier Tracking">
