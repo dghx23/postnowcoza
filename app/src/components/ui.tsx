@@ -22,7 +22,7 @@ export function AppHeader({
   const items: Array<{ key: NavKey; label: string; href: string }> = [
     { key: "dashboard", label: "Dashboard", href: "/dashboard" },
     { key: "dispatch", label: "New Dispatch", href: "/dispatch/new" },
-    { key: "tracking", label: "Tracking", href: "/dashboard" },
+    { key: "tracking", label: "Tracking", href: "/tracking" },
     ...(showPrintQueue ? [{ key: "print-queue" as const, label: "Print Queue", href: "/print-queue" }] : []),
     ...(showPrintQueue ? [{ key: "printer" as const, label: "Printer", href: "/printer" }] : []),
     ...(showRoadmap ? [{ key: "roadmap" as const, label: "Roadmap", href: "/roadmap" }] : []),
