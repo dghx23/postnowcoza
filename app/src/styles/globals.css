@@ -3848,26 +3848,121 @@ a.ops-feed-item-link:hover .ops-feed-doc {
   .finance-search { min-width: 100%; width: 100%; }
 }
 
-/* Compact Epson webhook status (always-on) */
-.epson-webhook-strip {
+/* Side-by-side collapsible notification panels (Printer hub) */
+.epson-notif-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 18px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .epson-notif-pair {
+    grid-template-columns: 1fr;
+  }
+}
+.epson-notif-panel.card {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.epson-notif-panel-toggle {
+  width: 100%;
   display: flex;
-  align-items: center;
-  gap: 10px 12px;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  background: var(--surface-card, #fff);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border: none;
+  background: var(--gray-025);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.epson-notif-panel-toggle:hover {
+  background: var(--gray-050);
+}
+.epson-notif-panel-chevron {
   font-size: 12px;
-  line-height: 1.35;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.epson-notif-panel-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--navy-900);
+  flex: 1;
+  min-width: 0;
+}
+.epson-notif-panel-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.epson-notif-panel-body {
+  padding: 14px 16px 16px;
+  border-top: 1px solid var(--border-default);
+}
+.epson-notif-panel-desc {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.epson-notif-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.epson-notif-panel-foot {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.epson-notif-panel-foot code {
+  font-size: 11px;
+  background: var(--gray-050);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.epson-notif-settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.epson-notif-settings-table th,
+.epson-notif-settings-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  vertical-align: top;
+}
+.epson-notif-settings-table th {
+  background: var(--gray-050);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.epson-notif-mono {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  word-break: break-all;
 }
 .epson-webhook-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
   background: #9CA3AF;
+  margin-top: 5px;
 }
 .epson-webhook-dot.on {
   background: #10B981;
@@ -3875,22 +3970,6 @@ a.ops-feed-item-link:hover .ops-feed-doc {
 }
 .epson-webhook-dot.off {
   background: #F59E0B;
-}
-.epson-webhook-text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  flex: 1;
-}
-.epson-webhook-text strong {
-  font-size: 12px;
-  color: var(--navy-900);
-}
-.epson-webhook-text span {
-  color: var(--text-muted);
-  word-break: break-all;
-  font-size: 11px;
 }
 
 /* Tracking — staff-created job badge */

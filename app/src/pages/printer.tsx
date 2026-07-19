@@ -126,9 +126,10 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   const [printDoubleSided, setPrintDoubleSided] = useState("none");
   const [defaultsSaved, setDefaultsSaved] = useState(false);
   const [notifConfiguring, setNotifConfiguring] = useState(false);
-  const [notifConfigMsg, setNotifConfigMsg] = useState<string | null>(null);
   const [notifConfigError, setNotifConfigError] = useState<string | null>(null);
   const [webhookUri, setWebhookUri] = useState<string | null>(null);
+  const [webhookPanelOpen, setWebhookPanelOpen] = useState(true);
+  const [emailNotifPanelOpen, setEmailNotifPanelOpen] = useState(true);
   const [notifSyncing, setNotifSyncing] = useState(false);
   const [notifResult, setNotifResult] = useState<string | null>(null);
   const [notifError, setNotifError] = useState<string | null>(null);
@@ -335,10 +336,9 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
     }
   }
 
-  async function configureEpsonWebhook(enabled: boolean) {
+  async function configureWebhooks(enabled: boolean) {
     setNotifConfiguring(true);
     setNotifConfigError(null);
-    setNotifConfigMsg(null);
     try {
       const res = await fetch("/api/epson/notifications/configure", {
         method: "POST",
@@ -348,22 +348,21 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
-          (json.error ?? "Failed to update Epson notification settings") +
+          (json.error ?? (enabled ? "Could not enable webhooks" : "Could not disable webhooks")) +
             (json.detail ? ` — ${typeof json.detail === "string" ? json.detail : JSON.stringify(json.detail)}` : ""),
         );
       }
       setWebhookUri(json.registeredCallbackUri ?? json.recommendedCallbackUri ?? json.callbackUri ?? null);
-      setNotifConfigMsg(
-        enabled
-          ? `Notifications enabled. Epson will POST job status to ${json.callbackUri ?? json.registeredCallbackUri ?? "callback URI"}.`
-          : "Notifications disabled at Epson.",
-      );
       await loadDetails();
     } catch (err) {
       setNotifConfigError((err as Error).message);
     } finally {
       setNotifConfiguring(false);
     }
+  }
+
+  async function ensureWebhooksOn() {
+    return configureWebhooks(true);
   }
 
   async function syncPrintNotifications(includeSeen = false) {
@@ -839,99 +838,155 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
           </form>
         </Card>
 
-        <Card title="Epson Connect job webhooks (Print EpsonAPI outcomes)">
-          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.5 }}>
-            Right now Epson has <strong>notifications off</strong> until you enable them. Click{" "}
-            <strong>Enable &amp; register callback</strong> so completed / failed / delayed jobs POST into
-            PostNow (tracking, queue, audit). This is the cloud equivalent of mailbox sync for{" "}
-            <strong>Print EpsonAPI</strong>.
-          </div>
-          <DataTable
-            columns={["Setting", "Value"]}
-            rows={[
-              [
-                "Notifications enabled",
-                data?.notification?.notification
-                  ? "Yes"
-                  : hub?.authorized || data?.connected
-                    ? "No — click Enable below"
-                    : "— link Epson first —",
-              ],
-              [
-                "Callback URI",
-                data?.notification?.callbackUri ||
-                  webhookUri ||
-                  "Will be set to /api/epson/job-webhook when you enable",
-              ],
-            ]}
-          />
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+        {/* Side-by-side collapsers: Connect job webhooks | Email mailbox sync */}
+        <div className="epson-notif-pair">
+          <section className="epson-notif-panel card">
             <button
               type="button"
-              className="btn btn-primary"
-              disabled={notifConfiguring || !(hub?.authorized || data?.connected)}
-              onClick={() => void configureEpsonWebhook(true)}
+              className="epson-notif-panel-toggle"
+              aria-expanded={webhookPanelOpen}
+              onClick={() => setWebhookPanelOpen((v) => !v)}
             >
-              {notifConfiguring ? "Registering with Epson…" : "Enable & register callback"}
+              <span className="epson-notif-panel-chevron" aria-hidden>
+                {webhookPanelOpen ? "▾" : "▸"}
+              </span>
+              <span
+                className={`epson-webhook-dot${
+                  data?.notification?.notification ? " on" : hub?.authorized || data?.connected ? " off" : ""
+                }`}
+              />
+              <span className="epson-notif-panel-title">
+                Epson Connect job webhooks
+                <span className="epson-notif-panel-sub">Print EpsonAPI outcomes</span>
+              </span>
             </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={notifConfiguring || !(hub?.authorized || data?.connected)}
-              onClick={() => void configureEpsonWebhook(false)}
-            >
-              Disable
-            </button>
-          </div>
-          {notifConfigMsg && (
-            <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)", lineHeight: 1.45 }}>
-              {notifConfigMsg}
-            </div>
-          )}
-          {notifConfigError && (
-            <div className="form-error" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
-              {notifConfigError}
-            </div>
-          )}
-          <p style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
-            After deploy, this endpoint must return JSON on GET:{" "}
-            <code>/api/epson/job-webhook</code>. Optional Vercel env{" "}
-            <code>EPSON_WEBHOOK_SECRET</code> adds <code>?key=…</code> for security.
-          </p>
-        </Card>
+            {webhookPanelOpen && (
+              <div className="epson-notif-panel-body">
+                <p className="epson-notif-panel-desc">
+                  Right now Epson has notifications off until you enable them. Click{" "}
+                  <strong>Enable &amp; register callback</strong> so completed / failed / delayed jobs POST into
+                  PostNow (tracking, queue, audit). This is the cloud equivalent of mailbox sync for Print
+                  EpsonAPI.
+                </p>
+                <table className="epson-notif-settings-table">
+                  <tbody>
+                    <tr>
+                      <th scope="row">Setting</th>
+                      <th scope="row">Value</th>
+                    </tr>
+                    <tr>
+                      <td>Notifications enabled</td>
+                      <td>
+                        <strong>
+                          {data?.notification?.notification
+                            ? "Yes"
+                            : hub?.authorized || data?.connected
+                              ? notifConfiguring
+                                ? "…"
+                                : "No"
+                              : "— (link Connect first)"}
+                        </strong>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Callback URI</td>
+                      <td className="epson-notif-mono">
+                        {data?.notification?.callbackUri ||
+                          webhookUri ||
+                          "https://app.postnow.co.za/api/epson/job-webhook"}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div className="epson-notif-panel-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ fontSize: 13 }}
+                    disabled={notifConfiguring || !(hub?.authorized || data?.connected)}
+                    onClick={() => void configureWebhooks(true)}
+                  >
+                    {notifConfiguring ? "Working…" : "Enable & register callback"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: 13 }}
+                    disabled={notifConfiguring || !data?.notification?.notification}
+                    onClick={() => void configureWebhooks(false)}
+                  >
+                    Disable
+                  </button>
+                </div>
+                <p className="epson-notif-panel-foot">
+                  After deploy, this endpoint must return JSON on GET:{" "}
+                  <code>/api/epson/job-webhook</code>. Optional Vercel env{" "}
+                  <code>EPSON_WEBHOOK_SECRET</code> adds <code>?key=…</code> for security.
+                </p>
+                {notifConfigError && (
+                  <div className="form-error" style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>
+                    {notifConfigError}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
 
-        <Card title="Email print notifications → platform (EpsonMail / owner email)">
-          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
-            Pull completed/error notices from the Zoho print-agent mailbox (for Email Print and owner
-            emails). Separate from Connect webhooks above.
-          </div>
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <section className="epson-notif-panel card">
             <button
               type="button"
-              className="btn btn-primary"
-              disabled={notifSyncing}
-              onClick={() => void syncPrintNotifications(false)}
+              className="epson-notif-panel-toggle"
+              aria-expanded={emailNotifPanelOpen}
+              onClick={() => setEmailNotifPanelOpen((v) => !v)}
             >
-              {notifSyncing ? "Checking mailbox…" : "Check mailbox now"}
+              <span className="epson-notif-panel-chevron" aria-hidden>
+                {emailNotifPanelOpen ? "▾" : "▸"}
+              </span>
+              <span className="epson-notif-panel-title">
+                Email print notifications → platform
+                <span className="epson-notif-panel-sub">EpsonMail / owner email</span>
+              </span>
             </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={notifSyncing}
-              onClick={() => void syncPrintNotifications(true)}
-            >
-              Re-scan recent (incl. read)
-            </button>
-          </div>
-          {notifResult && (
-            <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)" }}>{notifResult}</div>
-          )}
-          {notifError && (
-            <div className="form-error" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
-              {notifError}
-            </div>
-          )}
-        </Card>
+            {emailNotifPanelOpen && (
+              <div className="epson-notif-panel-body">
+                <p className="epson-notif-panel-desc">
+                  Pull completed/error notices from the Zoho print-agent mailbox (for Email Print and owner
+                  emails). Separate from Connect webhooks on the left.
+                </p>
+                <div className="epson-notif-panel-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ fontSize: 13 }}
+                    disabled={notifSyncing}
+                    onClick={() => void syncPrintNotifications(false)}
+                  >
+                    {notifSyncing ? "Checking mailbox…" : "Check mailbox now"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: 13 }}
+                    disabled={notifSyncing}
+                    onClick={() => void syncPrintNotifications(true)}
+                  >
+                    Re-scan recent (incl. read)
+                  </button>
+                </div>
+                {notifResult && (
+                  <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)" }}>
+                    {notifResult}
+                  </div>
+                )}
+                {notifError && (
+                  <div className="form-error" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
+                    {notifError}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
 
         <div>
           <button
