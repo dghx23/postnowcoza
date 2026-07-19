@@ -8,11 +8,22 @@ import { FACILITY_ADDRESS, FACILITY_CONTACT, DOCUMENT_PARCEL } from "@/lib/facil
 // document has been marked PRINTED. Rates must be requested first — Bob Go
 // rejects shipment creation with a provider/service level that wasn't
 // confirmed available for this specific route.
-export async function dispatchDocument(documentId: string, actorId: string) {
+export async function dispatchDocument(
+  documentId: string,
+  actorId: string,
+  options?: { collectionMinDate?: string; preserveDispatchFee?: boolean },
+) {
   const document = await prisma.document.findUniqueOrThrow({ where: { id: documentId } });
 
   if (document.status !== "PRINTED") {
     throw new Error(`Cannot dispatch a document in status ${document.status}`);
+  }
+
+  const existing = await prisma.bobgoShipment.findFirst({
+    where: { documentId, direction: "OUTBOUND" },
+  });
+  if (existing) {
+    throw new Error(`Outbound shipment already exists for document ${documentId}`);
   }
 
   const deliveryAddress = {
@@ -52,6 +63,9 @@ export async function dispatchDocument(documentId: string, actorId: string) {
     service_level_code: chosen.service_level_code,
     custom_tracking_reference: document.id,
     custom_order_number: document.id,
+    ...(options?.collectionMinDate
+      ? { collection_min_date: options.collectionMinDate }
+      : {}),
   });
 
   await prisma.bobgoShipment.create({
@@ -66,9 +80,15 @@ export async function dispatchDocument(documentId: string, actorId: string) {
     },
   });
 
+  // Keep the fee the customer already paid if set; otherwise store the rate.
+  const fee =
+    options?.preserveDispatchFee && document.dispatchFee != null
+      ? document.dispatchFee
+      : chosen.total_price;
+
   await prisma.document.update({
     where: { id: document.id },
-    data: { status: "DISPATCHED", dispatchFee: chosen.total_price },
+    data: { status: "DISPATCHED", dispatchFee: fee },
   });
 
   await appendAuditEvent({
@@ -79,6 +99,7 @@ export async function dispatchDocument(documentId: string, actorId: string) {
       provider_slug: chosen.provider_slug,
       service_level_code: chosen.service_level_code,
       tracking_reference: shipment.tracking_reference,
+      collection_min_date: options?.collectionMinDate ?? null,
     },
   });
 

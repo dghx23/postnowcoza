@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "@/lib/db";
 import { appendAuditEvent } from "@/lib/audit";
 import { getSessionUser } from "@/lib/session";
+import { maybeAutoDispatchIfPaid } from "@/lib/autoDispatch";
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   UPLOADED: ["QUEUED_FOR_PRINT", "PRINTED"],
@@ -49,6 +50,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     action: `status_changed:${document.status}->${nextStatus}`,
     ip: req.socket.remoteAddress ?? undefined,
   });
+
+  if (nextStatus === "PRINTED") {
+    try {
+      await maybeAutoDispatchIfPaid(id, user.id);
+    } catch {
+      /* non-fatal — staff can dispatch manually */
+    }
+  }
 
   return res.status(200).json({ id: updated.id, status: updated.status });
 }

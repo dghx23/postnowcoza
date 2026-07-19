@@ -276,21 +276,8 @@ export default function Tracking({
   }
 
   async function handlePay() {
-    setPaying(true);
-    setPayError(null);
-    try {
-      const res = await fetch(`/api/documents/${documentId}/pay`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not start payment");
-      if (data.url) {
-        window.location.href = data.url;
-        return;
-      }
-      throw new Error("No payment URL returned");
-    } catch (err) {
-      setPayError((err as Error).message);
-      setPaying(false);
-    }
+    // Dedicated PayFast checkout page (form POST + ITN webhook).
+    router.push(`/pay/${documentId}`);
   }
 
   const isEarly = EARLY_STATUSES.has(docStatus);

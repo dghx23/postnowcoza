@@ -70,6 +70,8 @@ export function createShipment(input: {
   custom_tracking_reference: string;
   custom_order_number: string;
   declared_value?: number;
+  /** Preferred earliest collection date YYYY-MM-DD (e.g. next-day booking). */
+  collection_min_date?: string;
 }) {
   return bobgoFetch<{
     id: number;

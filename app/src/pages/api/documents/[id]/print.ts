@@ -17,6 +17,7 @@ import {
   EPSON_REFRESH_COOKIE,
   EPSON_DEVICE_ID_COOKIE,
 } from "@/lib/epson";
+import { maybeAutoDispatchIfPaid } from "@/lib/autoDispatch";
 
 // Same UPLOADED/QUEUED_FOR_PRINT -> PRINTED transitions the manual
 // "Mark as Printed" button allows (src/pages/api/documents/[id]/status.ts) -
@@ -110,6 +111,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       ip: req.socket.remoteAddress ?? undefined,
     });
+    // Paid + printed → book next-day collection automatically.
+    try {
+      await maybeAutoDispatchIfPaid(id, user.id);
+    } catch {
+      /* non-fatal */
+    }
     return res.status(200).json({
       id: updated.id,
       status: updated.status,
@@ -200,6 +207,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     metadata: { via: "epson_connect" },
     ip: req.socket.remoteAddress ?? undefined,
   });
+
+  try {
+    await maybeAutoDispatchIfPaid(id, user.id);
+  } catch {
+    /* non-fatal */
+  }
 
   return res.status(200).json({ id: updated.id, status: updated.status });
 }

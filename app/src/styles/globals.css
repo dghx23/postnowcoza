@@ -2421,3 +2421,67 @@ table.data-table tr:last-child td {
   .ops-main { padding: 14px; }
   .ops-pipe .count { font-size: 28px; }
 }
+
+/* ─── PayFast checkout page ─── */
+.pay-page { display: flex; flex-direction: column; gap: 20px; }
+.pay-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pay-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.pay-summary { display: flex; flex-direction: column; gap: 12px; }
+.pay-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.pay-row strong { color: var(--navy-900, #0A2540); font-weight: 600; }
+.pay-total {
+  border-top: 1px solid var(--border-default);
+  padding-top: 14px;
+  margin-top: 4px;
+  align-items: center;
+}
+.pay-amount {
+  font-size: 28px;
+  font-weight: 800;
+  color: #0A2540;
+}
+.pay-note {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.pay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+  align-items: center;
+}
+.pay-btn { min-width: 220px; }
+.pay-steps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.pay-steps strong { color: var(--navy-900); }
+@media (max-width: 800px) {
+  .pay-grid { grid-template-columns: 1fr; }
+}

@@ -1,15 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
-import { createPaymentLink } from "@/lib/bobpay";
+import { buildPayfastCheckout, getPayfastConfig } from "@/lib/payfast";
 
-// Base URL of this deployment, used to build the notify/success/pending/
-// cancel URLs Bob Pay redirects/notifies against.
-const APP_URL = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+const APP_URL = process.env.NEXTAUTH_URL ?? "https://app.postnow.co.za";
 
+/**
+ * Create or return a PayFast checkout for this document's dispatch fee.
+ * Returns { action, fields } for a browser POST form, or redirects if preferred.
+ */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
+  if (req.method !== "POST" && req.method !== "GET") {
+    res.setHeader("Allow", "GET, POST");
     return res.status(405).json({ error: "Method not allowed" });
   }
 
@@ -24,41 +26,93 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (document.ownerId !== user.id && user.role === "CUSTOMER") {
     return res.status(403).json({ error: "Forbidden" });
   }
-  if (!document.dispatchFee) {
-    return res.status(422).json({ error: "Document has no dispatch fee set yet — dispatch it first" });
+
+  const cfg = getPayfastConfig();
+  if (!cfg.configured) {
+    return res.status(503).json({
+      error:
+        "PayFast is not configured. Set Merchant_ID_Payfast and Merchant_Key_Payfast in Vercel.",
+    });
   }
 
-  const existing = await prisma.payment.findFirst({
-    where: { documentId: id, status: { in: ["UNPAID", "PAID"] } },
-  });
-  if (existing) {
-    return res.status(200).json({ url: existing.paymentUrl, id: existing.id });
+  // Ensure a fee exists — default if not yet set by rate booking.
+  let fee = document.dispatchFee;
+  if (fee == null || fee <= 0) {
+    fee = Number(process.env.DEFAULT_DISPATCH_FEE ?? "149");
+    if (!Number.isFinite(fee) || fee <= 0) fee = 149;
+    await prisma.document.update({
+      where: { id },
+      data: { dispatchFee: fee },
+    });
   }
 
-  const customPaymentId = `${document.id}-dispatch`;
+  const existingPaid = await prisma.payment.findFirst({
+    where: { documentId: id, status: "PAID" },
+  });
+  if (existingPaid) {
+    return res.status(200).json({
+      alreadyPaid: true,
+      id: existingPaid.id,
+      amount: existingPaid.amount,
+      redirect: `/tracking/${id}?payment=success`,
+    });
+  }
 
-  const link = await createPaymentLink({
-    amount: document.dispatchFee,
-    email: document.recipientEmail,
-    mobile_number: document.recipientPhone,
-    item_name: "PostNow secure dispatch",
-    item_description: `Dispatch fee for document ${document.id}`,
-    custom_payment_id: customPaymentId,
-    notify_url: `${APP_URL}/api/webhooks/bobpay`,
-    success_url: `${APP_URL}/tracking/${document.id}?payment=success`,
-    pending_url: `${APP_URL}/tracking/${document.id}?payment=pending`,
-    cancel_url: `${APP_URL}/tracking/${document.id}?payment=cancelled`,
-    short_url: true,
+  let payment = await prisma.payment.findFirst({
+    where: { documentId: id, status: "UNPAID" },
+    orderBy: { createdAt: "desc" },
   });
 
-  const payment = await prisma.payment.create({
-    data: {
-      documentId: document.id,
-      customPaymentId,
-      amount: document.dispatchFee,
-      paymentUrl: link.short_url ?? link.url,
-    },
+  const customPaymentId = payment?.customPaymentId ?? `pn-${id.slice(0, 12)}-${Date.now().toString(36)}`;
+
+  if (!payment) {
+    payment = await prisma.payment.create({
+      data: {
+        documentId: id,
+        customPaymentId,
+        amount: fee,
+        status: "UNPAID",
+        paymentMethod: "payfast",
+      },
+    });
+  } else if (payment.amount !== fee) {
+    payment = await prisma.payment.update({
+      where: { id: payment.id },
+      data: { amount: fee },
+    });
+  }
+
+  const nameParts = document.recipientName.trim().split(/\s+/);
+  const nameFirst = nameParts[0] ?? "Customer";
+  const nameLast = nameParts.slice(1).join(" ") || "PostNow";
+
+  const checkout = buildPayfastCheckout({
+    amount: fee,
+    itemName: "PostNow secure dispatch",
+    itemDescription: `Dispatch fee · ref ${id.slice(0, 10).toUpperCase()}`,
+    mPaymentId: payment.customPaymentId,
+    email: document.recipientEmail || user.email || "",
+    cellNumber: document.recipientPhone,
+    nameFirst,
+    nameLast,
+    returnUrl: `${APP_URL}/pay/${id}?status=return`,
+    cancelUrl: `${APP_URL}/pay/${id}?status=cancelled`,
+    notifyUrl: `${APP_URL}/api/webhooks/payfast`,
+    documentId: id,
   });
 
-  return res.status(201).json({ url: payment.paymentUrl, id: payment.id });
+  // Store process URL for reference (not a hosted payment link — form POST).
+  await prisma.payment.update({
+    where: { id: payment.id },
+    data: { paymentUrl: checkout.action },
+  });
+
+  return res.status(200).json({
+    action: checkout.action,
+    fields: checkout.fields,
+    sandbox: checkout.sandbox,
+    amount: fee,
+    paymentId: payment.id,
+    m_payment_id: payment.customPaymentId,
+  });
 }

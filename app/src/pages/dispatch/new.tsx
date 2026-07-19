@@ -113,7 +113,8 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
       }
 
       const { id } = await res.json();
-      router.push(`/tracking/${id}?submitted=1`);
+      // Pay dispatch fee first (PayFast), then tracking / next-day courier booking.
+      router.push(`/pay/${id}?from=upload`);
     } catch (err) {
       setError((err as Error).message);
       setSubmitting(false);
