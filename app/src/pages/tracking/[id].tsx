@@ -14,6 +14,7 @@ import {
   TrackingTimeline,
   Alert,
   PrintFeedbackChip,
+  Modal,
   type TimelineEvent,
 } from "@/components/ui";
 import { buildPrintFeedback, type PrintFeedbackDetail } from "@/lib/printFeedback";
@@ -329,6 +330,11 @@ export default function Tracking({
   const [payment] = useState(initialPayment);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [shareDestination, setShareDestination] = useState("");
+  const [shareSubscribe, setShareSubscribe] = useState(false);
+  const [shareConfirming, setShareConfirming] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareResult, setShareResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -361,6 +367,43 @@ export default function Tracking({
   async function handlePay() {
     // Dedicated PayFast checkout page (form POST + ITN webhook).
     router.push(`/pay/${documentId}`);
+  }
+
+  function handleShareSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!shareDestination.trim()) return;
+    if (shareSubscribe) {
+      setShareConfirming(true);
+    } else {
+      void runShare();
+    }
+  }
+
+  async function runShare() {
+    setShareConfirming(false);
+    setShareBusy(true);
+    setShareResult(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ destination: shareDestination.trim(), subscribe: shareSubscribe }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to send");
+      setShareResult({
+        ok: true,
+        message: shareSubscribe
+          ? "Sent — they're subscribed to updates on this document."
+          : "Sent.",
+      });
+      setShareDestination("");
+      setShareSubscribe(false);
+    } catch (err) {
+      setShareResult({ ok: false, message: (err as Error).message });
+    } finally {
+      setShareBusy(false);
+    }
   }
 
   const isEarly = EARLY_STATUSES.has(docStatus);
@@ -765,6 +808,47 @@ export default function Tracking({
                   </div>
                 )}
               </Card>
+
+              <Card title="Share this booking">
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
+                  Send someone else the tracking link for this document.
+                </div>
+                <form onSubmit={handleShareSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div className="field">
+                    <input
+                      type="text"
+                      placeholder="Email address or WhatsApp number"
+                      value={shareDestination}
+                      onChange={(e) => setShareDestination(e.target.value)}
+                    />
+                  </div>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={shareSubscribe}
+                      onChange={(e) => setShareSubscribe(e.target.checked)}
+                      style={{ marginTop: 2 }}
+                    />
+                    Also subscribe this person to receive email and/or WhatsApp status updates
+                  </label>
+                  <div>
+                    <button type="submit" className="btn btn-primary" disabled={shareBusy || !shareDestination.trim()}>
+                      {shareBusy ? "Sending…" : "Submit"}
+                    </button>
+                  </div>
+                </form>
+                {shareResult && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      fontSize: 13,
+                      color: shareResult.ok ? "var(--success, #1f9e6d)" : "var(--danger, #c0392b)",
+                    }}
+                  >
+                    {shareResult.message}
+                  </div>
+                )}
+              </Card>
             </div>
             <div style={{ flex: "1 1 360px", display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <Card title="Live Courier Tracking">
@@ -837,6 +921,29 @@ export default function Tracking({
           </div>
         </div>
       </main>
+
+      {shareConfirming && (
+        <Modal title="Subscribe to updates?" onClose={() => setShareConfirming(false)}>
+          <div style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.55, marginBottom: 16 }}>
+            <p style={{ margin: "0 0 10px" }}>
+              Are you sure you want <strong>{shareDestination.trim()}</strong> to be subscribed?
+            </p>
+            <p style={{ margin: 0 }}>
+              Subscribing means they'll automatically receive a message every time this document's status
+              changes — e.g. when it's printed, dispatched, or delivered — by email or WhatsApp depending on
+              what you entered. It doesn't give them access to download the document or see any other bookings.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setShareConfirming(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => void runShare()}>
+              Yes, subscribe them
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

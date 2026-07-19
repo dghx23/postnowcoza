@@ -158,6 +158,7 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
 | `/api/documents/[id]/return` | Book managed return | owner or staff |
 | `/api/documents/[id]/pay` | Start PayFast payment (fields for form POST) | owner / staff / token |
 | `/api/documents/[id]/request-payment` | Staff: send payment request email or WhatsApp | STAFF/ADMIN |
+| `/api/documents/[id]/share` | Send the tracking link to someone else; optional subscribe to status updates | owner or staff |
 | `/api/documents/[id]/live-tracking` | Live Bob Go checkpoints | owner or staff |
 | `/api/finance/zoho` | GET config; POST push/pull Zoho Books | STAFF/ADMIN |
 | `/api/finance/exceptions` | GET/POST SyncException list + resolve | STAFF/ADMIN |
@@ -235,6 +236,28 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
   responses). No conversational reply logic yet — still operator-owned; this
   just satisfies the protocol requirement so the webhook can be registered
   and won't 404/timeout once Meta starts sending events.
+
+#### 6.2.2b Share booking + status-update subscribers
+
+On the tracking page's "Share this booking" card (below the Print log):
+- `src/lib/documentSharing.ts` — `detectShareChannel` auto-detects email vs
+  WhatsApp number from one free-text field; `shareBooking` sends the
+  tracking link once via the existing SMTP/WhatsApp helpers, audit
+  `booking_shared`; `subscribeToUpdates` upserts a `DocumentSubscriber` row,
+  audit `subscriber_added`.
+- Ticking "also subscribe" requires an explicit confirm dialog (`Modal`)
+  before it fires, explaining what subscribing means.
+- `src/lib/subscriberNotifications.ts` — `notifyDocumentSubscribers` fans a
+  short status-update message out to every subscriber of a document. Kept
+  in its own file specifically so `src/lib/audit.ts` can call it without a
+  circular import (`documentSharing.ts` depends on `audit.ts` for
+  `appendAuditEvent`, so `audit.ts` can't depend back on it).
+- **Wired once, works everywhere**: `appendAuditEvent` itself calls
+  `notifyDocumentSubscribers` whenever the action is `status_changed:*` —
+  every status-change call site in the app (dispatch, print, courier
+  webhooks, returns) fans out to subscribers automatically, with no
+  per-site changes needed.
+- `POST /api/documents/[id]/share` — `{ destination, subscribe? }`, owner or staff.
 
 #### 6.2.3 Bob Pay (legacy)
 

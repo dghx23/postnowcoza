@@ -134,6 +134,22 @@ model Document {
   bobgoShipments   BobgoShipment[]
   payments         Payment[]
   epsonPrintJobs   EpsonPrintJob[]
+  subscribers      DocumentSubscriber[]
+}
+
+// Someone (besides the owner) who was sent this booking and opted in to
+// receive future status updates by email or WhatsApp. notifyDocumentSubscribers
+// (src/lib/documentSharing.ts) fans out to these rows on every status change,
+// hooked in once at appendAuditEvent so every call site gets it for free.
+model DocumentSubscriber {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id])
+  channel     String   // "email" | "whatsapp"
+  destination String
+  createdAt   DateTime @default(now())
+
+  @@index([documentId])
 }
 
 // Append-only chain-of-custody log. Rows are never updated or deleted from

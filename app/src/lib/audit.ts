@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { notifyDocumentSubscribers } from "@/lib/subscriberNotifications";
 
 interface AppendAuditEventInput {
   documentId: string;
@@ -28,7 +29,7 @@ export async function appendAuditEvent(input: AppendAuditEventInput) {
   });
   const hash = createHash("sha256").update(payload).digest("hex");
 
-  return prisma.auditEvent.create({
+  const event = await prisma.auditEvent.create({
     data: {
       documentId: input.documentId,
       actorId: input.actorId,
@@ -39,4 +40,17 @@ export async function appendAuditEvent(input: AppendAuditEventInput) {
       hash,
     },
   });
+
+  if (input.action.startsWith("status_changed:")) {
+    const newStatus = input.action.split("->")[1];
+    if (newStatus) {
+      try {
+        await notifyDocumentSubscribers(input.documentId, newStatus);
+      } catch (err) {
+        console.error("appendAuditEvent: subscriber notify failed", { documentId: input.documentId, error: (err as Error).message });
+      }
+    }
+  }
+
+  return event;
 }
