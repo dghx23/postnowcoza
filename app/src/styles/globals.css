@@ -1748,6 +1748,39 @@ table.data-table tr:last-child td {
 .printer-hub-job-badge.success { background: #ECFDF5; color: #10B981; }
 .printer-hub-job-badge.failed { background: #FEF2F2; color: #EF4444; }
 .printer-hub-job-badge.pending { background: #FEF3C7; color: #D97706; }
+.printer-hub-job-badge.attention { background: #FFF7ED; color: #C2410C; }
+.printer-hub-table-scroll {
+  overflow-x: auto;
+  margin: 0 -4px;
+}
+.printer-hub-table-detail {
+  min-width: 900px;
+  font-size: 12px;
+}
+.printer-hub-row-manual {
+  background: #F8FAFC;
+}
+.printer-hub-row-issue {
+  background: #FEF2F2;
+}
+.printer-hub-issue-flag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #B91C1C;
+  background: #FEE2E2;
+  padding: 2px 8px;
+  border-radius: 6px;
+  max-width: 140px;
+  line-height: 1.3;
+}
+.printer-hub-comment {
+  font-size: 11px;
+  color: #64748B;
+}
+.printer-hub-ok {
+  color: #CBD5E1;
+}
 
 .printer-hub-footnote {
   font-size: 12px;
@@ -2343,6 +2376,18 @@ table.data-table tr:last-child td {
   border-radius: 20px;
   background: #ECFDF5;
   color: #0F766E;
+  letter-spacing: 0.02em;
+}
+.pq-channel.manual {
+  background: #0A2540;
+  color: #fff;
+  letter-spacing: 0.06em;
+}
+.pq-row-manual {
+  background: #F8FAFC;
+}
+.pq-row-manual:hover {
+  background: #F1F5F9;
 }
 .pq-cross {
   display: flex;

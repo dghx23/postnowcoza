@@ -49,11 +49,37 @@ async function pollPendingJobs(accessToken: string | null): Promise<number> {
   return pending;
 }
 
-interface RecentJob {
+export interface RecentJob {
   documentId: string;
   recipientName: string;
-  status: "success" | "failed";
+  /** success | failed | pending | attention */
+  status: "success" | "failed" | "pending" | "attention";
   time: string;
+  via: string | null;
+  viaLabel: string;
+  jobId: string;
+  customerColor: string | null;
+  printedColor: string | null;
+  customerCopies: number | null;
+  printedCopies: number | null;
+  pages: number | null;
+  paperSize: string | null;
+  quality: string | null;
+  hasIssue: boolean;
+  issueLabel: string | null;
+  comment: string | null;
+}
+
+function viaLabel(via: string | null, jobId: string): string {
+  if (via === "manual_mark" || jobId.startsWith("manual-mark:")) return "MANUAL";
+  if (via === "epson_direct" || jobId.startsWith("email-")) return "EpsonMail";
+  if (via === "epson_connect") return "EpsonAPI";
+  return "Print";
+}
+
+function colorLabel(mode: string | null | undefined): string | null {
+  if (!mode) return null;
+  return mode === "color" ? "Colour" : "B&W";
 }
 
 async function getRecentJobs(): Promise<{
@@ -63,32 +89,82 @@ async function getRecentJobs(): Promise<{
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
 
-  const events = await prisma.auditEvent.findMany({
-    where: {
-      OR: [
-        { action: "epson_print_failed" },
-        { action: "email_print_failed" },
-        { action: "epson_print_confirmed" },
-        { action: { contains: "->PRINTED" } },
-      ],
+  const jobs = await prisma.epsonPrintJob.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 15,
+    include: {
+      document: { select: { id: true, recipientName: true } },
     },
-    include: { document: { select: { recipientName: true } } },
-    orderBy: { createdAt: "desc" },
-    take: 30,
   });
 
-  const recentJobs: RecentJob[] = events.slice(0, 10).map((e) => {
-    const failed =
-      e.action === "epson_print_failed" || e.action === "email_print_failed";
+  const recentJobs: RecentJob[] = jobs.map((job) => {
+    const failed = ["error_occurred", "expired", "canceled"].includes(job.status);
+    const attention = ["media_empty", "media_jam", "marker_supply_empty", "stopped_other"].includes(
+      job.status
+    );
+    const pending = !failed && !attention && !["completed"].includes(job.status);
+
+    let status: RecentJob["status"] = "success";
+    if (failed) status = "failed";
+    else if (attention) status = "attention";
+    else if (pending) status = "pending";
+
+    const settings =
+      job.printSettings && typeof job.printSettings === "object"
+        ? (job.printSettings as Record<string, unknown>)
+        : null;
+    const outcome =
+      job.outcomeDetail && typeof job.outcomeDetail === "object"
+        ? (job.outcomeDetail as Record<string, unknown>)
+        : null;
+
+    const pagesRaw =
+      outcome?.totalPages ??
+      outcome?.pages ??
+      (outcome?.raw && typeof outcome.raw === "object"
+        ? (outcome.raw as { totalPages?: number }).totalPages
+        : null);
+    const pages =
+      typeof pagesRaw === "number" && Number.isFinite(pagesRaw) ? pagesRaw : null;
+
+    const paperSize =
+      typeof settings?.paperSize === "string" ? settings.paperSize.replace(/^ps_/, "").toUpperCase() : null;
+    const quality =
+      typeof settings?.printQuality === "string" ? String(settings.printQuality) : null;
+
+    const comment =
+      typeof outcome?.comment === "string"
+        ? outcome.comment
+        : typeof (outcome as { note?: string } | null)?.note === "string"
+          ? String((outcome as { note?: string }).note)
+          : null;
+
+    const hasIssue = failed || attention;
+    let issueLabel: string | null = null;
+    if (failed) issueLabel = job.status.replace(/_/g, " ");
+    else if (attention) issueLabel = job.status.replace(/_/g, " ");
+
     return {
-      documentId: e.documentId,
-      recipientName: e.document.recipientName,
-      status: failed ? "failed" : "success",
-      time: e.createdAt.toISOString(),
+      documentId: job.documentId,
+      recipientName: job.document.recipientName,
+      status,
+      time: job.updatedAt.toISOString(),
+      via: job.via,
+      viaLabel: viaLabel(job.via, job.jobId),
+      jobId: job.jobId,
+      customerColor: colorLabel(job.customerColorMode),
+      printedColor: colorLabel(job.printedColorMode),
+      customerCopies: job.customerCopies,
+      printedCopies: job.printedCopies,
+      pages,
+      paperSize,
+      quality,
+      hasIssue,
+      issueLabel,
+      comment,
     };
   });
 
-  const todayEvents = events.filter((e) => e.createdAt >= startOfToday);
   const pendingJobs = await prisma.epsonPrintJob.count({
     where: {
       status: { notIn: [...SETTLED_STATUSES] },
@@ -96,16 +172,15 @@ async function getRecentJobs(): Promise<{
     },
   });
 
+  const todayJobs = await prisma.epsonPrintJob.findMany({
+    where: { createdAt: { gte: startOfToday } },
+    select: { status: true, via: true },
+  });
+
   const today = {
-    success: todayEvents.filter(
-      (e) =>
-        e.action === "epson_print_confirmed" ||
-        (e.action.includes("->PRINTED") &&
-          e.action !== "epson_print_failed" &&
-          e.action !== "email_print_failed"),
-    ).length,
-    failed: todayEvents.filter(
-      (e) => e.action === "epson_print_failed" || e.action === "email_print_failed",
+    success: todayJobs.filter((j) => j.status === "completed").length,
+    failed: todayJobs.filter((j) =>
+      ["error_occurred", "expired", "canceled"].includes(j.status)
     ).length,
     pending: pendingJobs,
   };

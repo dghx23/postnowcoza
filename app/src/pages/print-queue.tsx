@@ -699,16 +699,17 @@ export default function PrintQueue({
               </thead>
               <tbody>
                 {history.map((row) => {
-                  const viaLabel =
-                    row.via === "epson_connect"
+                  const isManual =
+                    row.via === "manual_mark" || row.jobId.startsWith("manual-mark:");
+                  const viaLabel = isManual
+                    ? "MANUAL"
+                    : row.via === "epson_connect"
                       ? "EpsonAPI"
                       : row.via === "epson_direct"
                         ? "EpsonMail"
-                        : row.via === "manual_mark"
-                          ? "Manual"
-                          : row.feedback.source === "epson_connect"
-                            ? "EpsonAPI"
-                            : "Print";
+                        : row.feedback.source === "epson_connect"
+                          ? "EpsonAPI"
+                          : "Print";
                   const cust =
                     row.customerColorMode != null
                       ? `${row.customerColorMode === "color" ? "Colour" : "B&W"} ×${row.customerCopies ?? 1}`
@@ -726,19 +727,18 @@ export default function PrintQueue({
                           ? "await"
                           : "";
                   return (
-                    <tr key={row.id}>
+                    <tr key={row.id} className={isManual ? "pq-row-manual" : undefined}>
                       <td title={new Date(row.updatedAt).toISOString()}>{timeAgo(row.updatedAt)}</td>
                       <td>
                         <Link href={`/tracking/${row.documentId}`} className="pq-doc-id">
                           #{row.documentId.slice(0, 10).toUpperCase()}
                         </Link>
                         <div className="pq-job-id" title={row.jobId}>
-                          job {row.jobId.slice(0, 14)}
-                          {row.jobId.length > 14 ? "…" : ""}
+                          {isManual ? "manual confirm" : `job ${row.jobId.slice(0, 14)}${row.jobId.length > 14 ? "…" : ""}`}
                         </div>
                       </td>
                       <td>
-                        <span className="pq-channel">{viaLabel}</span>
+                        <span className={`pq-channel${isManual ? " manual" : ""}`}>{viaLabel}</span>
                       </td>
                       <td>
                         <div className="pq-cross">

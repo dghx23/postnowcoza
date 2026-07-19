@@ -200,12 +200,23 @@ export async function applyConnectJobNotification(
     via: job.via ?? "epson_connect",
   };
 
+  const totalPages =
+    parsed.raw &&
+    typeof parsed.raw === "object" &&
+    "totalPages" in (parsed.raw as object)
+      ? Number((parsed.raw as { totalPages?: number }).totalPages)
+      : null;
+
   if (nextStatus === "completed") {
     await prisma.epsonPrintJob.update({
       where: { id: job.id },
       data: {
         confirmedAt: new Date(),
-        outcomeDetail: { ...metaBase, printLog } as object,
+        outcomeDetail: {
+          ...metaBase,
+          printLog,
+          ...(totalPages != null && Number.isFinite(totalPages) ? { totalPages } : {}),
+        } as object,
       },
     });
     await appendAuditEvent({

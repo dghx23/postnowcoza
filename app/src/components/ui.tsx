@@ -178,8 +178,14 @@ export function TrackingTimeline({ events }: { events: TimelineEvent[] }) {
 interface RecentJob {
   documentId: string;
   recipientName: string;
-  status: "success" | "failed";
+  status: "success" | "failed" | "pending" | "attention";
   time: string;
+  viaLabel?: string;
+  printedColor?: string | null;
+  printedCopies?: number | null;
+  pages?: number | null;
+  hasIssue?: boolean;
+  issueLabel?: string | null;
 }
 
 interface PrinterStatusData {
@@ -293,12 +299,14 @@ export function PrinterStatus() {
             <thead>
               <tr>
                 <th>Document</th>
+                <th>Channel</th>
+                <th>Colour / copies</th>
                 <th>Time</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {data.recentJobs.map((job, i) => (
+              {data.recentJobs.slice(0, 8).map((job, i) => (
                 <tr key={i}>
                   <td>
                     <div>{job.recipientName}</div>
@@ -306,10 +314,36 @@ export function PrinterStatus() {
                       #{job.documentId.slice(0, 8).toUpperCase()}
                     </div>
                   </td>
+                  <td>
+                    <span style={{ fontWeight: 700, fontSize: 11 }}>
+                      {job.viaLabel ?? "Print"}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: 12 }}>
+                    {job.printedColor ?? "—"}
+                    {job.printedCopies != null ? ` ×${job.printedCopies}` : ""}
+                    {job.pages != null ? ` · ${job.pages}p` : ""}
+                  </td>
                   <td>{new Date(job.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
                   <td>
-                    <Badge tone={job.status === "success" ? "success" : "navy"}>
-                      {job.status === "success" ? "Success" : "Failed"}
+                    <Badge
+                      tone={
+                        job.status === "success"
+                          ? "success"
+                          : job.hasIssue || job.status === "failed" || job.status === "attention"
+                            ? "navy"
+                            : "teal"
+                      }
+                    >
+                      {job.status === "success"
+                        ? job.viaLabel === "MANUAL"
+                          ? "Manual OK"
+                          : "Success"
+                        : job.status === "attention"
+                          ? job.issueLabel ?? "Attention"
+                          : job.status === "pending"
+                            ? "Pending"
+                            : "Failed"}
                     </Badge>
                   </td>
                 </tr>

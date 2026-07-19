@@ -121,6 +121,13 @@ export async function recordPrintJobSubmission(input: {
       printedCopies: normalizeCopies(input.printed.copies),
       printSettings: input.printed as unknown as Prisma.InputJsonValue,
       confirmedAt: status === "completed" || status === "error_occurred" ? new Date() : null,
+      outcomeDetail:
+        status === "completed" || status === "error_occurred"
+          ? ({
+              via: input.via,
+              ...(input.extraMeta ?? {}),
+            } as Prisma.InputJsonValue)
+          : undefined,
     },
   });
 

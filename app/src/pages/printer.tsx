@@ -62,8 +62,21 @@ interface StatusResponse {
   recentJobs?: Array<{
     documentId: string;
     recipientName: string;
-    status: "success" | "failed";
+    status: "success" | "failed" | "pending" | "attention";
     time: string;
+    via?: string | null;
+    viaLabel?: string;
+    jobId?: string;
+    customerColor?: string | null;
+    printedColor?: string | null;
+    customerCopies?: number | null;
+    printedCopies?: number | null;
+    pages?: number | null;
+    paperSize?: string | null;
+    quality?: string | null;
+    hasIssue?: boolean;
+    issueLabel?: string | null;
+    comment?: string | null;
   }>;
   today?: { success: number; failed: number; pending?: number };
 }
@@ -85,9 +98,11 @@ function capabilityRows(capability: EpsonPrintCapability): string[][] {
   return rows;
 }
 
-function jobStatusClass(status: string): "success" | "failed" | "pending" {
+function jobStatusClass(status: string): "success" | "failed" | "pending" | "attention" {
   if (status === "success" || status === "completed") return "success";
-  if (status === "failed" || status === "error_occurred" || status === "expired") return "failed";
+  if (status === "failed" || status === "error_occurred" || status === "expired" || status === "canceled")
+    return "failed";
+  if (status === "attention") return "attention";
   return "pending";
 }
 
@@ -545,7 +560,9 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
         <div className="printer-hub-wide">
           <div className="printer-hub-wide-header">
             <span className="printer-hub-wide-title">📋 Recent Print Jobs</span>
-            <span className="printer-hub-wide-meta">Last 10 · from audit trail &amp; email confirmations</span>
+            <span className="printer-hub-wide-meta">
+              Platform submissions · colour / copies / pages · issues flagged
+            </span>
           </div>
           {!hub?.recentJobs || hub.recentJobs.length === 0 ? (
             <div style={{ fontSize: 14, color: "#6B7280", padding: "8px 0" }}>
@@ -556,44 +573,104 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               .
             </div>
           ) : (
-            <table className="printer-hub-table">
-              <thead>
-                <tr>
-                  <th>Document</th>
-                  <th>Recipient</th>
-                  <th>Time</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hub.recentJobs.map((job, i) => (
-                  <tr key={`${job.documentId}-${job.time}-${i}`}>
-                    <td>
-                      <Link
-                        href={`/tracking/${job.documentId}`}
-                        style={{ fontWeight: 700, color: "#0A2540", textDecoration: "none" }}
-                      >
-                        #{job.documentId.slice(0, 10).toUpperCase()}
-                      </Link>
-                    </td>
-                    <td>{job.recipientName}</td>
-                    <td>
-                      {new Date(job.time).toLocaleString([], {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </td>
-                    <td>
-                      <span className={`printer-hub-job-badge ${jobStatusClass(job.status)}`}>
-                        {job.status.toUpperCase()}
-                      </span>
-                    </td>
+            <div className="printer-hub-table-scroll">
+              <table className="printer-hub-table printer-hub-table-detail">
+                <thead>
+                  <tr>
+                    <th>Document</th>
+                    <th>Recipient</th>
+                    <th>Channel</th>
+                    <th>Colour</th>
+                    <th>Copies</th>
+                    <th>Pages</th>
+                    <th>Paper</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>Issues</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {hub.recentJobs.map((job, i) => {
+                    const isManual = job.viaLabel === "MANUAL" || job.via === "manual_mark";
+                    return (
+                      <tr
+                        key={`${job.documentId}-${job.time}-${i}`}
+                        className={isManual ? "printer-hub-row-manual" : job.hasIssue ? "printer-hub-row-issue" : undefined}
+                      >
+                        <td>
+                          <Link
+                            href={`/tracking/${job.documentId}`}
+                            style={{ fontWeight: 700, color: "#0A2540", textDecoration: "none" }}
+                          >
+                            #{job.documentId.slice(0, 10).toUpperCase()}
+                          </Link>
+                        </td>
+                        <td>{job.recipientName}</td>
+                        <td>
+                          <span className={`pq-channel${isManual ? " manual" : ""}`}>
+                            {job.viaLabel ?? "Print"}
+                          </span>
+                        </td>
+                        <td>
+                          <span title="Customer → printed">
+                            {job.customerColor ?? "—"}
+                            {job.printedColor && job.printedColor !== job.customerColor
+                              ? ` → ${job.printedColor}`
+                              : ""}
+                          </span>
+                        </td>
+                        <td>
+                          {job.printedCopies ?? job.customerCopies ?? "—"}
+                          {job.customerCopies != null &&
+                          job.printedCopies != null &&
+                          job.customerCopies !== job.printedCopies
+                            ? ` (req ${job.customerCopies})`
+                            : ""}
+                        </td>
+                        <td>{job.pages != null ? job.pages : isManual ? "—" : "—"}</td>
+                        <td>
+                          {[job.paperSize, job.quality].filter(Boolean).join(" · ") || "—"}
+                        </td>
+                        <td>
+                          {new Date(job.time).toLocaleString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </td>
+                        <td>
+                          <span className={`printer-hub-job-badge ${jobStatusClass(job.status)}`}>
+                            {job.status === "success"
+                              ? isManual
+                                ? "MANUAL OK"
+                                : "SUCCESS"
+                              : job.status === "attention"
+                                ? "ATTENTION"
+                                : job.status === "pending"
+                                  ? "PENDING"
+                                  : "FAILED"}
+                          </span>
+                        </td>
+                        <td>
+                          {job.hasIssue ? (
+                            <span className="printer-hub-issue-flag" title={job.issueLabel ?? "Issue"}>
+                              ⚠ {job.issueLabel ?? "Issue"}
+                            </span>
+                          ) : job.comment ? (
+                            <span className="printer-hub-comment" title={job.comment}>
+                              💬 note
+                            </span>
+                          ) : (
+                            <span className="printer-hub-ok">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
@@ -894,61 +971,6 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
                     />
                   </Card>
                 )}
-
-                <Card title="Epson Connect job webhooks (recommended)">
-                  <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.5 }}>
-                    When enabled, Epson POSTs print job status (completed, error, delayed, paper jam, etc.) to
-                    our platform. We match the Connect <code>jobId</code> to the queue job, update tracking, and
-                    surface failures — same outcome path as mailbox sync, but real-time for{" "}
-                    <strong>Print EpsonAPI</strong> jobs.
-                  </div>
-                  <DataTable
-                    columns={["Setting", "Value"]}
-                    rows={[
-                      [
-                        "Notifications enabled",
-                        data.notification?.notification ? "Yes" : "No",
-                      ],
-                      [
-                        "Callback URI (registered)",
-                        data.notification?.callbackUri || webhookUri || "— not set —",
-                      ],
-                    ]}
-                  />
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={notifConfiguring}
-                      onClick={() => void configureEpsonWebhook(true)}
-                    >
-                      {notifConfiguring ? "Saving…" : "Enable & register callback"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={notifConfiguring}
-                      onClick={() => void configureEpsonWebhook(false)}
-                    >
-                      Disable notifications
-                    </button>
-                  </div>
-                  {notifConfigMsg && (
-                    <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)" }}>
-                      {notifConfigMsg}
-                    </div>
-                  )}
-                  {notifConfigError && (
-                    <div className="form-error" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
-                      {notifConfigError}
-                    </div>
-                  )}
-                  <p style={{ marginTop: 14, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                    Optional: set <code>EPSON_WEBHOOK_SECRET</code> (or reuse <code>CRON_SECRET</code>) in Vercel so
-                    the callback URL includes <code>?key=…</code> and rejects random traffic. Endpoint health
-                    check: <code>/api/epson/webhooks/job</code> (GET).
-                  </p>
-                </Card>
 
                 <Card>
                   <button type="button" className="printer-panel-raw-toggle" onClick={() => setShowRaw((v) => !v)}>

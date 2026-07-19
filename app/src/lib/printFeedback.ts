@@ -110,13 +110,18 @@ export function buildPrintFeedback(input: {
   let source: PrintFeedbackDetail["source"] = "unknown";
   if (via === "email_notification") source = "email_notification";
   else if (via === "epson_connect_webhook") source = "epson_webhook";
-  else if (via === "epson_direct") source = "epson_direct";
+  else if (via === "manual_mark" || (input.jobId ?? "").startsWith("manual-mark:")) {
+    source = "epson_connect"; // reuse chip path; label overridden below
+  } else if (via === "epson_direct") source = "epson_direct";
   else if (via === "epson_connect") source = "epson_connect";
   else if (input.jobId?.startsWith("email-print:") || input.jobId?.startsWith("email-notify:")) {
     source = "epson_direct";
   } else if (input.jobId) {
     source = "epson_connect";
   }
+
+  const isManual =
+    via === "manual_mark" || (input.jobId ?? "").startsWith("manual-mark:");
 
   const updatedAt =
     (input.jobUpdatedAt
@@ -130,10 +135,21 @@ export function buildPrintFeedback(input: {
 
   let matchState: PrintFeedbackDetail["matchState"] = "unknown";
   let matchLabel = "Unknown";
-  if (status === "completed") {
+  let displayLabel = label;
+  let displayTone = tone;
+
+  if (isManual) {
+    displayLabel = status === "completed" ? "Manual · confirmed" : `Manual · ${label}`;
+    displayTone = status === "completed" ? "success" : tone;
+    matchState = status === "completed" ? "matched_ok" : isFailureStatus(status) ? "matched_fail" : "awaiting";
+    matchLabel =
+      status === "completed"
+        ? "MANUAL · staff confirmed print"
+        : `MANUAL · ${status.replace(/_/g, " ")}`;
+  } else if (status === "completed") {
     matchState = "matched_ok";
     matchLabel =
-      source === "epson_webhook" || source === "epson_connect"
+      source === "epson_webhook" || (source === "epson_connect" && via === "epson_connect_webhook")
         ? "Matched · Connect feedback"
         : source === "email_notification" || source === "epson_direct"
           ? "Matched · Email feedback"
@@ -156,13 +172,13 @@ export function buildPrintFeedback(input: {
     status,
     jobId: input.jobId ?? metaString(input.auditMetadata, "jobId"),
     updatedAt,
-    label,
-    tone,
-    summary: summaryParts.join(" — "),
+    label: displayLabel,
+    tone: displayTone,
+    summary: [displayLabel, ...summaryParts.slice(1)].join(" — "),
     subject,
     snippet,
     from,
-    via,
+    via: isManual ? "manual_mark" : via,
     outcome,
     source,
     matchState,
