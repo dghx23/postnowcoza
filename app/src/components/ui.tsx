@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { PrintFeedbackDetail } from "@/lib/printFeedback";
 import { sourceLabel } from "@/lib/printFeedback";
 
-type NavKey = "dashboard" | "dispatch" | "tracking" | "voice" | "print-queue" | "roadmap" | "printer";
+type NavKey = "dashboard" | "dispatch" | "tracking" | "print-queue" | "roadmap" | "printer";
 
 export function AppHeader({
   active,
@@ -17,11 +17,12 @@ export function AppHeader({
   showPrintQueue?: boolean;
   showRoadmap?: boolean;
 }) {
+  // Voice agent is parked on the staff Roadmap (seeded as "Grok Voice Agent")
+  // until that feature is ready to ship — intentionally not linked here.
   const items: Array<{ key: NavKey; label: string; href: string }> = [
     { key: "dashboard", label: "Dashboard", href: "/dashboard" },
     { key: "dispatch", label: "New Dispatch", href: "/dispatch/new" },
     { key: "tracking", label: "Tracking", href: "/dashboard" },
-    { key: "voice", label: "Voice", href: "/voice" },
     ...(showPrintQueue ? [{ key: "print-queue" as const, label: "Print Queue", href: "/print-queue" }] : []),
     ...(showPrintQueue ? [{ key: "printer" as const, label: "Printer", href: "/printer" }] : []),
     ...(showRoadmap ? [{ key: "roadmap" as const, label: "Roadmap", href: "/roadmap" }] : []),
