@@ -6,12 +6,25 @@ import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { AppHeader, Card, Stepper, TrackingTimeline } from "@/components/ui";
 import type { AddressSuggestion } from "@/pages/api/geocode/autocomplete";
 
-export const getServerSideProps: GetServerSideProps<{ userLabel: string }> = async (context) => {
+export const getServerSideProps: GetServerSideProps<{
+  userLabel: string;
+  isStaff: boolean;
+}> = async (context) => {
   const session = await getServerSession(context.req, context.res, authOptions);
   if (!session?.user?.email) {
     return { redirect: { destination: "/login", permanent: false } };
   }
-  return { props: { userLabel: session.user.email } };
+  // Dashboard / New Dispatch is the staff ops surface; keep the same form
+  // shape customers use, framed for staff manual job entry.
+  const { prisma } = await import("@/lib/db");
+  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  const isStaff = user?.role === "STAFF" || user?.role === "ADMIN";
+  return {
+    props: {
+      userLabel: isStaff ? `${session.user.email} · Staff job entry` : session.user.email,
+      isStaff: Boolean(isStaff),
+    },
+  };
 };
 
 const STEPS = ["Submission", "Secure Intake", "Dispatch", "Delivery", "Return", "Record"];
@@ -22,7 +35,13 @@ const PENDING_EVENTS = [
   { label: "Delivered", state: "pending" as const },
 ];
 
-export default function NewDispatch({ userLabel }: { userLabel: string }) {
+export default function NewDispatch({
+  userLabel,
+  isStaff,
+}: {
+  userLabel: string;
+  isStaff: boolean;
+}) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -141,8 +160,8 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
       }
 
       const { id } = await res.json();
-      // Pay dispatch fee first (PayFast), then tracking / next-day courier booking.
-      router.push(`/pay/${id}?from=upload`);
+      // Staff: request-payment screen. Customer (if any): self-serve PayFast.
+      router.push(isStaff ? `/pay/${id}?from=staff` : `/pay/${id}?from=upload`);
     } catch (err) {
       setError((err as Error).message);
       setSubmitting(false);
@@ -151,13 +170,35 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
 
   return (
     <div className="app-shell">
-      <AppHeader active="dispatch" userLabel={userLabel} />
+      <AppHeader
+        active="dispatch"
+        userLabel={userLabel}
+        showPrintQueue={isStaff}
+        showRoadmap={isStaff}
+      />
       <main className="app-main">
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div>
-            <div className="page-title">Create New Secure Dispatch</div>
-            <div className="page-subtitle">Secure Physical Document Dispatch</div>
+            <div className="page-title">
+              {isStaff ? "Create New Secure Dispatch" : "Create New Secure Dispatch"}
+            </div>
+            <div className="page-subtitle">
+              {isStaff
+                ? "Staff · manual job entry — same details a customer would provide online. After submit you’ll request payment by email."
+                : "Secure physical document dispatch"}
+            </div>
           </div>
+
+          {isStaff && (
+            <div className="dispatch-staff-banner">
+              <strong>Staff job entry</strong>
+              <span>
+                Fill this as if you were the customer (document, delivery address, print options). On
+                submit you’ll land on <em>Request payment of dispatch fee</em> to email a PayFast link
+                with the full order summary.
+              </span>
+            </div>
+          )}
 
           <Stepper steps={STEPS} activeIndex={0} />
 
@@ -245,7 +286,9 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
                   Print options
                 </div>
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 10 }}>
-                  How should we print your document at the facility? Staff will honour these settings.
+                  {isStaff
+                    ? "Print options for this job (customer choices if taking an order over the counter / phone)."
+                    : "How should we print your document at the facility? We will honour these settings."}
                 </div>
                 <div className="radio-cards">
                   <label className={`radio-card${printColorMode === "mono" ? " selected" : ""}`}>
@@ -365,7 +408,11 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
                 className="btn btn-primary btn-full"
                 disabled={submitting || !file}
               >
-                {submitting ? "Submitting…" : "Submit Secure Dispatch Request"}
+                {submitting
+                  ? "Submitting…"
+                  : isStaff
+                    ? "Submit job · request payment next"
+                    : "Submit Secure Dispatch Request"}
               </button>
             </div>
 

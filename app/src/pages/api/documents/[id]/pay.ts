@@ -2,12 +2,14 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { buildPayfastCheckout, getPayfastConfig } from "@/lib/payfast";
+import { validatePaymentRequestToken } from "@/lib/paymentRequestEmail";
 
 const APP_URL = process.env.NEXTAUTH_URL ?? "https://app.postnow.co.za";
 
 /**
  * Create or return a PayFast checkout for this document's dispatch fee.
- * Returns { action, fields } for a browser POST form, or redirects if preferred.
+ * Returns { action, fields } for a browser POST form.
+ * Auth: session owner/staff, or valid payment-request token (guest email link).
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST" && req.method !== "GET") {
@@ -15,16 +17,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const user = await getSessionUser(req, res);
-  if (!user) return res.status(401).json({ error: "Unauthorized" });
-
   const { id } = req.query;
   if (typeof id !== "string") return res.status(400).json({ error: "Missing id" });
 
   const document = await prisma.document.findUnique({ where: { id } });
   if (!document) return res.status(404).json({ error: "Document not found" });
-  if (document.ownerId !== user.id && user.role === "CUSTOMER") {
-    return res.status(403).json({ error: "Forbidden" });
+
+  const user = await getSessionUser(req, res);
+  const tokenFromHeader =
+    typeof req.headers["x-payment-token"] === "string" ? req.headers["x-payment-token"] : null;
+  const tokenFromBody =
+    req.body && typeof req.body === "object" && typeof (req.body as { token?: string }).token === "string"
+      ? (req.body as { token: string }).token
+      : null;
+  const tokenFromQuery = typeof req.query.token === "string" ? req.query.token : null;
+  const payToken = tokenFromHeader || tokenFromBody || tokenFromQuery;
+  const tokenOk = payToken ? await validatePaymentRequestToken(id, payToken) : false;
+
+  const isStaff = user?.role === "STAFF" || user?.role === "ADMIN";
+  const isOwner = Boolean(user && document.ownerId === user.id);
+  if (!isStaff && !isOwner && !tokenOk) {
+    return res.status(user ? 403 : 401).json({ error: user ? "Forbidden" : "Unauthorized" });
   }
 
   const cfg = getPayfastConfig();
@@ -91,7 +104,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     itemName: "PostNow secure dispatch",
     itemDescription: `Dispatch fee · ref ${id.slice(0, 10).toUpperCase()}`,
     mPaymentId: payment.customPaymentId,
-    email: document.recipientEmail || user.email || "",
+    email: document.recipientEmail || user?.email || "",
     cellNumber: document.recipientPhone,
     nameFirst,
     nameLast,

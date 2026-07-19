@@ -2985,6 +2985,46 @@ a.ops-feed-item-link:hover .ops-feed-doc {
   align-items: center;
 }
 .pay-btn { min-width: 220px; }
+.dispatch-staff-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: #1E3A5F;
+  line-height: 1.45;
+}
+.dispatch-staff-banner strong {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #1D4ED8;
+}
+
+.pay-guest-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-card, #fff);
+}
+.pay-guest-brand {
+  font-family: var(--font-display, inherit);
+  font-weight: 900;
+  font-size: 20px;
+  color: var(--navy-900, #0A2540);
+}
+.pay-guest-brand span { color: #00A8A8; }
+.pay-guest-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 /* Full-width payment method logos along the bottom of the pay page */
 .pay-methods-strip {
   display: flex;

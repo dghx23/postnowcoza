@@ -124,6 +124,7 @@ function formatAuditAction(action: string): string {
     epson_print_confirmed: "Printer confirmed print completed",
     epson_print_attention: "Printer needs attention (paper, ink, or stopped)",
     print_job_submitted: "Print job logged (settings recorded)",
+    payment_request_sent: "Payment request emailed to customer",
     bobgo_webhook_received: "Courier status update received",
     pod_fetch_failed: "Proof-of-delivery fetch failed",
     shipment_exception: "Courier reported a delivery exception",
