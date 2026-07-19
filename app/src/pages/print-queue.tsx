@@ -175,9 +175,15 @@ export default function PrintQueue({
     setHistorySyncing(true);
     setHistoryMsg(null);
     try {
-      const res = await fetch("/api/epson/notifications/sync", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Mailbox sync failed");
+      const res = await fetch("/api/epson/notifications/sync?includeSeen=1", { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const diag =
+          json.diag && typeof json.diag === "object"
+            ? ` [userSet=${json.diag.userSet}, passSet=${json.diag.passwordSet}, passLen=${json.diag.passwordLength}, host=${json.diag.host}]`
+            : "";
+        throw new Error((json.error ?? "Mailbox sync failed") + diag);
+      }
       setHistoryMsg(
         `Mailbox checked: ${json.fetched ?? 0} notification(s), ${json.applied ?? 0} applied. Reloading…`,
       );

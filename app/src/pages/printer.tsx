@@ -137,14 +137,23 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
     }
   }
 
-  async function syncPrintNotifications() {
+  async function syncPrintNotifications(includeSeen = false) {
     setNotifSyncing(true);
     setNotifError(null);
     setNotifResult(null);
     try {
-      const res = await fetch("/api/epson/notifications/sync", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Sync failed");
+      const res = await fetch(
+        `/api/epson/notifications/sync${includeSeen ? "?includeSeen=1" : ""}`,
+        { method: "POST" },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const diag =
+          json.diag && typeof json.diag === "object"
+            ? ` [host=${json.diag.host}:${json.diag.port}, userSet=${json.diag.userSet}, passSet=${json.diag.passwordSet}, passLen=${json.diag.passwordLength}]`
+            : "";
+        throw new Error((json.error ?? `Sync failed (HTTP ${res.status})`) + diag);
+      }
       setNotifResult(
         `Fetched ${json.fetched} notification(s), applied ${json.applied} update(s) to print jobs.`,
       );
@@ -231,18 +240,36 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
                 type="button"
                 className="btn btn-primary"
                 disabled={notifSyncing}
-                onClick={() => void syncPrintNotifications()}
+                onClick={() => void syncPrintNotifications(false)}
               >
                 {notifSyncing ? "Checking mailbox…" : "Check mailbox now"}
               </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={notifSyncing}
+                onClick={() => void syncPrintNotifications(true)}
+              >
+                Re-scan recent (incl. read)
+              </button>
               <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                IMAP <code>imappro.zoho.com:993</code> · password = <code>SMTP_PASSWORD</code>
+                IMAP <code>imappro.zoho.com:993</code> (fallback <code>imap.zoho.com</code>) · password ={" "}
+                <code>SMTP_PASSWORD</code>
               </span>
             </div>
             {notifResult && (
               <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)" }}>{notifResult}</div>
             )}
-            {notifError && <div className="form-error" style={{ marginTop: 12 }}>{notifError}</div>}
+            {notifError && (
+              <div className="form-error" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
+                {notifError}
+                <div style={{ marginTop: 8, fontWeight: 500, color: "var(--text-secondary)" }}>
+                  Checklist: (1) Vercel has <code>Zoho_PrintAgent_User</code> + <code>SMTP_PASSWORD</code> with no
+                  trailing spaces, (2) IMAP is enabled for that mailbox in Zoho, (3) password is the same one that
+                  works for SMTP Email Print, (4) optional <code>IMAP_HOST</code> if Zoho shows a different host.
+                </div>
+              </div>
+            )}
           </Card>
 
           {error && <div className="form-error">{error}</div>}

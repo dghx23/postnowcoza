@@ -15,11 +15,15 @@ import { appendAuditEvent } from "@/lib/audit";
  *   - Bare cuid-looking tokens in the body/subject
  */
 
-const IMAP_HOST = process.env.IMAP_HOST ?? "imappro.zoho.com";
+const IMAP_HOST = (process.env.IMAP_HOST ?? "imappro.zoho.com").trim();
 const IMAP_PORT = Number(process.env.IMAP_PORT ?? "993");
-const IMAP_USER =
-  process.env.Zoho_PrintAgent_User ?? process.env.SMTP_USER ?? "";
-const IMAP_PASSWORD = process.env.SMTP_PASSWORD ?? "";
+// Trim — Vercel env paste often leaves trailing newlines that break IMAP AUTH.
+const IMAP_USER = (
+  process.env.Zoho_PrintAgent_User ??
+  process.env.SMTP_USER ??
+  ""
+).trim();
+const IMAP_PASSWORD = (process.env.SMTP_PASSWORD ?? "").trim();
 
 /** Terminal statuses we no longer try to update from mail. */
 const SETTLED = new Set(["completed", "error_occurred", "canceled", "expired"]);
@@ -43,6 +47,19 @@ export interface ParsedEpsonNotification {
 
 export function isImapConfigured(): boolean {
   return Boolean(IMAP_USER && IMAP_PASSWORD);
+}
+
+/** Safe diagnostics for the UI / API when IMAP fails (no secrets). */
+export function imapConfigDiag() {
+  return {
+    host: IMAP_HOST,
+    port: IMAP_PORT,
+    userSet: Boolean(IMAP_USER),
+    userLooksLikeEmail: IMAP_USER.includes("@"),
+    userLength: IMAP_USER.length,
+    passwordSet: Boolean(IMAP_PASSWORD),
+    passwordLength: IMAP_PASSWORD.length,
+  };
 }
 
 function classifyNotification(subject: string, text: string): EpsonNotifyKind {
@@ -96,7 +113,6 @@ function extractDocumentId(subject: string, text: string): string | null {
   if (jobName?.[1]) return jobName[1];
 
   const ids = [...hay.matchAll(CUID_RE)].map((m) => m[1]!.toLowerCase());
-  // Prefer longer unique tokens
   const uniq = [...new Set(ids)];
   if (uniq.length === 1) return uniq[0]!;
   return null;
@@ -106,10 +122,19 @@ function snippetOf(text: string, max = 280): string {
   return text.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
+function formatImapError(stage: string, err: unknown): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  const diag = imapConfigDiag();
+  // ImapFlow often surfaces a bare "Command failed" — add context.
+  return new Error(
+    `IMAP ${stage} failed (${diag.host}:${diag.port}, user=${diag.userSet ? `${diag.userLength}ch${diag.userLooksLikeEmail ? "" : " (!email)"}` : "MISSING"}, pass=${diag.passwordSet ? `${diag.passwordLength}ch` : "MISSING"}): ${msg}`,
+  );
+}
+
 async function openClient(): Promise<ImapFlow> {
   if (!isImapConfigured()) {
     throw new Error(
-      "IMAP not configured (Zoho_PrintAgent_User / SMTP_PASSWORD)",
+      "IMAP not configured — set Zoho_PrintAgent_User and SMTP_PASSWORD in Vercel (same mailbox as Email Print SMTP)",
     );
   }
 
@@ -119,15 +144,73 @@ async function openClient(): Promise<ImapFlow> {
     secure: true,
     auth: { user: IMAP_USER, pass: IMAP_PASSWORD },
     logger: false,
+    // Serverless-friendly: fail fast rather than hanging the function.
+    connectionTimeout: 20_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
   });
 
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (err) {
+    // Common Zoho mix-up: personal imap.zoho.com vs org imappro.zoho.com
+    if (
+      IMAP_HOST === "imappro.zoho.com" &&
+      !process.env.IMAP_HOST // only auto-fallback when host wasn't overridden
+    ) {
+      try {
+        await client.logout().catch(() => undefined);
+      } catch {
+        /* ignore */
+      }
+      const fallback = new ImapFlow({
+        host: "imap.zoho.com",
+        port: IMAP_PORT,
+        secure: true,
+        auth: { user: IMAP_USER, pass: IMAP_PASSWORD },
+        logger: false,
+        connectionTimeout: 20_000,
+        greetingTimeout: 15_000,
+        socketTimeout: 30_000,
+      });
+      try {
+        await fallback.connect();
+        return fallback;
+      } catch (err2) {
+        throw formatImapError(
+          "connect",
+          new Error(
+            `imappro.zoho.com → ${(err as Error).message}; imap.zoho.com → ${(err2 as Error).message}. ` +
+              `Enable IMAP in Zoho Mail settings, confirm the password is the mailbox app/SMTP password, ` +
+              `and set IMAP_HOST if your region uses a different host.`,
+          ),
+        );
+      }
+    }
+    throw formatImapError("connect", err);
+  }
+
   return client;
+}
+
+function isEpsonishMail(from: string, subject: string, text: string): boolean {
+  const fromLower = from.toLowerCase();
+  return (
+    fromLower.includes("epson") ||
+    fromLower.includes("epsonconnect") ||
+    /print\s+(job|request)/i.test(subject) ||
+    /epson/i.test(subject) ||
+    /no printable data/i.test(text) ||
+    /postnow\s+document/i.test(subject)
+  );
 }
 
 /**
  * Fetch recent messages that look like Epson notifications.
- * Marks processed messages as Seen so we don't re-apply them.
+ *
+ * Avoids IMAP SEARCH (Zoho often returns bare "Command failed" for combined
+ * criteria). Instead we fetch the last N messages by sequence range and
+ * filter in process.
  */
 export async function fetchEpsonNotificationEmails(options?: {
   /** Max messages to inspect per run */
@@ -135,66 +218,87 @@ export async function fetchEpsonNotificationEmails(options?: {
   /** Also re-read recent Seen mail (for debugging / backfill) */
   includeSeen?: boolean;
 }): Promise<ParsedEpsonNotification[]> {
-  const limit = options?.limit ?? 30;
+  const limit = options?.limit ?? 40;
+  const includeSeen = options?.includeSeen ?? false;
   const client = await openClient();
   const out: ParsedEpsonNotification[] = [];
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
   try {
-    const lock = await client.getMailboxLock("INBOX");
+    let lock;
     try {
-      // Last 7 days — Epson notifications are near-real-time.
-      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const uids = await client.search(
-        options?.includeSeen
-          ? { since }
-          : { seen: false, since },
-        { uid: true },
-      );
+      lock = await client.getMailboxLock("INBOX");
+    } catch (err) {
+      throw formatImapError("select INBOX", err);
+    }
 
-      // search may return false | number[]
-      const list = Array.isArray(uids) ? uids.slice(-limit) : [];
+    try {
+      const total = client.mailbox?.exists ?? 0;
+      if (total === 0) return out;
 
-      for (const uid of list) {
-        const msg = await client.fetchOne(
-          String(uid),
-          { source: true, envelope: true },
-          { uid: true },
-        );
-        if (!msg || !msg.source) continue;
+      // Sequence range of the newest messages (1-based inclusive).
+      const start = Math.max(1, total - limit + 1);
+      const range = `${start}:${total}`;
 
-        const parsed = await simpleParser(msg.source as Buffer);
-        const subject = parsed.subject ?? msg.envelope?.subject ?? "";
-        const from =
-          parsed.from?.text ??
-          msg.envelope?.from?.map((a) => a.address ?? a.name).join(", ") ??
-          "";
-        const text =
-          parsed.text ||
-          (typeof parsed.html === "string"
-            ? parsed.html.replace(/<[^>]+>/g, " ")
-            : "") ||
-          "";
+      try {
+        for await (const msg of client.fetch(range, {
+          uid: true,
+          source: true,
+          envelope: true,
+          flags: true,
+          internalDate: true,
+        })) {
+          const flags = msg.flags ?? new Set<string>();
+          const seen = flags.has("\\Seen");
+          if (!includeSeen && seen) continue;
 
-        // Only act on Epson-looking mail (sender domain or keywords).
-        const fromLower = from.toLowerCase();
-        const isEpsonish =
-          fromLower.includes("epson") ||
-          fromLower.includes("epsonconnect") ||
-          /print\s+(job|request)/i.test(subject) ||
-          /epson/i.test(subject) ||
-          /no printable data/i.test(text);
+          const internal =
+            msg.internalDate instanceof Date
+              ? msg.internalDate.getTime()
+              : msg.internalDate
+                ? new Date(msg.internalDate).getTime()
+                : Date.now();
+          if (internal < sevenDaysAgo) continue;
 
-        if (!isEpsonish) continue;
+          if (!msg.source) continue;
 
-        out.push({
-          kind: classifyNotification(subject, text),
-          documentId: extractDocumentId(subject, text),
-          subject,
-          from,
-          messageId: parsed.messageId ?? null,
-          snippet: snippetOf(text),
-          uid: typeof uid === "number" ? uid : Number(uid),
-        });
+          let parsed;
+          try {
+            parsed = await simpleParser(
+              Buffer.isBuffer(msg.source)
+                ? msg.source
+                : Buffer.from(msg.source as string),
+            );
+          } catch {
+            continue;
+          }
+
+          const subject = parsed.subject ?? msg.envelope?.subject ?? "";
+          const from =
+            parsed.from?.text ??
+            msg.envelope?.from?.map((a) => a.address ?? a.name).join(", ") ??
+            "";
+          const text =
+            parsed.text ||
+            (typeof parsed.html === "string"
+              ? parsed.html.replace(/<[^>]+>/g, " ")
+              : "") ||
+            "";
+
+          if (!isEpsonishMail(from, subject, text)) continue;
+
+          out.push({
+            kind: classifyNotification(subject, text),
+            documentId: extractDocumentId(subject, text),
+            subject,
+            from,
+            messageId: parsed.messageId ?? null,
+            snippet: snippetOf(text),
+            uid: typeof msg.uid === "number" ? msg.uid : Number(msg.uid),
+          });
+        }
+      } catch (err) {
+        throw formatImapError("fetch recent mail", err);
       }
     } finally {
       lock.release();
@@ -203,6 +307,8 @@ export async function fetchEpsonNotificationEmails(options?: {
     await client.logout().catch(() => undefined);
   }
 
+  // Newest first for apply order stability.
+  out.sort((a, b) => b.uid - a.uid);
   return out;
 }
 
@@ -214,7 +320,6 @@ async function resolveDocumentId(candidate: string | null): Promise<string | nul
   });
   if (exact) return exact.id;
 
-  // Prefix match (spoken / truncated refs)
   const matches = await prisma.document.findMany({
     where: { id: { startsWith: candidate } },
     take: 2,
@@ -228,7 +333,6 @@ async function applyNotification(
   n: ParsedEpsonNotification,
 ): Promise<{ applied: boolean; reason: string; documentId?: string }> {
   if (n.kind === "unknown" || n.kind === "sent") {
-    // "sent" is informational — we already know we submitted. Don't settle yet.
     return { applied: false, reason: `ignored_kind:${n.kind}` };
   }
 
@@ -237,7 +341,6 @@ async function applyNotification(
     return { applied: false, reason: "no_document_match" };
   }
 
-  // Prefer the latest unsettled job for this document; else latest job overall.
   let job = await prisma.epsonPrintJob.findFirst({
     where: { documentId, status: { notIn: [...SETTLED] } },
     orderBy: { createdAt: "desc" },
@@ -250,7 +353,6 @@ async function applyNotification(
   }
 
   if (!job) {
-    // Create a synthetic row so the UI still shows the outcome.
     job = await prisma.epsonPrintJob.create({
       data: {
         documentId,
@@ -284,8 +386,6 @@ async function applyNotification(
     return { applied: true, reason: "completed", documentId };
   }
 
-  // Failure / expired — put the document back in the queue if still PRINTED
-  // so staff can fix and re-print.
   const doc = await prisma.document.findUnique({ where: { id: documentId } });
   if (doc?.status === "PRINTED") {
     await prisma.document.update({
@@ -332,6 +432,7 @@ export interface SyncEpsonNotificationsResult {
     reason: string;
     subject: string;
   }>;
+  diag?: ReturnType<typeof imapConfigDiag>;
 }
 
 /**
@@ -344,7 +445,13 @@ export async function syncEpsonNotifications(options?: {
   markSeen?: boolean;
 }): Promise<SyncEpsonNotificationsResult> {
   if (!isImapConfigured()) {
-    return { configured: false, fetched: 0, applied: 0, results: [] };
+    return {
+      configured: false,
+      fetched: 0,
+      applied: 0,
+      results: [],
+      diag: imapConfigDiag(),
+    };
   }
 
   const notifications = await fetchEpsonNotificationEmails({
@@ -367,7 +474,6 @@ export async function syncEpsonNotifications(options?: {
       reason: outcome.reason,
       subject: n.subject,
     });
-    // Mark seen even when ignored (unknown/sent) so we don't re-scan forever.
     uidsToMark.push(n.uid);
   }
 
@@ -380,6 +486,7 @@ export async function syncEpsonNotifications(options?: {
     fetched: notifications.length,
     applied,
     results,
+    diag: imapConfigDiag(),
   };
 }
 
@@ -410,5 +517,5 @@ export async function syncIfPendingJobs(): Promise<SyncEpsonNotificationsResult 
   });
   if (pending === 0) return null;
 
-  return syncEpsonNotifications({ limit: 20 });
+  return syncEpsonNotifications({ limit: 40 });
 }

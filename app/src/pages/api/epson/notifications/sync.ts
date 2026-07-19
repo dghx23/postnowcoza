@@ -1,9 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getSessionUser } from "@/lib/session";
 import {
+  imapConfigDiag,
   isImapConfigured,
   syncEpsonNotifications,
 } from "@/lib/epsonNotifications";
+
+// IMAP round-trips can exceed the default serverless budget on cold starts.
+export const config = {
+  maxDuration: 60,
+};
 
 /**
  * Pull Epson print outcome emails from the Zoho print-agent mailbox and
@@ -11,6 +17,8 @@ import {
  *
  * Auth: staff/admin session, OR Authorization: Bearer <CRON_SECRET> for
  * Vercel Cron / external schedulers.
+ *
+ * Query: ?includeSeen=1 to re-scan recent read mail (backfill).
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST" && req.method !== "GET") {
@@ -36,18 +44,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!isImapConfigured()) {
     return res.status(503).json({
       error:
-        "IMAP not configured — set Zoho_PrintAgent_User and SMTP_PASSWORD (same mailbox as Email Print SMTP)",
+        "IMAP not configured — set Zoho_PrintAgent_User and SMTP_PASSWORD in Vercel (same mailbox as Email Print SMTP). Values are trimmed of whitespace.",
       configured: false,
+      diag: imapConfigDiag(),
     });
   }
 
+  const body =
+    typeof req.body === "object" && req.body !== null
+      ? (req.body as Record<string, unknown>)
+      : {};
   const includeSeen =
-    req.method === "POST" &&
-    (req.body?.includeSeen === true || req.query.includeSeen === "1");
+    body.includeSeen === true ||
+    req.query.includeSeen === "1" ||
+    req.query.includeSeen === "true";
 
   try {
     const result = await syncEpsonNotifications({
-      limit: Number(req.query.limit ?? req.body?.limit ?? 30) || 30,
+      limit: Number(req.query.limit ?? body.limit ?? 40) || 40,
       includeSeen,
     });
     return res.status(200).json(result);
@@ -55,6 +69,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(502).json({
       error: (err as Error).message,
       configured: true,
+      diag: imapConfigDiag(),
     });
   }
 }
