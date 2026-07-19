@@ -155,7 +155,9 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
         throw new Error((json.error ?? `Sync failed (HTTP ${res.status})`) + diag);
       }
       setNotifResult(
-        `Fetched ${json.fetched} notification(s), applied ${json.applied} update(s) to print jobs.`,
+        `Fetched ${json.fetched} notification(s), applied ${json.applied} update(s)` +
+          (json.transport ? ` via ${json.transport}` : "") +
+          ` to print jobs.`,
       );
     } catch (err) {
       setNotifError((err as Error).message);
@@ -253,8 +255,8 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
                 Re-scan recent (incl. read)
               </button>
               <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                IMAP <code>imappro.zoho.com:993</code> (fallback <code>imap.zoho.com</code>) · password ={" "}
-                <code>SMTP_PASSWORD</code>
+                IMAP <code>imappro.zoho.com:993</code> → POP3 <code>poppro.zoho.com:995</code> · auth via{" "}
+                <code>IMAP_PASSWORD</code> or <code>SMTP_PASSWORD</code>
               </span>
             </div>
             {notifResult && (
@@ -264,9 +266,16 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               <div className="form-error" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
                 {notifError}
                 <div style={{ marginTop: 8, fontWeight: 500, color: "var(--text-secondary)" }}>
-                  Checklist: (1) Vercel has <code>Zoho_PrintAgent_User</code> + <code>SMTP_PASSWORD</code> with no
-                  trailing spaces, (2) IMAP is enabled for that mailbox in Zoho, (3) password is the same one that
-                  works for SMTP Email Print, (4) optional <code>IMAP_HOST</code> if Zoho shows a different host.
+                  Zoho often allows SMTP while blocking IMAP/POP. Fix in order:
+                  <br />
+                  1. Zoho Mail → Settings → Mail Accounts → this mailbox → <strong>enable IMAP Access</strong>
+                  <br />
+                  2. Admin console → Email Policy must allow IMAP/POP for this user
+                  <br />
+                  3. If the org uses TFA/SAML: create a Zoho <strong>Application-Specific Password</strong> and set
+                  it as <code>IMAP_PASSWORD</code> in Vercel (leave <code>SMTP_PASSWORD</code> as-is for sending)
+                  <br />
+                  4. Confirm <code>Zoho_PrintAgent_User</code> is the full email, no trailing spaces
                 </div>
               </div>
             )}
