@@ -232,14 +232,57 @@ nav.site-nav a.nav-link:hover {
 
 .trust-bar {
   background: var(--navy-950);
-  padding: 18px 48px;
+  padding: 14px 48px;
   text-align: center;
 }
-.trust-bar img {
-  max-width: 700px;
-  width: 100%;
-  height: auto;
-  display: inline-block;
+.trust-bar-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.trust-bar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: #fff;
+  white-space: nowrap;
+}
+.trust-bar-brand svg {
+  color: var(--gold-500);
+  flex-shrink: 0;
+}
+.trust-bar-sep {
+  color: rgba(255, 255, 255, 0.25);
+  font-weight: 300;
+}
+.trust-bar-items {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.trust-bar-items li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+}
+.trust-bar-items li svg {
+  color: var(--gold-500);
+  flex-shrink: 0;
 }
 
 .section {
