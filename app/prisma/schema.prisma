@@ -265,8 +265,70 @@ model Payment {
   zohoBooksPaymentId  String?
   zohoBooksSyncedAt   DateTime?
   zohoBooksSyncError  String?
+  /// Last known Zoho invoice status from pull (paid | sent | overdue | …)
+  zohoBooksInvoiceStatus String?
+  /// Outstanding balance on the Zoho invoice (if any)
+  zohoBooksBalance       Float?
+  zohoBooksLastPullAt    DateTime?
+  /// Optional link to a BillingItem used for this fee line
+  billingItemId   String?
+  billingItem     BillingItem?  @relation(fields: [billingItemId], references: [id])
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
   @@index([documentId])
+  @@index([billingItemId])
+}
+
+// Staff-editable payment structure / rate lines that feed dispatch fees
+// and eventually Zoho Books line items. Workspace on /finance.
+model BillingItem {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  description     String?
+  /// Default ZAR amount for this billing line
+  amount          Float
+  /// Optional Zoho Books item_id when mapped
+  zohoItemId      String?
+  active          Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  payments        Payment[]
+}
+
+// Two-way Zoho ↔ PostNow (and payment-structure) exception log
+model SyncException {
+  id          String   @id @default(cuid())
+  source      String   // zoho_push | zoho_pull | payment_structure | scan | other
+  severity    String   @default("error") // error | warn | info
+  title       String
+  detail      String?
+  paymentId   String?
+  documentId  String?
+  metadata    Json?
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+
+  @@index([resolved, createdAt])
+  @@index([source])
+}
+
+// Facility scans (Epson Connect / upload). Saved for email + archive.
+model FacilityScan {
+  id           String   @id @default(cuid())
+  fileName     String
+  storageKey   String
+  contentType  String   @default("application/pdf")
+  sizeBytes    Int      @default(0)
+  comments     String?
+  /// Who uploaded / initiated the scan
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([createdAt])
 }

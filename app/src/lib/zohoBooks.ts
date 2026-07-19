@@ -114,25 +114,80 @@ export async function getZohoBooksAccessToken(): Promise<string> {
   return accessToken;
 }
 
+function zohoErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as { message?: string; code?: number } | undefined;
+    if (data?.message) return `Zoho: ${data.message}${data.code != null ? ` (${data.code})` : ""}`;
+    return err.message;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 async function booksRequest<T = unknown>(
   method: "GET" | "POST" | "PUT",
   path: string,
-  data?: unknown
+  data?: unknown,
+  extraParams?: Record<string, string | number | undefined>
 ): Promise<T> {
   const token = await getZohoBooksAccessToken();
   const orgId = zohoBooksOrgId();
   const url = `${apiHost(region())}/books/v3${path}`;
-  const res = await axios.request({
-    method,
-    url,
-    params: { organization_id: orgId },
-    data,
-    headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
-      "Content-Type": "application/json",
-    },
-  });
-  return res.data as T;
+  try {
+    const res = await axios.request({
+      method,
+      url,
+      params: { organization_id: orgId, ...extraParams },
+      data,
+      headers: {
+        Authorization: `Zoho-oauthtoken ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+    return res.data as T;
+  } catch (err) {
+    throw new Error(zohoErrorMessage(err));
+  }
+}
+
+export interface ZohoInvoiceDetail {
+  invoice_id: string;
+  invoice_number?: string;
+  status: string;
+  total?: number;
+  balance?: number;
+  reference_number?: string;
+  customer_id?: string;
+}
+
+export async function getInvoice(invoiceId: string): Promise<ZohoInvoiceDetail> {
+  const data = await booksRequest<{ invoice?: ZohoInvoiceDetail }>(
+    "GET",
+    `/invoices/${encodeURIComponent(invoiceId)}`
+  );
+  if (!data.invoice?.invoice_id) {
+    throw new Error(`Zoho get invoice failed: ${JSON.stringify(data)}`);
+  }
+  return data.invoice;
+}
+
+export async function listInvoices(params?: {
+  reference_number?: string;
+  status?: string;
+  page?: number;
+  per_page?: number;
+}): Promise<{ invoices: ZohoInvoiceDetail[] }> {
+  const data = await booksRequest<{ invoices?: ZohoInvoiceDetail[] }>(
+    "GET",
+    "/invoices",
+    undefined,
+    {
+      reference_number: params?.reference_number,
+      status: params?.status,
+      page: params?.page ?? 1,
+      per_page: params?.per_page ?? 25,
+    }
+  );
+  return { invoices: data.invoices ?? [] };
 }
 
 export interface ZohoContact {

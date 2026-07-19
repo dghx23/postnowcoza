@@ -1,12 +1,20 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getSessionUser } from "@/lib/session";
 import { getZohoBooksPublicConfig, zohoBooksConfigured } from "@/lib/zohoBooks";
-import { syncPaymentToZohoBooks } from "@/lib/zohoBooksSync";
+import {
+  pullLinkedPaymentsFromZohoBooks,
+  pullPaymentFromZohoBooks,
+  syncPaymentToZohoBooks,
+} from "@/lib/zohoBooksSync";
 import { prisma } from "@/lib/db";
 
 /**
  * GET  — Zoho Books config status + app URL for finance UI links
- * POST — { paymentId } sync one payment; { allUnsynced: true } sync recent PAID
+ * POST — push / pull:
+ *   { paymentId }              push one
+ *   { allUnsynced: true }      push recent PAID without full Books mapping
+ *   { pull: true, paymentId }  pull one linked invoice
+ *   { pullAll: true }          pull all linked (capped)
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const user = await getSessionUser(req, res);
@@ -22,11 +30,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!zohoBooksConfigured()) {
       return res.status(503).json({
         error:
-          "Zoho Books is not configured. Set ZOHO_BOOKS_CLIENT_ID, ZOHO_BOOKS_CLIENT_SECRET, ZOHO_BOOKS_REFRESH_TOKEN, ZOHO_BOOKS_ORGANIZATION_ID in Vercel.",
+          "Zoho Books is not configured. Set ZOHO_BOOKS_CLIENT_ID, ZOHO_BOOKS_CLIENT_SECRET, ZOHO_BOOKS_REFRESH_TOKEN, ZOHO_BOOKS_ORGANIZATION_ID in Vercel (see Roadmap).",
       });
     }
 
-    const body = (req.body ?? {}) as { paymentId?: string; allUnsynced?: boolean };
+    const body = (req.body ?? {}) as {
+      paymentId?: string;
+      allUnsynced?: boolean;
+      pull?: boolean;
+      pullAll?: boolean;
+    };
+
+    if (body.pull && body.paymentId) {
+      const result = await pullPaymentFromZohoBooks(body.paymentId);
+      return res.status(result.ok ? 200 : 502).json(result);
+    }
+
+    if (body.pullAll) {
+      const result = await pullLinkedPaymentsFromZohoBooks({ take: 50 });
+      return res.status(200).json(result);
+    }
 
     if (body.paymentId) {
       const result = await syncPaymentToZohoBooks(body.paymentId);
@@ -53,7 +76,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    return res.status(400).json({ error: "Provide paymentId or allUnsynced: true" });
+    return res.status(400).json({
+      error: "Provide paymentId, allUnsynced, pull+paymentId, or pullAll",
+    });
   }
 
   res.setHeader("Allow", "GET, POST");

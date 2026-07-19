@@ -27,6 +27,11 @@ export interface FinancePaymentRow {
   zohoBooksInvoiceId: string | null;
   zohoBooksSyncedAt: string | null;
   zohoBooksSyncError: string | null;
+  zohoBooksInvoiceStatus: string | null;
+  zohoBooksBalance: number | null;
+  zohoBooksLastPullAt: string | null;
+  billingItemCode: string | null;
+  billingItemName: string | null;
 }
 
 export interface FinanceSummary {
@@ -77,6 +82,10 @@ function mapPaymentRow(
     zohoBooksInvoiceId?: string | null;
     zohoBooksSyncedAt?: Date | null;
     zohoBooksSyncError?: string | null;
+    zohoBooksInvoiceStatus?: string | null;
+    zohoBooksBalance?: number | null;
+    zohoBooksLastPullAt?: Date | null;
+    billingItem?: { code: string; name: string } | null;
     document: { recipientName: string; owner?: { email: string } | null };
   },
   isCustomer: boolean
@@ -95,6 +104,11 @@ function mapPaymentRow(
     zohoBooksInvoiceId: p.zohoBooksInvoiceId ?? null,
     zohoBooksSyncedAt: p.zohoBooksSyncedAt?.toISOString() ?? null,
     zohoBooksSyncError: p.zohoBooksSyncError ?? null,
+    zohoBooksInvoiceStatus: p.zohoBooksInvoiceStatus ?? null,
+    zohoBooksBalance: p.zohoBooksBalance ?? null,
+    zohoBooksLastPullAt: p.zohoBooksLastPullAt?.toISOString() ?? null,
+    billingItemCode: p.billingItem?.code ?? null,
+    billingItemName: p.billingItem?.name ?? null,
   };
 }
 
@@ -162,24 +176,13 @@ export async function getFinanceSummary(options: {
             ...(isCustomer ? {} : { owner: { select: { email: true } } }),
           },
         },
+        billingItem: { select: { code: true, name: true } },
       },
     }),
   ]);
 
   const recentPayments: FinancePaymentRow[] = recent.map((p) =>
-    mapPaymentRow(
-      p as {
-        id: string;
-        documentId: string;
-        amount: number;
-        status: PaymentStatus;
-        paymentMethod: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        document: { recipientName: string; owner?: { email: string } | null };
-      },
-      isCustomer
-    )
+    mapPaymentRow(p as Parameters<typeof mapPaymentRow>[0], isCustomer)
   );
 
   return {

@@ -67,6 +67,34 @@ async function main() {
       comment:
         "Payment-request emails currently use the existing Vercel SMTP (Zoho_PrintAgent_User / SMTP_*). Switch From + auth to info@postnow.co.za (or dedicated transactional mailbox), update SMTP_FROM_EMAIL / SMTP_USER / SMTP_PASSWORD (or Zoho app password) in Vercel, verify SPF/DKIM, and smoke-test staff “Send payment request email”. Keep branded HTML template unchanged.",
     },
+    {
+      name: "WhatsApp: put permanent token in Vercel + switch webhook to prod",
+      priority: "HIGH",
+      status: "NOT_STARTED",
+      comment:
+        "REMINDER (~24h after local Meta setup): (1) Paste the permanent WHATSAPP_ACCESS_TOKEN into Vercel env (also WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_WABA_ID, WHATSAPP_API_VERSION, WHATSAPP_VERIFY_TOKEN). (2) Redeploy. (3) In Meta → WhatsApp webhooks, change Callback URL from the local Cloudflare/ngrok tunnel to production https://app.postnow.co.za/api/whatsapp/webhook (same verify token). (4) Re-verify + subscribe messages/calls. (5) Smoke-test send + inbound webhook on prod.",
+    },
+    {
+      name: "Configure Zoho Books API in Vercel (two-way finance)",
+      priority: "HIGH",
+      status: "NOT_STARTED",
+      comment:
+        "BLOCKED ~24h (cannot save Vercel env yet). After unlock, set on the PostNow app project: ZOHO_BOOKS_CLIENT_ID, ZOHO_BOOKS_CLIENT_SECRET, ZOHO_BOOKS_REFRESH_TOKEN, ZOHO_BOOKS_ORGANIZATION_ID (from Books → Settings → Organization Profile; required on every API call as organization_id), ZOHO_BOOKS_REGION (com|eu|in|com.au|jp — match your DC), optional ZOHO_BOOKS_ITEM_ID (default inventory item for dispatch fee line), optional ZOHO_BOOKS_APP_URL / NEXT_PUBLIC_ZOHO_BOOKS_URL. OAuth: api-console.zoho.com self-client scopes ZohoBooks.fullaccess.all (or contacts + invoices + customerpayments read/write). Generate refresh token once. Then smoke-test /finance: Push paid → Books, Refresh from Zoho (pull status; paid in Books auto-marks PostNow PAID), exception log under ⚙ next to user label. Docs: https://www.zoho.com/books/api/v3/introduction/#organization-id",
+    },
+    {
+      name: "Payment structure → ledger entries → Zoho line items",
+      priority: "HIGH",
+      status: "IN_PROGRESS",
+      comment:
+        "Workspace on /finance#payment-structure (BillingItem codes/rates). Next: auto-apply active DISPATCH (or selected) line to new payments, map zohoItemId into createInvoice line items, surface billing line on every ledger row. Keep SyncException for structure/Zoho mismatches.",
+    },
+    {
+      name: "Epson Connect native scan pull (facility scans)",
+      priority: "MEDIUM",
+      status: "NOT_STARTED",
+      comment:
+        "/finance#facility-scans currently saves staff-uploaded PDFs/images (Epson Connect file or local), email with PDF attach, optional AES encrypt + password in email. Next: pull scans directly from Epson Connect Scan API when available; native PDF password encryption if needed.",
+    },
   ];
 
   for (const item of roadmapItems) {

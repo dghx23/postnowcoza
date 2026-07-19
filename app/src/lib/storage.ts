@@ -33,3 +33,24 @@ export async function getDocumentDownloadUrl(key: string, expiresInSeconds = 300
   const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
   return getSignedUrl(s3, command, { expiresIn: expiresInSeconds });
 }
+
+export function newScanStorageKey(filename: string) {
+  return `scans/${randomUUID()}-${filename}`;
+}
+
+export async function getDocumentBuffer(key: string): Promise<Buffer> {
+  const res = await s3.send(
+    new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+    })
+  );
+  const stream = res.Body;
+  if (!stream) throw new Error("Empty S3 object body");
+  const chunks: Uint8Array[] = [];
+  // Node.js readable stream
+  for await (const chunk of stream as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}

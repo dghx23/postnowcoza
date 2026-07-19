@@ -19,6 +19,7 @@ export function AppHeader({
   showPrintQueue,
   showRoadmap,
   showFinance,
+  showSettings = false,
 }: {
   active: NavKey;
   userLabel: string;
@@ -26,8 +27,11 @@ export function AppHeader({
   showRoadmap?: boolean;
   /** Staff-only Financial ledger. Defaults to showPrintQueue (staff chrome). */
   showFinance?: boolean;
+  /** Show gear next to user label (sync exception log). Staff chrome. */
+  showSettings?: boolean;
 }) {
   const financeNav = showFinance ?? showPrintQueue;
+  const settingsOn = showSettings || Boolean(showPrintQueue);
   // Voice agent is parked on the staff Roadmap (seeded as "Grok Voice Agent")
   // until that feature is ready to ship — intentionally not linked here.
   const items: Array<{ key: NavKey; label: string; href: string }> = [
@@ -39,6 +43,68 @@ export function AppHeader({
     ...(showPrintQueue ? [{ key: "printer" as const, label: "Printer", href: "/printer" }] : []),
     ...(showRoadmap ? [{ key: "roadmap" as const, label: "Roadmap", href: "/roadmap" }] : []),
   ];
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exceptions, setExceptions] = useState<
+    Array<{
+      id: string;
+      source: string;
+      severity: string;
+      title: string;
+      detail: string | null;
+      createdAt: string;
+      resolved: boolean;
+    }>
+  >([]);
+  const [openCount, setOpenCount] = useState(0);
+  const [exLoading, setExLoading] = useState(false);
+
+  useEffect(() => {
+    if (!settingsOn) return;
+    void (async () => {
+      try {
+        const res = await fetch("/api/finance/exceptions");
+        if (!res.ok) return;
+        const data = await res.json();
+        setOpenCount(data.openCount ?? 0);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [settingsOn]);
+
+  async function openSettings() {
+    setSettingsOpen(true);
+    setExLoading(true);
+    try {
+      const res = await fetch("/api/finance/exceptions");
+      const data = await res.json();
+      if (res.ok) {
+        setExceptions(data.exceptions ?? []);
+        setOpenCount(data.openCount ?? 0);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setExLoading(false);
+    }
+  }
+
+  async function resolveException(id: string) {
+    try {
+      const res = await fetch("/api/finance/exceptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, resolve: true }),
+      });
+      if (res.ok) {
+        setExceptions((prev) => prev.filter((e) => e.id !== id));
+        setOpenCount((c) => Math.max(0, c - 1));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
 
   return (
     <aside className="app-sidebar" aria-label="Main navigation">
@@ -60,11 +126,87 @@ export function AppHeader({
         ))}
       </nav>
       <div className="app-sidebar-footer">
-        <div className="app-sidebar-user">{userLabel}</div>
+        <div className="app-sidebar-user-row">
+          <div className="app-sidebar-user">{userLabel}</div>
+          {settingsOn && (
+            <button
+              type="button"
+              className="app-sidebar-settings-btn"
+              aria-label="Sync exception log and settings"
+              title="Sync exception log"
+              onClick={() => void openSettings()}
+            >
+              <span className="app-sidebar-gear" aria-hidden>
+                ⚙
+              </span>
+              {openCount > 0 && (
+                <span className="app-sidebar-settings-badge">{openCount > 99 ? "99+" : openCount}</span>
+              )}
+            </button>
+          )}
+        </div>
         <Link href="/" className="app-sidebar-exit">
           Exit to site
         </Link>
       </div>
+
+      {settingsOpen && (
+        <div className="settings-drawer-backdrop" role="presentation" onClick={() => setSettingsOpen(false)}>
+          <div
+            className="settings-drawer"
+            role="dialog"
+            aria-label="Settings and exception log"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="settings-drawer-head">
+              <strong>Settings · exception log</strong>
+              <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: "6px 12px" }} onClick={() => setSettingsOpen(false)}>
+                Close
+              </button>
+            </div>
+            <p className="settings-drawer-sub">
+              Exceptions from Zoho two-way sync, payment structure, and facility scans. Resolve when handled.
+            </p>
+            {exLoading ? (
+              <p className="settings-drawer-empty">Loading…</p>
+            ) : exceptions.length === 0 ? (
+              <p className="settings-drawer-empty">No open exceptions.</p>
+            ) : (
+              <ul className="settings-exception-list">
+                {exceptions.map((ex) => (
+                  <li key={ex.id} className={`settings-exception-item sev-${ex.severity}`}>
+                    <div className="settings-exception-title">{ex.title}</div>
+                    <div className="settings-exception-meta">
+                      <span>{ex.source}</span>
+                      <span>{new Date(ex.createdAt).toLocaleString()}</span>
+                    </div>
+                    {ex.detail && <div className="settings-exception-detail">{ex.detail}</div>}
+                    <button
+                      type="button"
+                      className="finance-action-link"
+                      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
+                      onClick={() => void resolveException(ex.id)}
+                    >
+                      Mark resolved
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="settings-drawer-links">
+              <Link href="/finance#payment-structure" onClick={() => setSettingsOpen(false)}>
+                Payment structure →
+              </Link>
+              <Link href="/finance#facility-scans" onClick={() => setSettingsOpen(false)}>
+                Facility scans →
+              </Link>
+              <Link href="/roadmap" onClick={() => setSettingsOpen(false)}>
+                Roadmap (Zoho env) →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
