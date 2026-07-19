@@ -226,6 +226,13 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
   email?|phone? }`.
 - Guest pay: `/pay/{id}?token=…&from=staff` validated via
   `validatePaymentRequestToken`.
+- `GET/POST /api/whatsapp/webhook` — Meta's required inbound endpoint: GET
+  handles the one-time verification handshake (`hub.mode`/`hub.verify_token`/
+  `hub.challenge`), POST acks every inbound message/status event with 200
+  after logging it (Meta disables the subscription after repeated non-2xx
+  responses). No conversational reply logic yet — still operator-owned; this
+  just satisfies the protocol requirement so the webhook can be registered
+  and won't 404/timeout once Meta starts sending events.
 
 #### 6.2.3 Bob Pay (legacy)
 
@@ -677,8 +684,10 @@ integrations, or simply not tried yet):
    auto-apply to new payments + Zoho `item_id` on invoice lines.
 3. **SMTP From → `info@postnow.co.za`** — payment-request emails use existing
    SMTP; reconfigure later (Roadmap).
-4. **WhatsApp prod token + webhook** — Cloud API helpers exist; permanent
-   token + prod callback cutover on Roadmap (operator-owned message logic).
+4. **WhatsApp prod token** — Cloud API send + inbound webhook route both
+   exist now (see 6.2.2); still need a permanent (non-expiring) access token
+   in Vercel and to register the webhook URL + verify token in the Meta App
+   dashboard. Conversational reply logic remains operator-owned.
 5. **Bob Go API token** — may need account/plan unlock for live booking.
 6. **POPIA data subject rights** — export/deletion endpoints not built.
 7. **Upload hardening** — no virus scanning or rate limiting yet.
