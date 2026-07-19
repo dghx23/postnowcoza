@@ -4,7 +4,18 @@ import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, DataTable, Badge, StatusPill, TrackingTimeline, Alert, type TimelineEvent } from "@/components/ui";
+import {
+  AppHeader,
+  Card,
+  DataTable,
+  Badge,
+  StatusPill,
+  TrackingTimeline,
+  Alert,
+  PrintFeedbackChip,
+  type TimelineEvent,
+} from "@/components/ui";
+import { buildPrintFeedback, type PrintFeedbackDetail } from "@/lib/printFeedback";
 
 interface LiveCheckpoint {
   date: string;
@@ -53,11 +64,7 @@ interface TrackingProps {
   timeline: TimelineEvent[];
   logRows: Array<{ time: string; event: string }>;
   /** Latest printer confirmation from Epson API or email notifications. */
-  printJob: {
-    status: string;
-    jobId: string;
-    updatedAt: string;
-  } | null;
+  printFeedback: PrintFeedbackDetail | null;
   dispatch: {
     recipientEmail: string;
     recipientPhone: string;
@@ -136,6 +143,22 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
     orderBy: { createdAt: "desc" },
   });
 
+  const printAudit = [...document.auditEvents]
+    .reverse()
+    .find((e) =>
+      ["epson_print_confirmed", "epson_print_failed", "email_print_failed"].includes(e.action),
+    );
+
+  const printFeedback = buildPrintFeedback({
+    jobStatus: latestPrintJob?.status,
+    jobId: latestPrintJob?.jobId,
+    jobUpdatedAt: latestPrintJob?.updatedAt,
+    auditAction: printAudit?.action,
+    auditMetadata: printAudit?.metadata,
+    auditAt: printAudit?.createdAt,
+    documentStatus: document.status,
+  });
+
   return {
     props: {
       userLabel: session.user.email,
@@ -144,13 +167,7 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
       status: document.status,
       timeline,
       logRows,
-      printJob: latestPrintJob
-        ? {
-            status: latestPrintJob.status,
-            jobId: latestPrintJob.jobId,
-            updatedAt: latestPrintJob.updatedAt.toISOString(),
-          }
-        : null,
+      printFeedback,
       dispatch: {
         recipientEmail: document.recipientEmail,
         recipientPhone: document.recipientPhone,
@@ -166,25 +183,6 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
   };
 };
 
-function printJobLabel(status: string): { label: string; tone: "success" | "navy" | "teal" } {
-  switch (status) {
-    case "completed":
-      return { label: "Printer confirmed", tone: "success" };
-    case "error_occurred":
-      return { label: "Printer reported error", tone: "navy" };
-    case "expired":
-    case "canceled":
-      return { label: `Print ${status}`, tone: "navy" };
-    case "pending":
-    case "processing":
-    case "preparing":
-    case "reserved":
-      return { label: "Awaiting printer confirmation", tone: "teal" };
-    default:
-      return { label: status, tone: "navy" };
-  }
-}
-
 export default function Tracking({
   userLabel,
   documentId,
@@ -192,7 +190,7 @@ export default function Tracking({
   status,
   timeline,
   logRows,
-  printJob,
+  printFeedback: initialPrintFeedback,
   dispatch,
 }: TrackingProps) {
   const router = useRouter();
@@ -206,6 +204,8 @@ export default function Tracking({
   });
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [printFeedback, setPrintFeedback] = useState(initialPrintFeedback);
+  const [docStatus, setDocStatus] = useState(status);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -223,6 +223,29 @@ export default function Tracking({
       setTimeout(() => setLinkCopied(false), 2000);
     });
   }
+
+  // Refresh printer email confirmation while pending (IMAP sync runs server-side).
+  useEffect(() => {
+    let cancelled = false;
+    async function pollPrint() {
+      try {
+        const res = await fetch(`/api/documents/${documentId}/print-feedback`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled) return;
+        if (json.feedback) setPrintFeedback(json.feedback);
+        if (typeof json.documentStatus === "string") setDocStatus(json.documentStatus);
+      } catch {
+        /* ignore */
+      }
+    }
+    pollPrint();
+    const interval = setInterval(pollPrint, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [documentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,13 +301,41 @@ export default function Tracking({
               <div className="page-title">{documentId.slice(0, 10).toUpperCase()}</div>
               <div className="page-subtitle">{recipientName}</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <button type="button" className="btn btn-secondary" onClick={copyTrackingLink}>
                 {linkCopied ? "✓ Link copied" : "🔗 Copy tracking link"}
               </button>
-              <StatusPill status={status} />
+              <StatusPill status={docStatus} />
+              {printFeedback && <PrintFeedbackChip feedback={printFeedback} />}
             </div>
           </div>
+
+          {printFeedback &&
+            (printFeedback.status === "completed" ||
+              printFeedback.status === "error_occurred" ||
+              printFeedback.status === "expired") && (
+              <Alert
+                title={
+                  printFeedback.status === "completed"
+                    ? "Printer confirmed this document"
+                    : "Printer reported a problem"
+                }
+                tone={printFeedback.status === "completed" ? "success" : "danger"}
+              >
+                <span title={printFeedback.summary}>
+                  {printFeedback.label}
+                  {printFeedback.subject ? ` — ${printFeedback.subject}` : ""}
+                  {printFeedback.snippet && !printFeedback.subject
+                    ? ` — ${printFeedback.snippet.slice(0, 140)}${printFeedback.snippet.length > 140 ? "…" : ""}`
+                    : ""}{" "}
+                </span>
+                <PrintFeedbackChip feedback={printFeedback} size="sm" />
+                <span style={{ fontSize: 12, color: "inherit", opacity: 0.85 }}>
+                  {" "}
+                  Hover for a summary, click for full notification details.
+                </span>
+              </Alert>
+            )}
 
           <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
             <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -313,33 +364,14 @@ export default function Tracking({
                       timeStyle: "short",
                     })}
                   </div>
+                  {printFeedback && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+                      <span style={{ color: "var(--text-secondary)" }}>Printer: </span>
+                      <PrintFeedbackChip feedback={printFeedback} size="sm" />
+                    </div>
+                  )}
                 </div>
               </Card>
-              {printJob && (
-                <Card title="Print confirmation">
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
-                    <Badge tone={printJobLabel(printJob.status).tone}>
-                      {printJobLabel(printJob.status).label}
-                    </Badge>
-                    <div style={{ color: "var(--text-secondary)" }}>
-                      Job status: <code>{printJob.status}</code>
-                    </div>
-                    <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>
-                      Updated{" "}
-                      {new Date(printJob.updatedAt).toLocaleString([], {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
-                    </div>
-                    {printJob.status === "error_occurred" && (
-                      <div style={{ color: "var(--danger, #b42318)" }}>
-                        Epson rejected or failed this print. If status is back in the queue, re-upload or
-                        re-print from Print Queue.
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              )}
             </div>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
               <Card title="Live Courier Tracking">
