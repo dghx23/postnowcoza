@@ -27,15 +27,6 @@ interface BillingItemRow {
   notes: string | null;
 }
 
-interface ScanRow {
-  id: string;
-  fileName: string;
-  contentType: string;
-  sizeBytes: number;
-  comments: string | null;
-  createdBy: string | null;
-  createdAt: string;
-}
 
 interface FinancePageProps {
   userLabel: string;
@@ -48,7 +39,6 @@ interface FinancePageProps {
     appUrl: string | null;
   };
   billingItems: BillingItemRow[];
-  scans: ScanRow[];
 }
 
 function timeAgo(iso: string): string {
@@ -69,18 +59,6 @@ function statusClass(status: string): string {
   return "muted";
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || "");
-      const b64 = result.includes(",") ? result.split(",")[1] : result;
-      resolve(b64);
-    };
-    reader.onerror = () => reject(new Error("Could not read file"));
-    reader.readAsDataURL(file);
-  });
-}
 
 const STATUS_TABS: Array<{ key: FinanceStatusFilter; label: string }> = [
   { key: "ALL", label: "All" },
@@ -115,10 +93,9 @@ export const getServerSideProps: GetServerSideProps<FinancePageProps> = async (c
     statusFilter,
   });
 
-  const [billingItems, scans] = await Promise.all([
-    prisma.billingItem.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.facilityScan.findMany({ orderBy: { createdAt: "desc" }, take: 30 }),
-  ]);
+  const billingItems = await prisma.billingItem.findMany({
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
 
   return {
     props: {
@@ -136,15 +113,6 @@ export const getServerSideProps: GetServerSideProps<FinancePageProps> = async (c
         active: b.active,
         notes: b.notes,
       })),
-      scans: scans.map((s) => ({
-        id: s.id,
-        fileName: s.fileName,
-        contentType: s.contentType,
-        sizeBytes: s.sizeBytes,
-        comments: s.comments,
-        createdBy: s.createdBy,
-        createdAt: s.createdAt.toISOString(),
-      })),
     },
   };
 };
@@ -155,7 +123,6 @@ export default function FinancePage({
   statusFilter,
   zoho,
   billingItems: initialBilling,
-  scans: initialScans,
 }: FinancePageProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -170,27 +137,10 @@ export default function FinancePage({
   const [biBusy, setBiBusy] = useState(false);
   const [biMsg, setBiMsg] = useState<string | null>(null);
 
-  const [scans, setScans] = useState(initialScans);
-  const [scanFile, setScanFile] = useState<File | null>(null);
-  const [scanFileName, setScanFileName] = useState("");
-  const [scanComments, setScanComments] = useState("");
-  const [scanBusy, setScanBusy] = useState(false);
-  const [scanMsg, setScanMsg] = useState<string | null>(null);
-  const [emailScanId, setEmailScanId] = useState<string | null>(null);
-  const [emailTo, setEmailTo] = useState("");
-  const [emailSubject, setEmailSubject] = useState("PostNow facility scan");
-  const [emailBody, setEmailBody] = useState(
-    "Please find the attached scan from PostNow facility ops."
-  );
-  const [emailPassword, setEmailPassword] = useState("");
-  const [encryptOn, setEncryptOn] = useState(false);
 
   useEffect(() => {
     setBillingItems(initialBilling);
   }, [initialBilling]);
-  useEffect(() => {
-    setScans(initialScans);
-  }, [initialScans]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -334,77 +284,6 @@ export default function FinancePage({
     }
   }
 
-  async function saveScan() {
-    if (!scanFile) {
-      setScanMsg("Choose a scan file (Epson Connect PDF/image or local file).");
-      return;
-    }
-    setScanBusy(true);
-    setScanMsg(null);
-    try {
-      const contentBase64 = await fileToBase64(scanFile);
-      const fileName =
-        scanFileName.trim() ||
-        scanFile.name ||
-        `scan-${new Date().toISOString().slice(0, 10)}.pdf`;
-      const res = await fetch("/api/finance/scans", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "save",
-          fileName,
-          comments: scanComments || undefined,
-          contentBase64,
-          contentType: scanFile.type || "application/pdf",
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Save failed");
-      setScans((prev) => [json.scan, ...prev]);
-      setScanMsg("Scan saved.");
-      setScanFile(null);
-      setScanFileName("");
-      setScanComments("");
-    } catch (err) {
-      setScanMsg((err as Error).message);
-    } finally {
-      setScanBusy(false);
-    }
-  }
-
-  async function sendScanEmail() {
-    if (!emailScanId) return;
-    setScanBusy(true);
-    setScanMsg(null);
-    try {
-      const res = await fetch("/api/finance/scans", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "email",
-          scanId: emailScanId,
-          to: emailTo,
-          subject: emailSubject,
-          body: emailBody,
-          password: encryptOn && emailPassword ? emailPassword : undefined,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Email failed");
-      setScanMsg(
-        json.encrypted
-          ? "Email sent with encrypted attachment (password in body)."
-          : "Email sent with PDF attachment."
-      );
-      setEmailScanId(null);
-      setEncryptOn(false);
-      setEmailPassword("");
-    } catch (err) {
-      setScanMsg((err as Error).message);
-    } finally {
-      setScanBusy(false);
-    }
-  }
 
   const listSum = rows.reduce((s, p) => s + p.amount, 0);
 
@@ -418,8 +297,7 @@ export default function FinancePage({
               <span aria-hidden>💰</span> Financial
             </div>
             <div className="page-subtitle">
-              Facility-wide payments · two-way Zoho Books · payment structure workspace · facility
-              scans
+              Facility-wide payments · two-way Zoho Books · payment structure workspace
             </div>
           </div>
           <div className="finance-page-header-actions">
@@ -628,193 +506,6 @@ export default function FinancePage({
           )}
         </section>
 
-        {/* ── Facility scans (Epson Connect) ── */}
-        <section id="facility-scans" className="finance-workspace-card">
-          <div className="finance-workspace-head">
-            <div>
-              <h2 className="finance-ledger-title">Facility scans · Epson Connect</h2>
-              <p className="finance-ledger-sub">
-                Save a scan (from Epson Connect or a local file), choose the file name, add comments,
-                email as PDF, and optionally encrypt the attachment (password included in the email).
-              </p>
-            </div>
-          </div>
-
-          <div className="finance-scan-form">
-            <div className="field">
-              <label htmlFor="scan-file">Scan file</label>
-              <input
-                id="scan-file"
-                type="file"
-                accept="application/pdf,image/*"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  setScanFile(f);
-                  if (f && !scanFileName) setScanFileName(f.name);
-                }}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="scan-name">File name</label>
-              <input
-                id="scan-name"
-                value={scanFileName}
-                onChange={(e) => setScanFileName(e.target.value)}
-                placeholder="signed-return-CMRR….pdf"
-              />
-            </div>
-            <div className="field" style={{ flex: "1 1 100%" }}>
-              <label htmlFor="scan-comments">Comments</label>
-              <textarea
-                id="scan-comments"
-                rows={2}
-                value={scanComments}
-                onChange={(e) => setScanComments(e.target.value)}
-                placeholder="e.g. Wet-ink return POD · batch morning"
-              />
-            </div>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ fontSize: 13 }}
-              disabled={scanBusy}
-              onClick={() => void saveScan()}
-            >
-              {scanBusy ? "Saving…" : "Save scan"}
-            </button>
-          </div>
-          {scanMsg && <p className="finance-sync-msg">{scanMsg}</p>}
-
-          {emailScanId && (
-            <div className="finance-scan-email-box">
-              <div className="finance-workspace-head">
-                <strong>Email scan</strong>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ fontSize: 12, padding: "6px 12px" }}
-                  onClick={() => setEmailScanId(null)}
-                >
-                  Cancel
-                </button>
-              </div>
-              <div className="finance-structure-form">
-                <div className="field" style={{ flex: "1 1 220px" }}>
-                  <label htmlFor="scan-email-to">Recipient</label>
-                  <input
-                    id="scan-email-to"
-                    type="email"
-                    value={emailTo}
-                    onChange={(e) => setEmailTo(e.target.value)}
-                    placeholder="client@example.com"
-                  />
-                </div>
-                <div className="field" style={{ flex: "1 1 220px" }}>
-                  <label htmlFor="scan-email-subject">Subject</label>
-                  <input
-                    id="scan-email-subject"
-                    value={emailSubject}
-                    onChange={(e) => setEmailSubject(e.target.value)}
-                  />
-                </div>
-                <div className="field" style={{ flex: "1 1 100%" }}>
-                  <label htmlFor="scan-email-body">Body</label>
-                  <textarea
-                    id="scan-email-body"
-                    rows={3}
-                    value={emailBody}
-                    onChange={(e) => setEmailBody(e.target.value)}
-                  />
-                </div>
-                <div className="field" style={{ flex: "1 1 100%" }}>
-                  <label className="finance-check-label">
-                    <input
-                      type="checkbox"
-                      checked={encryptOn}
-                      onChange={(e) => setEncryptOn(e.target.checked)}
-                    />{" "}
-                    Encrypt attachment (AES) — add password to the email
-                  </label>
-                </div>
-                {encryptOn && (
-                  <div className="field">
-                    <label htmlFor="scan-email-pass">Password</label>
-                    <input
-                      id="scan-email-pass"
-                      type="text"
-                      value={emailPassword}
-                      onChange={(e) => setEmailPassword(e.target.value)}
-                      placeholder="Share with recipient out-of-band if preferred"
-                      autoComplete="off"
-                    />
-                  </div>
-                )}
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  style={{ fontSize: 13 }}
-                  disabled={scanBusy || !emailTo.trim() || (encryptOn && !emailPassword.trim())}
-                  onClick={() => void sendScanEmail()}
-                >
-                  {scanBusy ? "Sending…" : "Send email with PDF"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {scans.length === 0 ? (
-            <div className="finance-empty">No scans saved yet.</div>
-          ) : (
-            <div className="finance-table-scroll">
-              <table className="finance-table finance-table-page">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>File name</th>
-                    <th>Size</th>
-                    <th>Comments</th>
-                    <th>By</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scans.map((s) => (
-                    <tr key={s.id}>
-                      <td>{timeAgo(s.createdAt)}</td>
-                      <td>
-                        <strong>{s.fileName}</strong>
-                      </td>
-                      <td className="finance-muted">
-                        {(s.sizeBytes / 1024).toFixed(0)} KB
-                      </td>
-                      <td className="finance-muted">{s.comments || "—"}</td>
-                      <td className="finance-muted">{s.createdBy || "—"}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="finance-action-link"
-                          style={{
-                            background: "none",
-                            border: "none",
-                            padding: 0,
-                            cursor: "pointer",
-                            font: "inherit",
-                          }}
-                          onClick={() => {
-                            setEmailScanId(s.id);
-                            setEmailSubject(`PostNow scan — ${s.fileName}`);
-                          }}
-                        >
-                          Email PDF
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
 
         <section className="finance-ledger" aria-labelledby="ledger-heading">
           <div className="finance-ledger-head">

@@ -30,12 +30,12 @@ Seed creates the bootstrap staff user (if `SEED_STAFF_*` set) and idempotent **r
 | `/dispatch/new` | **Staff** manual job entry → redirect to request payment |
 | `/tracking`, `/tracking/[id]` | Hub + document home (status, pay CTA, print log, courier, custody) |
 | `/pay/[id]` | Staff: **request payment** (email + WhatsApp). Guest/customer: PayFast pay (`?token=` or `?pay=1`) |
-| `/finance` | Full ledger, Zoho two-way, **payment structure**, **facility scans** |
+| `/finance` | Full ledger, Zoho two-way, **payment structure** |
 | `/print-queue`, `/printer` | Queue + Epson Connect / Direct hub |
 | `/roadmap` | Internal feature tracker |
 | `/portal/*` | **Parked** customer self-serve (do not remove) |
 
-Sidebar ⚙ (staff): **sync exception log** (Zoho push/pull, billing structure, scans).
+Sidebar ⚙ (staff): **sync exception log** (Zoho push/pull, billing structure).
 
 ## Data model (high level)
 
@@ -43,11 +43,10 @@ Sidebar ⚙ (staff): **sync exception log** (Zoho push/pull, billing structure, 
 - **Payment** — UNPAID→PAID… PayFast; Zoho Books ids + pull snapshot fields; optional `billingItemId`
 - **BillingItem** — payment-structure rates (workspace on `/finance`)
 - **SyncException** — open/resolved exception log for two-way sync
-- **FacilityScan** — saved facility scans (S3) for email/archive
 - **AuditEvent** — append-only hash-chained custody log
 - **BobgoShipment**, **EpsonPrintJob**, **PrintSettings**, **Feature** — as in TECH_SPEC
 
-Migrations run on deploy (`prisma/migrations/*`). Latest relevant: Zoho map, staff-created docs, two-way finance + scans.
+Migrations run on deploy (`prisma/migrations/*`). Latest relevant: Zoho map, staff-created docs, two-way finance.
 
 ## Payments
 
@@ -83,11 +82,9 @@ Legacy client + webhook remain; product checkout is PayFast. See TECH_SPEC.
 **Env (Vercel):** `ZOHO_BOOKS_CLIENT_ID`, `CLIENT_SECRET`, `REFRESH_TOKEN`, **`ORGANIZATION_ID`**, `REGION`, optional `ITEM_ID` / app URL. Org id docs: [Zoho Books API — organization id](https://www.zoho.com/books/api/v3/introduction/#organization-id).  
 Roadmap item **Configure Zoho Books API in Vercel (two-way finance)** holds the full cutover checklist when env unlock allows.
 
-## Payment structure & scans
+## Payment structure
 
 - **Billing lines:** `GET/POST/PUT/DELETE /api/finance/billing-items` — codes/rates that will map into ledger rows and Zoho line items (workspace on `/finance#payment-structure`)
-- **Scans:** `POST /api/finance/scans` `{ action: "save"|"email", … }` — save PDF/image to R2, email attachment, optional AES encrypt + password in email body (`src/lib/scanEmail.ts`)
-- Epson Connect **native** scan pull is roadmap (upload path is live)
 
 ## Printing (Epson)
 
@@ -114,7 +111,6 @@ Webhook: `/api/whatsapp/webhook`.
 - Grok Voice Agent, customer portal (parked), SMTP → `info@postnow.co.za`
 - **Configure Zoho Books API in Vercel (two-way finance)** (HIGH)
 - Payment structure → ledger → Zoho (HIGH / in progress)
-- Epson native scan pull (MEDIUM)
 - WhatsApp permanent token + prod webhook (HIGH)
 
 ## Still to build / known gaps
@@ -123,7 +119,6 @@ Webhook: `/api/whatsapp/webhook`.
 - POPIA data-subject export/deletion endpoints
 - Upload rate limiting / virus scan
 - Zoho env live smoke after Vercel unlock
-- Native PDF password (current scan encrypt is AES package + password in email)
 - Voice agent remains roadmap / partial (`/voice`)
 
 ## Scripts

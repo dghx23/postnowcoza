@@ -165,7 +165,7 @@ export function AppHeader({
               </button>
             </div>
             <p className="settings-drawer-sub">
-              Exceptions from Zoho two-way sync, payment structure, and facility scans. Resolve when handled.
+              Exceptions from Zoho two-way sync and payment structure. Resolve when handled.
             </p>
             {exLoading ? (
               <p className="settings-drawer-empty">Loading…</p>
@@ -196,9 +196,6 @@ export function AppHeader({
             <div className="settings-drawer-links">
               <Link href="/finance#payment-structure" onClick={() => setSettingsOpen(false)}>
                 Payment structure →
-              </Link>
-              <Link href="/finance#facility-scans" onClick={() => setSettingsOpen(false)}>
-                Facility scans →
               </Link>
               <Link href="/roadmap" onClick={() => setSettingsOpen(false)}>
                 Roadmap (Zoho env) →

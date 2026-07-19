@@ -1,7 +1,7 @@
 # PostNow — Technical Specification
 
 Status snapshot **2026-07** (updated with two-way Zoho finance, staff payment
-requests, facility scans, exception log). Covers architecture, data model,
+requests, exception log). Covers architecture, data model,
 third-party integrations, infrastructure, and what's outstanding.
 
 Companion docs: repo root `README.md`, `app/README.md`, `docs/CUSTOMER_PORTAL_PARKED.md`.
@@ -97,12 +97,9 @@ Payment   (dispatch fee; PayFast primary; Bob Pay fields retained)
 BillingItem   (payment-structure workspace rates)
   id, code (unique), name, description?, amount, zohoItemId?, active, sortOrder, notes?
 
-SyncException   (two-way Zoho / structure / scan errors for ⚙ panel)
-  id, source (zoho_push|zoho_pull|payment_structure|scan|other), severity,
+SyncException   (two-way Zoho / structure errors for ⚙ panel)
+  id, source (zoho_push|zoho_pull|payment_structure|other), severity,
   title, detail?, paymentId?, documentId?, metadata?, resolved, createdAt, resolvedAt?
-
-FacilityScan   (facility PDF/image archive)
-  id, fileName, storageKey, contentType, sizeBytes, comments?, createdBy?, createdAt
 
 Feature   (staff roadmap tracker)
   id, name, priority, status, comment?, checked, createdBy, …
@@ -122,7 +119,8 @@ Migrations (selected):
 - `20260119000001_print_preferences` / `…_print_job_detail_log` — print prefs & job log
 - `20260119000003_document_staff_created` — createdVia / staffCreatorEmail
 - `20260119000004_zoho_books_payment_map` — Zoho ids on Payment
-- `20260120000000_zoho_two_way_finance_scans` — pull fields, BillingItem, SyncException, FacilityScan
+- `20260120000000_zoho_two_way_finance_scans` — pull fields, BillingItem, SyncException, FacilityScan (table later dropped)
+- `20260120000001_drop_facility_scan` — removes FacilityScan
 
 `npm run build` runs `prisma generate && prisma migrate deploy && npm run seed
 && next build` on every Vercel deploy.
@@ -138,7 +136,7 @@ Migrations (selected):
 | `/dispatch/new` | **Staff** manual job entry → redirect to request payment | STAFF/ADMIN |
 | `/portal`, `/portal/dispatch/new` | **Parked** customer self-serve (see `docs/CUSTOMER_PORTAL_PARKED.md`) | session |
 | `/pay/[id]` | Staff: request payment (email + WhatsApp). Guest/token or `?pay=1`: PayFast checkout | staff / owner / token |
-| `/finance` | Staff ledger, Zoho two-way, payment structure, facility scans | STAFF/ADMIN |
+| `/finance` | Staff ledger, Zoho two-way, payment structure | STAFF/ADMIN |
 | `/roadmap` | Internal feature tracker (+ ensure-seed of known items) | STAFF/ADMIN |
 | `/tracking`, `/tracking/[id]` | Tracking hub + document home (timeline, pay CTA, print log, courier, custody). Staff-created: STAFF badge, **Arrange Dispatch Fee** CTA | owner or staff |
 | `/print-queue` | Staff print queue | STAFF/ADMIN |
@@ -163,7 +161,6 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
 | `/api/finance/zoho` | GET config; POST push/pull Zoho Books | STAFF/ADMIN |
 | `/api/finance/exceptions` | GET/POST SyncException list + resolve | STAFF/ADMIN |
 | `/api/finance/billing-items` | CRUD payment-structure lines | STAFF/ADMIN |
-| `/api/finance/scans` | Save scan / email scan PDF | STAFF/ADMIN |
 | `/api/webhooks/payfast` | PayFast ITN → PAID + Zoho push | IP/signature, no session |
 | `/api/webhooks/bobgo` | Courier webhooks | HMAC |
 | `/api/webhooks/bobpay` | Legacy Bob Pay (if used) | IP + signature |
@@ -251,17 +248,13 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
 - API: `/api/finance/zoho` — push one / push unsynced PAID / pull one / pullAll.
 - UI: `/finance` bar + ledger Zoho column (Invoice ↗, status badge, Push/Pull).
 
-### 6.2.5 Financial ledger, payment structure, scans
+### 6.2.5 Financial ledger & payment structure
 
 - `src/lib/finance.ts` — facility or owner-scoped `FinanceSummary`.
 - `/finance` — metrics, ledger filters, two-way Zoho actions.
 - **Payment structure** (`BillingItem`, `/api/finance/billing-items`,
   `#payment-structure`) — staff workspace for rate lines that will map into
   payments and Zoho line items (auto-apply still roadmap).
-- **Facility scans** (`FacilityScan`, `/api/finance/scans`, `#facility-scans`) —
-  save PDF/image to R2, optional comments/file name, email via SMTP with
-  attachment; optional AES-GCM encrypt package + password in email body
-  (`src/lib/scanEmail.ts`). Native Epson Connect scan API: roadmap.
 - **Exception gear** — `AppHeader` ⚙ → `/api/finance/exceptions` open list + resolve.
 
 ### 6.3 Epson Connect (printing)
@@ -556,7 +549,6 @@ and successes.
   - Payment structure → ledger → Zoho line items — **HIGH** / in progress
   - Reconfigure SMTP to `info@postnow.co.za` — MEDIUM
   - WhatsApp permanent token + prod webhook — HIGH
-  - Epson Connect native scan pull — MEDIUM
   - Customer portal (parked), Grok Voice Agent, courier label maker (parked)
 
 ### 6.8 Grok Voice Agent (xAI Realtime)
@@ -688,8 +680,7 @@ integrations, or simply not tried yet):
 6. **POPIA data subject rights** — export/deletion endpoints not built.
 7. **Upload hardening** — no virus scanning or rate limiting yet.
 8. **Epson Connect** — Basic auth token fix shipped; re-verify live connect/
-   print after env hygiene. Native scan API pull still roadmap (upload path
-   on `/finance` is live).
+   print after env hygiene.
 9. **Courier Guy Quote Tool** — watch `COURIER_GUY_API` length (32 chars);
    paste errors caused 401s historically.
 10. **Customer portal** — parked; staff ops primary (see `docs/CUSTOMER_PORTAL_PARKED.md`).
@@ -702,6 +693,6 @@ integrations, or simply not tried yet):
 
 - Staff tracking **Arrange Dispatch Fee** CTA + STAFF badge for staff-created jobs
 - PayFast pay UI + payment-request email/WhatsApp + branded email template
-- `/finance` ledger, Zoho push/pull, SyncException ⚙ panel, BillingItem + scans
+- `/finance` ledger, Zoho push/pull, SyncException ⚙ panel, BillingItem workspace
 - Epson Direct email print, IMAP confirmation pipeline, print job detail log
 - PayFast ITN → Zoho push hook

@@ -88,13 +88,6 @@ async function main() {
       comment:
         "Workspace on /finance#payment-structure (BillingItem codes/rates). Next: auto-apply active DISPATCH (or selected) line to new payments, map zohoItemId into createInvoice line items, surface billing line on every ledger row. Keep SyncException for structure/Zoho mismatches.",
     },
-    {
-      name: "Epson Connect native scan pull (facility scans)",
-      priority: "MEDIUM",
-      status: "NOT_STARTED",
-      comment:
-        "/finance#facility-scans currently saves staff-uploaded PDFs/images (Epson Connect file or local), email with PDF attach, optional AES encrypt + password in email. Next: pull scans directly from Epson Connect Scan API when available; native PDF password encryption if needed.",
-    },
   ];
 
   for (const item of roadmapItems) {

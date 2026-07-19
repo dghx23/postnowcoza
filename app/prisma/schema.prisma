@@ -302,7 +302,7 @@ model BillingItem {
 // Two-way Zoho ↔ PostNow (and payment-structure) exception log
 model SyncException {
   id          String   @id @default(cuid())
-  source      String   // zoho_push | zoho_pull | payment_structure | scan | other
+  source      String   // zoho_push | zoho_pull | payment_structure | other
   severity    String   @default("error") // error | warn | info
   title       String
   detail      String?
@@ -315,20 +315,4 @@ model SyncException {
 
   @@index([resolved, createdAt])
   @@index([source])
-}
-
-// Facility scans (Epson Connect / upload). Saved for email + archive.
-model FacilityScan {
-  id           String   @id @default(cuid())
-  fileName     String
-  storageKey   String
-  contentType  String   @default("application/pdf")
-  sizeBytes    Int      @default(0)
-  comments     String?
-  /// Who uploaded / initiated the scan
-  createdBy    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@index([createdAt])
 }

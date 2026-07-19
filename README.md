@@ -33,8 +33,8 @@ Customer portal is **parked** (staff ops is live): **[docs/CUSTOMER_PORTAL_PARKE
 - **Staff manual job entry** (`/dispatch/new`) → tracking + **request payment** (email and/or WhatsApp)
 - **PayFast** checkout for dispatch fees (`/pay/[id]`); branded payment-request email + WhatsApp templates
 - **Print queue** + **Printer hub** (Epson Connect API and Epson Direct email-print)
-- **Financial** ledger (`/finance`): facility payments, **two-way Zoho Books** (push/pull), **payment structure** workspace, **facility scans** (save / email PDF / optional encrypt)
-- **Exception log** via ⚙ next to the staff user label (Zoho / structure / scan errors)
+- **Financial** ledger (`/finance`): facility payments, **two-way Zoho Books** (push/pull), **payment structure** workspace
+- **Exception log** via ⚙ next to the staff user label (Zoho / structure errors)
 - **Tracking** hub with STAFF badge, arrange-fee CTA for staff-created jobs, live courier card, chain of custody
 - **Roadmap** tracker (includes HIGH item to configure Zoho Books env in Vercel when unlock allows)
 

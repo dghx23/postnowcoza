@@ -5,7 +5,6 @@ export type SyncExceptionSource =
   | "zoho_push"
   | "zoho_pull"
   | "payment_structure"
-  | "scan"
   | "other";
 
 export async function logSyncException(input: {

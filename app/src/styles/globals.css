@@ -3839,22 +3839,18 @@ a.ops-feed-item-link:hover .ops-feed-doc {
   gap: 12px;
   margin-bottom: 14px;
 }
-.finance-structure-form,
-.finance-scan-form {
+.finance-structure-form {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: flex-end;
   margin-bottom: 14px;
 }
-.finance-structure-form .field,
-.finance-scan-form .field {
+.finance-structure-form .field {
   flex: 1 1 140px;
   min-width: 120px;
 }
-.finance-scan-form textarea,
-.finance-structure-form textarea,
-.finance-scan-email-box textarea {
+.finance-structure-form textarea {
   width: 100%;
   font-family: inherit;
   font-size: 14px;
@@ -3862,21 +3858,6 @@ a.ops-feed-item-link:hover .ops-feed-doc {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   resize: vertical;
-}
-.finance-scan-email-box {
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  margin-bottom: 14px;
-  background: var(--gray-025);
-}
-.finance-check-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
 }
 .finance-zoho-cell {
   display: flex;

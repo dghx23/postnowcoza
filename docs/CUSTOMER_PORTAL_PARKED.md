@@ -17,7 +17,7 @@ The **live product** is the staff operations app (dashboard, print queue, printe
 | `/dispatch/new` | Staff manual job entry (same fields a customer would provide online) → **Request payment of dispatch fee** |
 | `/pay/[id]` (staff, no token) | Request payment UI: **email** and/or **WhatsApp** with secure one-time pay link; optional **Pay now myself** via `?pay=1` |
 | `/tracking/[id]` (staff-created) | STAFF badge; primary CTA **Arrange Dispatch Fee** (dark orange) → opens pay/request flow |
-| `/finance` | Staff ledger, Zoho two-way, payment structure workspace, facility scans (not customer billing) |
+| `/finance` | Staff ledger, Zoho two-way, payment structure workspace (not customer billing) |
 
 ## Payment request channels (staff)
 
