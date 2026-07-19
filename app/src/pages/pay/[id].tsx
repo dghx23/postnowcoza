@@ -289,8 +289,8 @@ export default function PayPage({
                     src={`/pay-logos/${file}`}
                     alt={label}
                     title={label}
-                    height={44}
-                    width={64}
+                    height={56}
+                    width={80}
                   />
                 ))}
               </div>
