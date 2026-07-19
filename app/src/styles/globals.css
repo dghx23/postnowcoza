@@ -1590,3 +1590,453 @@ table.data-table tr:last-child td {
   .printer-hub-grid { grid-template-columns: 1fr; }
   .printer-hub-header { flex-direction: column; align-items: stretch; }
 }
+
+/* ─── Instant Print Queue (deepseek mockup inspiration) ─── */
+.pq-hub { max-width: 1180px; }
+.pq-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #E5E7EB;
+  margin-bottom: 20px;
+}
+.pq-logo {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 24px;
+  letter-spacing: -0.5px;
+  color: #0A2540;
+}
+.pq-logo span { color: #00A8A8; }
+.pq-logo small {
+  display: block;
+  font-weight: 500;
+  font-size: 13px;
+  color: #6B7280;
+  margin-top: 2px;
+  letter-spacing: 0;
+}
+.pq-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+.pq-hub-location { font-size: 13px; color: #6B7280; }
+.pq-hub-location strong { color: #0A2540; }
+.pq-staff-badge {
+  background: #0A2540;
+  color: #fff;
+  padding: 4px 14px;
+  border-radius: 40px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.pq-epson-badge {
+  background: #00A8A8;
+  color: #fff;
+  padding: 2px 12px;
+  border-radius: 40px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.pq-count-pill {
+  background: #FEF3C7;
+  color: #D97706;
+  padding: 2px 12px;
+  border-radius: 40px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pq-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pq-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.pq-stat {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.pq-stat-val {
+  font-size: 28px;
+  font-weight: 800;
+  color: #0A2540;
+  line-height: 1.1;
+}
+.pq-stat-val-sm { font-size: 20px; }
+.pq-stat-label {
+  font-size: 12px;
+  color: #6B7280;
+  margin-top: 4px;
+  font-weight: 500;
+}
+.pq-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.pq-search {
+  flex: 1 1 220px;
+  min-width: 180px;
+  padding: 10px 14px;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  background: #fff;
+}
+.pq-filters select {
+  padding: 10px 12px;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  background: #fff;
+  color: #1F2937;
+}
+.pq-table-wrap, .pq-history {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #E5E7EB;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  margin-bottom: 24px;
+}
+.pq-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.pq-table th {
+  text-align: left;
+  padding: 14px 16px;
+  background: #F8F9FA;
+  font-weight: 600;
+  color: #6B7280;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border-bottom: 1px solid #E5E7EB;
+}
+.pq-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #F3F4F6;
+  vertical-align: middle;
+}
+.pq-table tr:last-child td { border-bottom: none; }
+.pq-table tbody tr { cursor: pointer; }
+.pq-table tbody tr:hover { background: #FAFAFA; }
+.pq-table tbody tr.pq-row-active { background: #F0FDFA; }
+.pq-doc-id {
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+  color: #0A2540;
+  font-size: 13px;
+  text-decoration: none;
+}
+.pq-doc-id:hover { color: #00A8A8; }
+.pq-recipient { font-weight: 500; }
+.pq-city { font-size: 12px; color: #6B7280; margin-top: 2px; }
+.pq-badge-return, .pq-badge-status {
+  font-size: 11px;
+  padding: 2px 12px;
+  border-radius: 20px;
+  font-weight: 500;
+  display: inline-block;
+}
+.pq-badge-return.direct { background: #ECFDF5; color: #10B981; }
+.pq-badge-return.via { background: #FCE7F3; color: #9D174D; }
+.pq-badge-status.uploaded { background: #FEF3C7; color: #D97706; }
+.pq-badge-status.queued { background: #DBEAFE; color: #1E40AF; }
+.pq-badge-status.printed { background: #ECFDF5; color: #10B981; }
+.pq-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.pq-btn {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: 0.15s;
+}
+.pq-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.pq-btn-download { background: #F3F4F6; color: #1F2937; }
+.pq-btn-download:hover:not(:disabled) { background: #E5E7EB; }
+.pq-btn-print { background: #00A8A8; color: #fff; }
+.pq-btn-print:hover:not(:disabled) { background: #009090; }
+.pq-btn-print .sparkle { font-size: 10px; margin-left: 4px; }
+.pq-btn-mark { background: #0A2540; color: #fff; }
+.pq-btn-mark:hover:not(:disabled) { background: #1A3A5A; }
+.pq-empty {
+  padding: 28px 20px;
+  font-size: 14px;
+  color: #6B7280;
+  text-align: center;
+}
+
+.pq-label-section {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #E5E7EB;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  align-items: start;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.pq-label-section h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0A2540;
+  margin: 0 0 4px;
+  grid-column: 1 / -1;
+}
+.pq-label-mock {
+  width: 100%;
+  max-width: 340px;
+  background: #fff;
+  border: 2px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+}
+.pq-label-head {
+  background: #0A2540;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 4px;
+}
+.pq-label-brand {
+  font-weight: 800;
+  font-size: 14px;
+  color: #fff;
+}
+.pq-label-brand span { color: #00A8A8; }
+.pq-label-badge {
+  font-size: 8px;
+  font-weight: 600;
+  color: #00A8A8;
+  background: rgba(0,168,168,0.15);
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid rgba(0,168,168,0.25);
+}
+.pq-label-tagline {
+  font-size: 10px;
+  color: #6B7280;
+  margin-bottom: 8px;
+}
+.pq-label-address {
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: #FAFAFA;
+}
+.pq-label-address .to-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #6B7280;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pq-label-address .name {
+  font-weight: 700;
+  font-size: 14px;
+  color: #1F2937;
+  margin-top: 2px;
+}
+.pq-label-address .addr {
+  font-size: 12px;
+  color: #4B5563;
+  margin-top: 2px;
+  line-height: 1.35;
+}
+.pq-label-barcode {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+  padding: 6px 10px;
+  background: #FAFAFA;
+  margin-bottom: 6px;
+}
+.pq-label-barcode .tracking {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1F2937;
+}
+.pq-label-barcode .barcode-placeholder {
+  width: 90px;
+  height: 18px;
+  background: repeating-linear-gradient(
+    90deg,
+    #0A2540 0 2px,
+    transparent 2px 4px
+  );
+  border-radius: 2px;
+  opacity: 0.55;
+}
+.pq-label-footer {
+  font-size: 9px;
+  color: #9CA3AF;
+  border-top: 1px dashed #E5E7EB;
+  padding-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pq-label-footer .mono {
+  font-family: ui-monospace, monospace;
+  color: #6B7280;
+}
+.pq-flow-box {
+  background: #F8F9FA;
+  border-radius: 8px;
+  padding: 16px 18px;
+  border: 1px solid #E5E7EB;
+}
+.pq-flow-box h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0A2540;
+  margin: 0 0 10px;
+}
+.pq-flow-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: #1F2937;
+  border-bottom: 1px solid #F3F4F6;
+  line-height: 1.4;
+}
+.pq-flow-step:last-child { border-bottom: none; }
+.pq-flow-step .num {
+  background: #0A2540;
+  color: #fff;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.pq-flow-step .hl { color: #00A8A8; font-weight: 600; }
+.pq-epson-tag {
+  background: #00A8A8;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 20px;
+  margin-left: 6px;
+}
+.pq-flow-step a { color: #00A8A8; font-weight: 600; }
+
+.pq-history { padding: 0; }
+.pq-history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px 0;
+  flex-wrap: wrap;
+}
+.pq-history-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0A2540;
+}
+.pq-history-note {
+  margin: 6px 18px 12px;
+  font-size: 13px;
+  color: #6B7280;
+}
+.pq-history-msg {
+  margin: 0 18px 10px;
+  font-size: 13px;
+  color: #6B7280;
+}
+.pq-detail-cell {
+  font-size: 12px;
+  color: #6B7280;
+  max-width: 220px;
+}
+
+.pq-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #0A2540;
+  color: #fff;
+  padding: 14px 20px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  font-size: 14px;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  z-index: 999;
+  max-width: 420px;
+  border-left: 4px solid #00A8A8;
+}
+.pq-toast.show {
+  display: flex;
+  animation: pqSlideUp 0.3s ease;
+}
+.pq-toast .icon { font-size: 18px; color: #00A8A8; }
+.pq-toast .close-toast {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  font-size: 18px;
+  margin-left: 4px;
+  line-height: 1;
+}
+.pq-toast .close-toast:hover { color: #fff; }
+@keyframes pqSlideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 1024px) {
+  .pq-stats { grid-template-columns: 1fr 1fr; }
+  .pq-label-section { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .pq-stats { grid-template-columns: 1fr 1fr; }
+  .pq-actions { flex-direction: column; align-items: stretch; }
+  .pq-table { font-size: 12px; }
+  .pq-table th, .pq-table td { padding: 10px 10px; }
+}
