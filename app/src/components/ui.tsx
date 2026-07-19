@@ -97,11 +97,24 @@ export function Badge({ children, tone }: { children: ReactNode; tone: "teal" | 
 }
 
 export function StatusPill({ status }: { status: string }) {
-  const label = status
-    .toLowerCase()
-    .split("_")
-    .join(" ")
-    .replace(/^./, (c) => c.toUpperCase());
+  const FRIENDLY: Record<string, string> = {
+    UPLOADED: "Submitted",
+    QUEUED_FOR_PRINT: "In intake",
+    PRINTED: "Printed",
+    DISPATCHED: "Dispatched",
+    IN_TRANSIT: "In transit",
+    DELIVERED: "Delivered",
+    RETURN_REQUESTED: "Return requested",
+    RETURN_IN_TRANSIT: "Return in transit",
+    RETURNED: "Returned",
+  };
+  const label =
+    FRIENDLY[status] ??
+    status
+      .toLowerCase()
+      .split("_")
+      .join(" ")
+      .replace(/^./, (c) => c.toUpperCase());
   return <span className={`status-pill status-${status.toLowerCase()}`}>{label}</span>;
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { GetServerSideProps } from "next";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
@@ -61,10 +62,18 @@ interface TrackingProps {
   documentId: string;
   recipientName: string;
   status: string;
+  isStaff: boolean;
   timeline: TimelineEvent[];
   logRows: Array<{ time: string; event: string }>;
   /** Latest printer confirmation from Epson API or email notifications. */
   printFeedback: PrintFeedbackDetail | null;
+  payment: {
+    status: string | null;
+    amount: number | null;
+    paymentUrl: string | null;
+    /** Fee is set and not yet paid — show Pay CTA */
+    canPay: boolean;
+  };
   dispatch: {
     recipientEmail: string;
     recipientPhone: string;
@@ -77,6 +86,8 @@ interface TrackingProps {
     createdAt: string;
   };
 }
+
+const EARLY_STATUSES = new Set(["UPLOADED", "QUEUED_FOR_PRINT", "PRINTED"]);
 
 // Friendly, plain-language versions of raw AuditEvent.action strings for the
 // chain-of-custody log - customers (and staff) shouldn't have to parse
@@ -159,15 +170,38 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
     documentStatus: document.status,
   });
 
+  const latestPayment = await prisma.payment.findFirst({
+    where: { documentId: id },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const fee = document.dispatchFee ?? null;
+  const paymentStatus = latestPayment?.status ?? null;
+
   return {
     props: {
-      userLabel: session.user.email,
+      userLabel: session.user.email ?? "",
       documentId: document.id,
       recipientName: document.recipientName,
       status: document.status,
+      isStaff,
       timeline,
       logRows,
       printFeedback,
+      payment: {
+        status: paymentStatus,
+        amount: fee,
+        paymentUrl: latestPayment?.paymentUrl ?? null,
+        canPay: Boolean(
+          fee != null &&
+            fee > 0 &&
+            paymentStatus !== "PAID" &&
+            (paymentStatus === "UNPAID" ||
+              paymentStatus === null ||
+              paymentStatus === "FAILED" ||
+              paymentStatus === "CANCELLED"),
+        ),
+      },
       dispatch: {
         recipientEmail: document.recipientEmail,
         recipientPhone: document.recipientPhone,
@@ -188,9 +222,11 @@ export default function Tracking({
   documentId,
   recipientName,
   status,
+  isStaff,
   timeline,
   logRows,
   printFeedback: initialPrintFeedback,
+  payment: initialPayment,
   dispatch,
 }: TrackingProps) {
   const router = useRouter();
@@ -203,26 +239,62 @@ export default function Tracking({
     events: [],
   });
   const [justSubmitted, setJustSubmitted] = useState(false);
+  const [paymentBanner, setPaymentBanner] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [printFeedback, setPrintFeedback] = useState(initialPrintFeedback);
   const [docStatus, setDocStatus] = useState(status);
+  const [payment] = useState(initialPayment);
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!router.isReady) return;
-    if (router.query.submitted === "1") {
+    const q = router.query;
+    if (q.submitted === "1") {
       setJustSubmitted(true);
-      const { submitted: _drop, ...rest } = router.query;
+    }
+    if (q.payment === "success") setPaymentBanner("Payment received — thank you. We’ll continue processing your dispatch.");
+    if (q.payment === "pending") setPaymentBanner("Payment is pending confirmation. This page will update when it clears.");
+    if (q.payment === "cancelled") setPaymentBanner("Payment was cancelled. You can pay the dispatch fee anytime from this page once it’s ready.");
+
+    if (q.submitted === "1" || q.payment) {
+      const { submitted: _s, payment: _p, ...rest } = q;
       router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
   function copyTrackingLink() {
-    navigator.clipboard.writeText(window.location.href).then(() => {
+    const url =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/tracking/${documentId}`
+        : `/tracking/${documentId}`;
+    navigator.clipboard.writeText(url).then(() => {
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
     });
   }
+
+  async function handlePay() {
+    setPaying(true);
+    setPayError(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}/pay`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not start payment");
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      throw new Error("No payment URL returned");
+    } catch (err) {
+      setPayError((err as Error).message);
+      setPaying(false);
+    }
+  }
+
+  const isEarly = EARLY_STATUSES.has(docStatus);
+  const stageLabel = STAGE_LABELS[docStatus] ?? docStatus;
 
   // Refresh printer email confirmation while pending (IMAP sync runs server-side).
   useEffect(() => {
@@ -286,25 +358,124 @@ export default function Tracking({
 
   return (
     <div className="app-shell">
-      <AppHeader active="tracking" userLabel={userLabel} />
+      <AppHeader active="tracking" userLabel={userLabel} showPrintQueue={isStaff} showRoadmap={isStaff} />
       <main className="app-main">
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          {justSubmitted && (
-            <Alert title="✅ Document received securely">
-              Your document is now in our secure custody. This page will keep updating as it moves through
-              printing, dispatch, and delivery — bookmark it or copy the link below to check back anytime.
+          {(justSubmitted || isEarly) && (
+            <Card title={justSubmitted ? "✅ Document received securely" : "Your dispatch hub"}>
+              <div className="post-submit-panel">
+                <p className="post-submit-lead">
+                  {justSubmitted
+                    ? "You’re all set — this is your live tracking page for this dispatch. We’ve taken custody of the document and will handle printing, courier booking, and delivery updates here."
+                    : `Current stage: ${stageLabel}. This page is the home for this dispatch — status, payment, and courier updates all land here.`}
+                </p>
+
+                <div className="post-submit-steps">
+                  <div className="post-submit-step done">
+                    <span className="post-submit-step-num">1</span>
+                    <div>
+                      <strong>Submitted</strong>
+                      <div className="post-submit-step-meta">Document encrypted and stored with chain of custody</div>
+                    </div>
+                  </div>
+                  <div className={`post-submit-step${docStatus !== "UPLOADED" ? " done" : " current"}`}>
+                    <span className="post-submit-step-num">2</span>
+                    <div>
+                      <strong>Secure intake &amp; printing</strong>
+                      <div className="post-submit-step-meta">Our facility prints for wet-ink signature handling</div>
+                    </div>
+                  </div>
+                  <div
+                    className={`post-submit-step${
+                      ["DISPATCHED", "IN_TRANSIT", "DELIVERED", "RETURN_REQUESTED", "RETURN_IN_TRANSIT", "RETURNED"].includes(
+                        docStatus,
+                      )
+                        ? " done"
+                        : docStatus === "PRINTED"
+                          ? " current"
+                          : ""
+                    }`}
+                  >
+                    <span className="post-submit-step-num">3</span>
+                    <div>
+                      <strong>Dispatch fee &amp; courier</strong>
+                      <div className="post-submit-step-meta">
+                        When the dispatch fee is set, you can pay here; live courier tracking appears after booking
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`post-submit-step${docStatus === "DELIVERED" || docStatus === "RETURNED" ? " done" : ""}`}>
+                    <span className="post-submit-step-num">4</span>
+                    <div>
+                      <strong>Delivery &amp; return</strong>
+                      <div className="post-submit-step-meta">
+                        {dispatch.returnPreference === "MANAGED"
+                          ? "Fully managed return via PostNow after signing"
+                          : "Direct return pathway after signing"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="post-submit-actions">
+                  {payment.canPay && (
+                    <button type="button" className="btn btn-primary" disabled={paying} onClick={() => void handlePay()}>
+                      {paying
+                        ? "Opening payment…"
+                        : payment.amount != null
+                          ? `Pay dispatch fee · R${payment.amount.toFixed(2)}`
+                          : "Pay dispatch fee"}
+                    </button>
+                  )}
+                  {payment.status === "PAID" && (
+                    <Badge tone="success">Dispatch fee paid</Badge>
+                  )}
+                  <button type="button" className="btn btn-secondary" onClick={copyTrackingLink}>
+                    {linkCopied ? "✓ Link copied" : "🔗 Copy tracking link"}
+                  </button>
+                  <Link href="/dashboard" className="btn btn-secondary">
+                    ← Back to dashboard
+                  </Link>
+                  <Link href="/dispatch/new" className="btn btn-secondary">
+                    + New dispatch
+                  </Link>
+                </div>
+                {payError && <div className="form-error">{payError}</div>}
+                {!payment.canPay && payment.amount == null && isEarly && (
+                  <p className="post-submit-note">
+                    Payment isn’t due yet — the dispatch fee appears on this page once the shipment is rated and
+                    booked. Bookmark this tracking link to return anytime.
+                  </p>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {paymentBanner && (
+            <Alert title="Payment update" tone={paymentBanner.includes("cancelled") ? "danger" : "success"}>
+              {paymentBanner}
             </Alert>
           )}
 
           <div className="page-head">
             <div>
               <div className="page-title">{documentId.slice(0, 10).toUpperCase()}</div>
-              <div className="page-subtitle">{recipientName}</div>
+              <div className="page-subtitle">
+                {recipientName}
+                <span style={{ color: "var(--text-secondary)", fontWeight: 500 }}> · {stageLabel}</span>
+              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <button type="button" className="btn btn-secondary" onClick={copyTrackingLink}>
-                {linkCopied ? "✓ Link copied" : "🔗 Copy tracking link"}
-              </button>
+              {!justSubmitted && !isEarly && (
+                <button type="button" className="btn btn-secondary" onClick={copyTrackingLink}>
+                  {linkCopied ? "✓ Link copied" : "🔗 Copy tracking link"}
+                </button>
+              )}
+              {payment.canPay && !justSubmitted && !isEarly && (
+                <button type="button" className="btn btn-primary" disabled={paying} onClick={() => void handlePay()}>
+                  {paying ? "Opening…" : `Pay R${(payment.amount ?? 0).toFixed(2)}`}
+                </button>
+              )}
               <StatusPill status={docStatus} />
               {printFeedback && <PrintFeedbackChip feedback={printFeedback} />}
             </div>
@@ -330,15 +501,11 @@ export default function Tracking({
                     : ""}{" "}
                 </span>
                 <PrintFeedbackChip feedback={printFeedback} size="sm" />
-                <span style={{ fontSize: 12, color: "inherit", opacity: 0.85 }}>
-                  {" "}
-                  Hover for a summary, click for full notification details.
-                </span>
               </Alert>
             )}
 
-          <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-            <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div style={{ width: 320, flex: "0 1 320px", display: "flex", flexDirection: "column", gap: 16 }}>
               <Card title="Tracking Status">
                 <TrackingTimeline events={timeline} />
               </Card>
@@ -364,6 +531,13 @@ export default function Tracking({
                       timeStyle: "short",
                     })}
                   </div>
+                  {payment.amount != null && (
+                    <div>
+                      <span style={{ color: "var(--text-secondary)" }}>Dispatch fee: </span>
+                      R{payment.amount.toFixed(2)}
+                      {payment.status === "PAID" ? " · Paid" : payment.status === "UNPAID" ? " · Unpaid" : ""}
+                    </div>
+                  )}
                   {printFeedback && (
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
                       <span style={{ color: "var(--text-secondary)" }}>Printer: </span>
@@ -373,13 +547,22 @@ export default function Tracking({
                 </div>
               </Card>
             </div>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ flex: "1 1 360px", display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <Card title="Live Courier Tracking">
                 {live.loading ? (
                   <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>Checking courier status…</div>
                 ) : live.notBooked ? (
-                  <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-                    No courier shipment has been booked for this document yet.
+                  <div style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                    {isEarly ? (
+                      <>
+                        <strong style={{ color: "var(--navy-900)" }}>Courier not booked yet — that’s expected.</strong>
+                        <br />
+                        After secure intake and printing, we book the courier and live checkpoints will show here
+                        automatically. Keep this page (or your dashboard) for updates.
+                      </>
+                    ) : (
+                      <>No courier shipment has been booked for this document yet.</>
+                    )}
                   </div>
                 ) : live.error ? (
                   <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
