@@ -576,12 +576,105 @@ footer.site-footer .copyright {
   line-height: 1.65;
 }
 
+/* Quiet payments strip — under FAQ / before closing CTA */
+.payments-strip {
+  padding-top: 28px;
+  padding-bottom: 28px;
+}
+.payments-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: center;
+}
+.payments-kicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+}
+.payments-rows {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.payments-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 160px;
+}
+.payments-kind {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.payments-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.78;
+  filter: grayscale(0.15);
+}
+.payments-logo:hover {
+  opacity: 1;
+  filter: none;
+}
+.payments-logo-mark {
+  display: block;
+  height: 22px;
+  width: auto;
+}
+.payments-methods {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+.payments-divider {
+  width: 1px;
+  height: 40px;
+  background: var(--border-default);
+}
+.payments-fineprint {
+  margin: 16px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.site-footer .footer-payments {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.site-footer .footer-pay-label {
+  font-weight: 500;
+  opacity: 0.75;
+}
+.site-footer .footer-pay-name {
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+.site-footer .footer-pay-sep {
+  opacity: 0.4;
+}
+
 @media (max-width: 860px) {
   .hero-grid, .pathways-grid, .coverage-grid { grid-template-columns: 1fr; }
   .metrics-grid, .steps-grid { grid-template-columns: repeat(2, 1fr); }
   nav.site-nav { gap: 16px; }
   .wrap, .section, header.site-header, .hero, footer.site-footer, .trust-bar { padding-left: 20px; padding-right: 20px; }
   .team-grid, .values-grid, .faq-grid { grid-template-columns: 1fr; }
+  .payments-divider { display: none; }
+  .payments-rows { gap: 20px; }
 }
 
 @media (max-width: 640px) {
