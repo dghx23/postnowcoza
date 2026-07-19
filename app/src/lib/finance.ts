@@ -218,6 +218,8 @@ export function paymentStatusLabel(status: PaymentStatus): string {
       return "Cancelled";
     case "REFUNDED":
       return "Refunded";
+    case "WAIVED":
+      return "No cost";
     default:
       return status;
   }

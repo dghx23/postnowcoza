@@ -39,6 +39,18 @@ interface FinancePageProps {
     appUrl: string | null;
   };
   billingItems: BillingItemRow[];
+  reviewQueue: ReviewRow[];
+}
+
+interface ReviewRow {
+  id: string;
+  documentId: string;
+  recipientName: string;
+  status: string;
+  isTestEntry: boolean;
+  justification: string | null;
+  waivedAmount: number | null;
+  updatedAt: string;
 }
 
 function timeAgo(iso: string): string {
@@ -56,6 +68,7 @@ function statusClass(status: string): string {
   if (status === "UNPAID") return "due";
   if (status === "FAILED") return "failed";
   if (status === "REFUNDED") return "refunded";
+  if (status === "WAIVED") return "waived";
   return "muted";
 }
 
@@ -67,6 +80,7 @@ const STATUS_TABS: Array<{ key: FinanceStatusFilter; label: string }> = [
   { key: "FAILED", label: "Failed" },
   { key: "CANCELLED", label: "Cancelled" },
   { key: "REFUNDED", label: "Refunded" },
+  { key: "WAIVED", label: "No cost" },
 ];
 
 export const getServerSideProps: GetServerSideProps<FinancePageProps> = async (context) => {
@@ -84,7 +98,7 @@ export const getServerSideProps: GetServerSideProps<FinancePageProps> = async (c
   }
 
   const raw = typeof context.query.status === "string" ? context.query.status.toUpperCase() : "ALL";
-  const allowed: FinanceStatusFilter[] = ["ALL", "UNPAID", "PAID", "FAILED", "CANCELLED", "REFUNDED"];
+  const allowed: FinanceStatusFilter[] = ["ALL", "UNPAID", "PAID", "FAILED", "CANCELLED", "REFUNDED", "WAIVED"];
   const statusFilter = (allowed.includes(raw as FinanceStatusFilter) ? raw : "ALL") as FinanceStatusFilter;
 
   const finance = await getFinanceSummary({
@@ -95,6 +109,15 @@ export const getServerSideProps: GetServerSideProps<FinancePageProps> = async (c
 
   const billingItems = await prisma.billingItem.findMany({
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+
+  const reviewRows = await prisma.payment.findMany({
+    where: {
+      OR: [{ isTestEntry: true }, { status: "WAIVED" }, { status: "CANCELLED", cancelledJustification: { not: null } }],
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 60,
+    include: { document: { select: { id: true, recipientName: true } } },
   });
 
   return {
@@ -113,6 +136,16 @@ export const getServerSideProps: GetServerSideProps<FinancePageProps> = async (c
         active: b.active,
         notes: b.notes,
       })),
+      reviewQueue: reviewRows.map((p) => ({
+        id: p.id,
+        documentId: p.documentId,
+        recipientName: p.document.recipientName,
+        status: p.status,
+        isTestEntry: p.isTestEntry,
+        justification: p.manualEntryJustification,
+        waivedAmount: p.waivedAmount,
+        updatedAt: p.updatedAt.toISOString(),
+      })),
     },
   };
 };
@@ -123,6 +156,7 @@ export default function FinancePage({
   statusFilter,
   zoho,
   billingItems: initialBilling,
+  reviewQueue,
 }: FinancePageProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -362,6 +396,51 @@ export default function FinancePage({
             </a>
           )}
         </div>
+
+        {reviewQueue.length > 0 && (
+          <section className="finance-review-queue">
+            <div className="finance-review-queue-head">
+              <span>Manual entry review</span>
+              <span className="finance-review-queue-sub">
+                Waived (no-cost), test, and cancelled manual entries — for staff review, not counted as revenue.
+              </span>
+            </div>
+            <div className="finance-table-scroll">
+              <table className="finance-table finance-table-page">
+                <thead>
+                  <tr>
+                    <th>Ref</th>
+                    <th>Recipient</th>
+                    <th>Status</th>
+                    <th>Flags</th>
+                    <th>Justification</th>
+                    <th>Loss</th>
+                    <th>When</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reviewQueue.map((r) => (
+                    <tr key={r.id}>
+                      <td>
+                        <Link href={`/tracking/${r.documentId}`}>#{r.documentId.slice(0, 10).toUpperCase()}</Link>
+                      </td>
+                      <td>{r.recipientName}</td>
+                      <td>
+                        <span className={`finance-status ${statusClass(r.status)}`}>
+                          {paymentStatusLabel(r.status as PaymentStatus)}
+                        </span>
+                      </td>
+                      <td>{r.isTestEntry && <span className="finance-status muted">TEST</span>}</td>
+                      <td style={{ maxWidth: 320 }}>{r.justification ?? "—"}</td>
+                      <td>{r.waivedAmount != null ? formatZar(r.waivedAmount) : "—"}</td>
+                      <td>{timeAgo(r.updatedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         <div className="finance-metrics finance-metrics-page">
           <div className="finance-metric">

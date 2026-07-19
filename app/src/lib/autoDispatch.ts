@@ -74,7 +74,7 @@ export async function afterPaymentSucceeded(documentId: string) {
 /** Call from print/status transitions when document becomes PRINTED. */
 export async function maybeAutoDispatchIfPaid(documentId: string, actorId: string) {
   const payment = await prisma.payment.findFirst({
-    where: { documentId, status: "PAID" },
+    where: { documentId, status: { in: ["PAID", "WAIVED"] } },
     orderBy: { createdAt: "desc" },
   });
   if (!payment) return null;

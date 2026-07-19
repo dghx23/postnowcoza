@@ -84,10 +84,15 @@ function shortAddressOf(document: Document): string {
 /** Ensure fee, unpaid payment row, and a fresh one-time pay token/link. */
 async function preparePaymentRequest(
   documentId: string,
-  extraPayload: Record<string, unknown> = {}
+  extraPayload: Record<string, unknown> = {},
+  manualEntry?: { justification: string; isTestEntry: boolean }
 ): Promise<PreparedPaymentRequest> {
   const document = await prisma.document.findUnique({ where: { id: documentId } });
   if (!document) throw new Error("Document not found");
+
+  if (document.createdVia === "STAFF" && !manualEntry?.justification.trim()) {
+    throw new Error("Justification is required for staff-created manual entries");
+  }
 
   let fee = document.dispatchFee;
   if (fee == null || fee <= 0) {
@@ -98,11 +103,15 @@ async function preparePaymentRequest(
     });
   }
 
-  const existingPaid = await prisma.payment.findFirst({
-    where: { documentId: document.id, status: "PAID" },
+  const existingResolved = await prisma.payment.findFirst({
+    where: { documentId: document.id, status: { in: ["PAID", "WAIVED"] } },
   });
-  if (existingPaid) {
-    throw new Error("This dispatch fee is already paid");
+  if (existingResolved) {
+    throw new Error(
+      existingResolved.status === "WAIVED"
+        ? "This dispatch fee was already processed at no cost"
+        : "This dispatch fee is already paid"
+    );
   }
 
   let payment = await prisma.payment.findFirst({
@@ -120,6 +129,10 @@ async function preparePaymentRequest(
     ...extraPayload,
   };
 
+  const manualEntryFields = manualEntry
+    ? { manualEntryJustification: manualEntry.justification.trim(), isTestEntry: manualEntry.isTestEntry }
+    : {};
+
   if (!payment) {
     payment = await prisma.payment.create({
       data: {
@@ -129,6 +142,7 @@ async function preparePaymentRequest(
         status: "UNPAID",
         paymentMethod: "payfast",
         rawPayload: rawPayload as Prisma.InputJsonValue,
+        ...manualEntryFields,
       },
     });
   } else {
@@ -142,6 +156,7 @@ async function preparePaymentRequest(
             : {}) as object),
           ...rawPayload,
         } as Prisma.InputJsonValue,
+        ...manualEntryFields,
       },
     });
   }
@@ -386,11 +401,16 @@ export async function sendDispatchPaymentRequest(input: {
   toEmail: string;
   actorId?: string;
   ip?: string;
+  manualEntry?: { justification: string; isTestEntry: boolean };
 }): Promise<{ paymentId: string; token: string; payUrl: string; amount: number }> {
-  const prepared = await preparePaymentRequest(input.documentId, {
-    paymentRequestEmail: input.toEmail.trim().toLowerCase(),
-    paymentRequestChannel: "email",
-  });
+  const prepared = await preparePaymentRequest(
+    input.documentId,
+    {
+      paymentRequestEmail: input.toEmail.trim().toLowerCase(),
+      paymentRequestChannel: "email",
+    },
+    input.manualEntry
+  );
 
   const { document, payment, token, payUrl, amount, ref } = prepared;
 
@@ -417,6 +437,9 @@ export async function sendDispatchPaymentRequest(input: {
       amount,
       paymentId: payment.id,
       payUrl,
+      ...(input.manualEntry
+        ? { justification: input.manualEntry.justification.trim(), isTestEntry: input.manualEntry.isTestEntry }
+        : {}),
     },
     ip: input.ip,
   });
@@ -429,16 +452,21 @@ export async function sendDispatchPaymentRequestWhatsApp(input: {
   toPhone: string;
   actorId?: string;
   ip?: string;
+  manualEntry?: { justification: string; isTestEntry: boolean };
 }): Promise<{ paymentId: string; token: string; payUrl: string; amount: number; to: string }> {
   const toNorm = normalizeWhatsAppTo(input.toPhone);
   if (!toNorm || toNorm.length < 10) {
     throw new Error("A valid phone number is required for WhatsApp");
   }
 
-  const prepared = await preparePaymentRequest(input.documentId, {
-    paymentRequestPhone: toNorm,
-    paymentRequestChannel: "whatsapp",
-  });
+  const prepared = await preparePaymentRequest(
+    input.documentId,
+    {
+      paymentRequestPhone: toNorm,
+      paymentRequestChannel: "whatsapp",
+    },
+    input.manualEntry
+  );
 
   const message = buildWhatsAppPaymentRequestMessage(prepared);
   const result = await sendWhatsAppText({ to: toNorm, message });
@@ -454,6 +482,9 @@ export async function sendDispatchPaymentRequestWhatsApp(input: {
       paymentId: prepared.payment.id,
       payUrl: prepared.payUrl,
       whatsappMessageId: result.messageId,
+      ...(input.manualEntry
+        ? { justification: input.manualEntry.justification.trim(), isTestEntry: input.manualEntry.isTestEntry }
+        : {}),
     },
     ip: input.ip,
   });

@@ -31,6 +31,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const document = await prisma.document.findUnique({ where: { id } });
   if (!document) return res.status(404).json({ error: "Document not found" });
 
+  const justification =
+    typeof req.body?.justification === "string" ? req.body.justification.trim() : "";
+  const isTestEntry = Boolean(req.body?.isTestEntry);
+  if (document.createdVia === "STAFF" && !justification) {
+    return res.status(400).json({ error: "Justification is required for this staff-created entry" });
+  }
+  const manualEntry = document.createdVia === "STAFF" ? { justification, isTestEntry } : undefined;
+
   const channelRaw =
     typeof req.body?.channel === "string" ? req.body.channel.trim().toLowerCase() : "";
   // Explicit channel wins; legacy body with only phone → whatsapp
@@ -65,6 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         toPhone: phone,
         actorId: user.id,
         ip: req.socket.remoteAddress ?? undefined,
+        manualEntry,
       });
       return res.status(200).json({
         ok: true,
@@ -85,6 +94,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       toEmail: email,
       actorId: user.id,
       ip: req.socket.remoteAddress ?? undefined,
+      manualEntry,
     });
     return res.status(200).json({
       ok: true,

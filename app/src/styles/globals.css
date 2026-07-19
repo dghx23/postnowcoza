@@ -3736,6 +3736,10 @@ a.ops-feed-item-link:hover .ops-feed-doc {
   background: #F3F4F6;
   color: #4B5563;
 }
+.finance-status.waived {
+  background: var(--gold-100);
+  color: var(--gold-600);
+}
 .finance-status.muted {
   background: var(--gray-050);
   color: var(--text-secondary);
@@ -3845,6 +3849,28 @@ a.ops-feed-item-link:hover .ops-feed-doc {
   font-size: 13px;
   color: var(--text-secondary);
   margin: 0 0 12px;
+}
+.finance-review-queue {
+  background: var(--gold-100);
+  border: 1px solid #ecd898;
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+.finance-review-queue-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--gold-600);
+}
+.finance-review-queue-sub {
+  font-weight: 500;
+  font-size: 12.5px;
+  color: var(--text-secondary);
 }
 .finance-workspace-card {
   background: var(--surface-card);

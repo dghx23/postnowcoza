@@ -60,7 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const existingPaid = await prisma.payment.findFirst({
-    where: { documentId: id, status: "PAID" },
+    where: { documentId: id, status: { in: ["PAID", "WAIVED"] } },
   });
   if (existingPaid) {
     return res.status(200).json({

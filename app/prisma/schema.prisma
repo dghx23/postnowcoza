@@ -45,6 +45,10 @@ enum PaymentStatus {
   FAILED
   CANCELLED
   REFUNDED
+  /// Staff processed this job at no cost (at PostNow's expense) - dispatch
+  /// proceeds as if paid, but it's tracked separately for the finance
+  /// review queue rather than as real revenue.
+  WAIVED
 }
 
 enum ReturnPreference {
@@ -289,6 +293,17 @@ model Payment {
   /// Optional link to a BillingItem used for this fee line
   billingItemId   String?
   billingItem     BillingItem?  @relation(fields: [billingItemId], references: [id])
+
+  // Manual-entry accountability (staff-created documents only, captured on
+  // the "Request payment of dispatch fee" screen before send/cancel/waive).
+  manualEntryJustification String?
+  isTestEntry              Boolean  @default(false)
+  cancelledJustification   String?
+  /// Set when staff processes this job at no cost - the exact loss amount,
+  /// entered and confirmed on that screen, for the finance review queue.
+  waivedAmount             Float?
+  waivedJustification      String?
+
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

@@ -157,7 +157,9 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
 | `/api/documents/[id]/dispatch` | Book Bob Go outbound | STAFF/ADMIN |
 | `/api/documents/[id]/return` | Book managed return | owner or staff |
 | `/api/documents/[id]/pay` | Start PayFast payment (fields for form POST) | owner / staff / token |
-| `/api/documents/[id]/request-payment` | Staff: send payment request email or WhatsApp | STAFF/ADMIN |
+| `/api/documents/[id]/request-payment` | Staff: send payment request email or WhatsApp (requires justification for staff-created jobs) | STAFF/ADMIN |
+| `/api/documents/[id]/cancel-payment-request` | Staff: abandon a manual entry's payment request, with justification | STAFF/ADMIN |
+| `/api/documents/[id]/waive-payment` | Staff: process a manual entry at no cost, with justification + loss amount | STAFF/ADMIN |
 | `/api/documents/[id]/share` | Send the tracking link to someone else; optional subscribe to status updates | owner or staff |
 | `/api/documents/[id]/live-tracking` | Live Bob Go checkpoints | owner or staff |
 | `/api/finance/zoho` | GET config; POST push/pull Zoho Books | STAFF/ADMIN |
@@ -226,9 +228,38 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
   **operator supplies WhatsApp product logic** going forward).
 - `src/lib/whatsapp.ts` — Cloud API send, SA number normalize (`0…` → `27…`).
 - `POST /api/documents/[id]/request-payment` — `{ channel: "email"|"whatsapp",
-  email?|phone? }`.
+  email?|phone?, justification?, isTestEntry? }`.
 - Guest pay: `/pay/{id}?token=…&from=staff` validated via
   `validatePaymentRequestToken`.
+
+##### 6.2.2a Manual-entry accountability + no-cost processing
+
+On `/pay/[id]`'s staff request-payment view, for `document.createdVia === "STAFF"`
+jobs only:
+
+- A justification textarea + "test entry" checkbox gate **every** action on
+  the page (send email, send WhatsApp, cancel) — if empty when one of those
+  is clicked, a `Modal` pops up requiring it before the action proceeds
+  (`runWithJustification` in `pay/[id].tsx`).
+- **Cancel this job** — `POST /api/documents/[id]/cancel-payment-request`
+  (`cancelManualPayment` in `src/lib/manualJobReview.ts`) sets the Payment
+  to `CANCELLED` with `cancelledJustification` + `isTestEntry`.
+- **Process at no cost** — a separate checkbox reveals its own amount +
+  justification fields and a confirm `Modal`. `POST
+  /api/documents/[id]/waive-payment` (`waivePayment` in the same lib) sets
+  the Payment to the new `WAIVED` status with `waivedAmount` +
+  `waivedJustification`. `WAIVED` is treated like `PAID` everywhere dispatch
+  gates on payment status (`autoDispatch.ts`, `/api/documents/[id]/pay`,
+  `/pay/[id]` itself) so the job still proceeds.
+- **Deliberately not auto-pushed to Zoho Books** — whether a waived/written-off
+  job should appear there (as a $0 invoice, a credit note, or not at all) is
+  an accounting decision, not one this code should make silently. `WAIVED`
+  payments stay out of `syncPaymentToZohoBooks`'s scope entirely for now.
+- **Finance review queue** — `/finance` shows a "Manual entry review" table
+  (waived, test-flagged, and cancelled-with-justification entries) above the
+  main ledger, sourced from a direct query in `finance.tsx`'s
+  `getServerSideProps` (kept separate from `getFinanceSummary` to avoid
+  touching that shared function's other consumers, e.g. the dashboard).
 - `GET/POST /api/whatsapp/webhook` — Meta's required inbound endpoint: GET
   handles the one-time verification handshake (`hub.mode`/`hub.verify_token`/
   `hub.challenge`), POST acks every inbound message/status event with 200

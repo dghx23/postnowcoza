@@ -5,7 +5,7 @@ import { useRouter } from "next/router";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/pages/api/auth/[...nextauth]";
 import { prisma } from "@/lib/db";
-import { AppHeader, Card, Alert, Badge, StatusPill } from "@/components/ui";
+import { AppHeader, Card, Alert, Badge, StatusPill, Modal } from "@/components/ui";
 import { getPayfastConfig } from "@/lib/payfast";
 import { validatePaymentRequestToken } from "@/lib/paymentRequestEmail";
 
@@ -18,6 +18,8 @@ interface PayPageProps {
   status: string;
   amount: number;
   alreadyPaid: boolean;
+  waived: boolean;
+  createdVia: string;
   payfastReady: boolean;
   addressLine: string;
   printColorMode: string;
@@ -69,7 +71,7 @@ export const getServerSideProps: GetServerSideProps<PayPageProps> = async (conte
   }
 
   const paid = await prisma.payment.findFirst({
-    where: { documentId: id, status: "PAID" },
+    where: { documentId: id, status: { in: ["PAID", "WAIVED"] } },
   });
 
   const cfg = getPayfastConfig();
@@ -91,6 +93,8 @@ export const getServerSideProps: GetServerSideProps<PayPageProps> = async (conte
       status: document.status,
       amount,
       alreadyPaid: Boolean(paid),
+      waived: paid?.status === "WAIVED",
+      createdVia: document.createdVia,
       payfastReady: cfg.configured,
       addressLine: [
         document.streetAddress,
@@ -120,6 +124,8 @@ export default function PayPage({
   status,
   amount,
   alreadyPaid,
+  waived,
+  createdVia,
   payfastReady,
   addressLine,
   printColorMode,
@@ -138,6 +144,88 @@ export default function PayPage({
   const [requestPhone, setRequestPhone] = useState(recipientPhone || "");
   const [requestSent, setRequestSent] = useState<string | null>(null);
   const [sendingChannel, setSendingChannel] = useState<"email" | "whatsapp" | null>(null);
+
+  // Manual-entry accountability (staff-created jobs only).
+  const isManualEntry = createdVia === "STAFF";
+  const [justification, setJustification] = useState("");
+  const [isTestEntry, setIsTestEntry] = useState(false);
+  const [justifyModalOpen, setJustifyModalOpen] = useState(false);
+  const [justifyError, setJustifyError] = useState<string | null>(null);
+  const pendingActionRef = useRef<(() => void) | null>(null);
+
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
+
+  const [waiveOpen, setWaiveOpen] = useState(false);
+  const [waiveAmount, setWaiveAmount] = useState(String(amount));
+  const [waiveJustification, setWaiveJustification] = useState("");
+  const [waiveConfirming, setWaiveConfirming] = useState(false);
+  const [waiveBusy, setWaiveBusy] = useState(false);
+  const [justWaived, setJustWaived] = useState(false);
+
+  function runWithJustification(action: () => void) {
+    if (!isManualEntry || justification.trim()) {
+      action();
+      return;
+    }
+    pendingActionRef.current = action;
+    setJustifyError(null);
+    setJustifyModalOpen(true);
+  }
+
+  function confirmJustification() {
+    if (!justification.trim()) {
+      setJustifyError("Justification is required.");
+      return;
+    }
+    setJustifyModalOpen(false);
+    const action = pendingActionRef.current;
+    pendingActionRef.current = null;
+    if (action) action();
+  }
+
+  async function cancelManualEntry() {
+    setCancelling(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}/cancel-payment-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ justification: justification.trim(), isTestEntry }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not cancel");
+      setCancelled(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  async function confirmWaive() {
+    setWaiveConfirming(false);
+    setWaiveBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}/waive-payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          justification: waiveJustification.trim(),
+          amount: Number(waiveAmount),
+          isTestEntry,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not process at no cost");
+      setJustWaived(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setWaiveBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -199,10 +287,11 @@ export default function PayPage({
     setError(null);
     setRequestSent(null);
     try {
+      const manualEntryBody = isManualEntry ? { justification: justification.trim(), isTestEntry } : {};
       const body =
         channel === "whatsapp"
-          ? { channel: "whatsapp", phone: requestPhone.trim() }
-          : { channel: "email", email: requestEmail.trim() };
+          ? { channel: "whatsapp", phone: requestPhone.trim(), ...manualEntryBody }
+          : { channel: "email", email: requestEmail.trim(), ...manualEntryBody };
       const res = await fetch(`/api/documents/${documentId}/request-payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -267,15 +356,60 @@ export default function PayPage({
     </div>
   );
 
+  if (cancelled) {
+    return (
+      <div className="app-shell">
+        <AppHeader active="dispatch" userLabel={userLabel} showPrintQueue showRoadmap />
+        <main className="app-main">
+          <Card title="Payment request cancelled">
+            <Alert title="Cancelled">This manual entry's payment request was cancelled and won&apos;t be sent.</Alert>
+            <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
+              <Link href={`/tracking/${documentId}`} className="btn btn-primary">
+                View tracking →
+              </Link>
+              <Link href="/dashboard" className="btn btn-secondary">
+                Dashboard
+              </Link>
+            </div>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  if (justWaived) {
+    return (
+      <div className="app-shell">
+        <AppHeader active="dispatch" userLabel={userLabel} showPrintQueue showRoadmap />
+        <main className="app-main">
+          <Card title="Processed at no cost">
+            <Alert title="Recorded">
+              This job was processed at no cost. It's queued in the Finance section for review.
+            </Alert>
+            <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
+              <Link href={`/tracking/${documentId}`} className="btn btn-primary">
+                View tracking →
+              </Link>
+              <Link href="/finance" className="btn btn-secondary">
+                Finance
+              </Link>
+            </div>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
   if (alreadyPaid) {
     return (
       <div className="app-shell">
         {!isGuest && <AppHeader active="tracking" userLabel={userLabel} showPrintQueue showRoadmap />}
         <main className="app-main">
-          <Card title="Payment complete">
-            <Alert title="Already paid">
-              This dispatch fee has been paid. Courier collection is scheduled for the next day once
-              printing is done (or immediately if already printed).
+          <Card title={waived ? "Processed at no cost" : "Payment complete"}>
+            <Alert title={waived ? "Processed at no cost" : "Already paid"}>
+              {waived
+                ? "This dispatch fee was processed at no cost. Courier collection is scheduled for the next day once printing is done (or immediately if already printed)."
+                : "This dispatch fee has been paid. Courier collection is scheduled for the next day once printing is done (or immediately if already printed)."}
             </Alert>
             <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
               <Link href={`/tracking/${documentId}`} className="btn btn-primary">
@@ -325,6 +459,76 @@ export default function PayPage({
                 </p>
               </Card>
 
+              {isManualEntry && (
+                <Card title="Manual entry justification">
+                  <div className="field">
+                    <label htmlFor="manual-justification">Why was this entered manually?</label>
+                    <textarea
+                      id="manual-justification"
+                      rows={3}
+                      value={justification}
+                      onChange={(e) => setJustification(e.target.value)}
+                      placeholder="e.g. Customer called in, couldn't use the online form"
+                    />
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginTop: 10 }}>
+                    <input type="checkbox" checked={isTestEntry} onChange={(e) => setIsTestEntry(e.target.checked)} />
+                    This is a test entry
+                  </label>
+
+                  <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--border-default)" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={waiveOpen}
+                        onChange={(e) => {
+                          setWaiveOpen(e.target.checked);
+                          if (!e.target.checked) setWaiveConfirming(false);
+                        }}
+                      />
+                      Process this job at no cost (at our expense)
+                    </label>
+                    {waiveOpen && (
+                      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div className="field">
+                          <label htmlFor="waive-amount">Exact loss amount (ZAR)</label>
+                          <input
+                            id="waive-amount"
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={waiveAmount}
+                            onChange={(e) => setWaiveAmount(e.target.value)}
+                          />
+                        </div>
+                        <div className="field">
+                          <label htmlFor="waive-justification">Justification for processing at no cost</label>
+                          <textarea
+                            id="waive-justification"
+                            rows={3}
+                            value={waiveJustification}
+                            onChange={(e) => setWaiveJustification(e.target.value)}
+                            placeholder="Why is PostNow absorbing this cost?"
+                          />
+                        </div>
+                        <div>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={
+                              waiveBusy || !waiveJustification.trim() || !(Number(waiveAmount) > 0)
+                            }
+                            onClick={() => setWaiveConfirming(true)}
+                          >
+                            {waiveBusy ? "Processing…" : "Confirm no-cost processing"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
               <Card title="Send payment request">
                 <div className="field">
                   <label htmlFor="pay-request-email">Email address to send the payment request to</label>
@@ -366,7 +570,7 @@ export default function PayPage({
                     type="button"
                     className="btn btn-primary pay-btn"
                     disabled={loading || !requestEmail.trim()}
-                    onClick={() => void sendPaymentRequest("email")}
+                    onClick={() => runWithJustification(() => void sendPaymentRequest("email"))}
                   >
                     {loading && sendingChannel === "email"
                       ? "Sending email…"
@@ -376,7 +580,7 @@ export default function PayPage({
                     type="button"
                     className="btn btn-whatsapp pay-btn"
                     disabled={loading || !requestPhone.trim()}
-                    onClick={() => void sendPaymentRequest("whatsapp")}
+                    onClick={() => runWithJustification(() => void sendPaymentRequest("whatsapp"))}
                   >
                     {loading && sendingChannel === "whatsapp"
                       ? "Sending WhatsApp…"
@@ -394,6 +598,16 @@ export default function PayPage({
                   <Link href="/print-queue" className="btn btn-secondary">
                     Print queue
                   </Link>
+                  {isManualEntry && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={cancelling}
+                      onClick={() => runWithJustification(() => void cancelManualEntry())}
+                    >
+                      {cancelling ? "Cancelling…" : "Cancel this job"}
+                    </button>
+                  )}
                 </div>
                 {error && <div className="form-error" style={{ marginTop: 12 }}>{error}</div>}
               </Card>
@@ -430,6 +644,52 @@ export default function PayPage({
             </div>
           </div>
         </main>
+
+        {justifyModalOpen && (
+          <Modal title="Justification required" onClose={() => setJustifyModalOpen(false)}>
+            <div className="field">
+              <label htmlFor="justify-modal-text">Why was this entered manually?</label>
+              <textarea
+                id="justify-modal-text"
+                rows={3}
+                value={justification}
+                onChange={(e) => setJustification(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginTop: 10 }}>
+              <input type="checkbox" checked={isTestEntry} onChange={(e) => setIsTestEntry(e.target.checked)} />
+              This is a test entry
+            </label>
+            {justifyError && <div className="form-error" style={{ marginTop: 10 }}>{justifyError}</div>}
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 16 }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setJustifyModalOpen(false)}>
+                Back
+              </button>
+              <button type="button" className="btn btn-primary" onClick={confirmJustification}>
+                Continue
+              </button>
+            </div>
+          </Modal>
+        )}
+
+        {waiveConfirming && (
+          <Modal title="Confirm processing at no cost" onClose={() => setWaiveConfirming(false)}>
+            <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.55 }}>
+              This will record a <strong>R {Number(waiveAmount || 0).toFixed(2)}</strong> loss for this job and
+              mark it as processed at no cost. It will appear in the Finance section's manual entry review queue.
+              Are you sure?
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 16 }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setWaiveConfirming(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => void confirmWaive()}>
+                Confirm — process at no cost
+              </button>
+            </div>
+          </Modal>
+        )}
       </div>
     );
   }
