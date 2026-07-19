@@ -278,6 +278,9 @@ export default function PrintQueue({
   } | null>(null);
   const [jobSettings, setJobSettings] = useState<JobPrintSettings | null>(null);
   const [printDialogError, setPrintDialogError] = useState<string | null>(null);
+  const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
+  const [printPreviewLoading, setPrintPreviewLoading] = useState(false);
+  const [printPreviewError, setPrintPreviewError] = useState<string | null>(null);
   const [markModal, setMarkModal] = useState<{
     id: string;
     recipientName: string;
@@ -368,6 +371,22 @@ export default function PrintQueue({
     setJobSettings(resolved);
     setPrintDialog({ doc, via });
     setPrintDialogError(null);
+    setPrintPreviewUrl(null);
+    setPrintPreviewError(null);
+    setPrintPreviewLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/documents/${doc.id}/download`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? "Could not load preview");
+        if (!data.url) throw new Error("No preview URL returned");
+        setPrintPreviewUrl(String(data.url));
+      } catch (err) {
+        setPrintPreviewError((err as Error).message);
+      } finally {
+        setPrintPreviewLoading(false);
+      }
+    })();
   }
 
   function closePrintDialog() {
@@ -375,6 +394,9 @@ export default function PrintQueue({
     setPrintDialog(null);
     setJobSettings(null);
     setPrintDialogError(null);
+    setPrintPreviewUrl(null);
+    setPrintPreviewError(null);
+    setPrintPreviewLoading(false);
   }
 
   async function confirmPrint() {
@@ -791,206 +813,254 @@ export default function PrintQueue({
           <Modal
             title={printDialog.via === "EPSON" ? "Confirm Print EpsonAPI" : "Confirm Print EpsonMail"}
             onClose={closePrintDialog}
+            className="modal-content-print-confirm"
           >
-            <p className="pq-mark-intro">
-              Customer selected print options for{" "}
-              <strong>{printDialog.doc.recipientName}</strong> (
-              <span className="pq-doc-id">#{printDialog.doc.id.slice(0, 8).toUpperCase()}</span>).
-              Review what the printer will do, then confirm.
-            </p>
+            <div className="print-confirm-layout">
+              <div className="print-confirm-main">
+                <p className="pq-mark-intro">
+                  Customer selected print options for{" "}
+                  <strong>{printDialog.doc.recipientName}</strong> (
+                  <span className="pq-doc-id">#{printDialog.doc.id.slice(0, 8).toUpperCase()}</span>).
+                  Review what the printer will do, then confirm.
+                </p>
 
-            <div className="print-confirm-grid">
-              <div className="print-confirm-card customer">
-                <div className="print-confirm-card-title">Customer selected</div>
-                <dl className="print-confirm-dl">
-                  <div>
-                    <dt>Colour</dt>
-                    <dd>{labelColorMode(normalizeColorMode(printDialog.doc.printColorMode))}</dd>
+                <div className="print-confirm-grid">
+                  <div className="print-confirm-card customer">
+                    <div className="print-confirm-card-title">Customer selected</div>
+                    <dl className="print-confirm-dl">
+                      <div>
+                        <dt>Colour</dt>
+                        <dd>{labelColorMode(normalizeColorMode(printDialog.doc.printColorMode))}</dd>
+                      </div>
+                      <div>
+                        <dt>Copies</dt>
+                        <dd>{printDialog.doc.printCopies}</dd>
+                      </div>
+                    </dl>
                   </div>
-                  <div>
-                    <dt>Copies</dt>
-                    <dd>{printDialog.doc.printCopies}</dd>
+                  <div className="print-confirm-card printer">
+                    <div className="print-confirm-card-title">Printer will use</div>
+                    <dl className="print-confirm-dl">
+                      <div>
+                        <dt>Colour</dt>
+                        <dd>{labelColorMode(jobSettings.colorMode)}</dd>
+                      </div>
+                      <div>
+                        <dt>Copies</dt>
+                        <dd>{jobSettings.copies}</dd>
+                      </div>
+                      <div>
+                        <dt>Paper</dt>
+                        <dd>
+                          {labelPaperSize(jobSettings.paperSize)} · {labelPaperType(jobSettings.paperType)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Quality</dt>
+                        <dd>{labelQuality(jobSettings.printQuality)}</dd>
+                      </div>
+                      <div>
+                        <dt>Sides</dt>
+                        <dd>{labelDoubleSided(jobSettings.doubleSided)}</dd>
+                      </div>
+                      <div>
+                        <dt>Borderless</dt>
+                        <dd>{jobSettings.borderless ? "Yes" : "No"}</dd>
+                      </div>
+                    </dl>
+                    {printDialog.via === "EPSON_DIRECT" && (
+                      <p className="print-confirm-note">
+                        EpsonMail cannot set colour/copies via API — preferences are noted in the email
+                        subject for the operator.
+                      </p>
+                    )}
                   </div>
-                </dl>
-              </div>
-              <div className="print-confirm-card printer">
-                <div className="print-confirm-card-title">Printer will use</div>
-                <dl className="print-confirm-dl">
-                  <div>
-                    <dt>Colour</dt>
-                    <dd>{labelColorMode(jobSettings.colorMode)}</dd>
+                </div>
+
+                <div className="print-confirm-adjust">
+                  <div className="print-confirm-card-title">Adjust for this job (optional)</div>
+                  <div className="print-confirm-fields">
+                    <div className="field">
+                      <label>Colour</label>
+                      <select
+                        value={jobSettings.colorMode}
+                        onChange={(e) =>
+                          setJobSettings({
+                            ...jobSettings,
+                            colorMode: e.target.value as PrintColorMode,
+                          })
+                        }
+                        disabled={busyId === printDialog.doc.id}
+                      >
+                        <option value="mono">Black &amp; white</option>
+                        <option value="color">Colour</option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Copies</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={jobSettings.copies}
+                        onChange={(e) =>
+                          setJobSettings({
+                            ...jobSettings,
+                            copies: normalizeCopies(e.target.value),
+                          })
+                        }
+                        disabled={busyId === printDialog.doc.id}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Paper size</label>
+                      <select
+                        value={jobSettings.paperSize}
+                        onChange={(e) => setJobSettings({ ...jobSettings, paperSize: e.target.value })}
+                        disabled={busyId === printDialog.doc.id}
+                      >
+                        {PAPER_SIZES.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Paper type</label>
+                      <select
+                        value={jobSettings.paperType}
+                        onChange={(e) => setJobSettings({ ...jobSettings, paperType: e.target.value })}
+                        disabled={busyId === printDialog.doc.id}
+                      >
+                        {PAPER_TYPES.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Quality</label>
+                      <select
+                        value={jobSettings.printQuality}
+                        onChange={(e) => setJobSettings({ ...jobSettings, printQuality: e.target.value })}
+                        disabled={busyId === printDialog.doc.id}
+                      >
+                        {PRINT_QUALITIES.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Paper source</label>
+                      <select
+                        value={jobSettings.paperSource}
+                        onChange={(e) => setJobSettings({ ...jobSettings, paperSource: e.target.value })}
+                        disabled={busyId === printDialog.doc.id}
+                      >
+                        {PAPER_SOURCES.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Double-sided</label>
+                      <select
+                        value={jobSettings.doubleSided}
+                        onChange={(e) => setJobSettings({ ...jobSettings, doubleSided: e.target.value })}
+                        disabled={busyId === printDialog.doc.id}
+                      >
+                        {DOUBLE_SIDED.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <label className="checkbox-row print-confirm-borderless">
+                      <input
+                        type="checkbox"
+                        checked={jobSettings.borderless}
+                        onChange={(e) => setJobSettings({ ...jobSettings, borderless: e.target.checked })}
+                        disabled={busyId === printDialog.doc.id}
+                      />
+                      Borderless
+                    </label>
                   </div>
-                  <div>
-                    <dt>Copies</dt>
-                    <dd>{jobSettings.copies}</dd>
+                </div>
+
+                {printDialogError && (
+                  <div className="form-error" style={{ marginTop: 12 }}>
+                    {printDialogError}
                   </div>
-                  <div>
-                    <dt>Paper</dt>
-                    <dd>
-                      {labelPaperSize(jobSettings.paperSize)} · {labelPaperType(jobSettings.paperType)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Quality</dt>
-                    <dd>{labelQuality(jobSettings.printQuality)}</dd>
-                  </div>
-                  <div>
-                    <dt>Sides</dt>
-                    <dd>{labelDoubleSided(jobSettings.doubleSided)}</dd>
-                  </div>
-                  <div>
-                    <dt>Borderless</dt>
-                    <dd>{jobSettings.borderless ? "Yes" : "No"}</dd>
-                  </div>
-                </dl>
-                {printDialog.via === "EPSON_DIRECT" && (
-                  <p className="print-confirm-note">
-                    EpsonMail cannot set colour/copies via API — preferences are noted in the email
-                    subject for the operator.
-                  </p>
                 )}
+                <div className="pq-mark-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={closePrintDialog}
+                    disabled={busyId === printDialog.doc.id}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={busyId === printDialog.doc.id}
+                    onClick={() => void confirmPrint()}
+                  >
+                    {busyId === printDialog.doc.id
+                      ? "Sending…"
+                      : printDialog.via === "EPSON"
+                        ? "Print with these settings"
+                        : "Send EpsonMail"}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="print-confirm-adjust">
-              <div className="print-confirm-card-title">Adjust for this job (optional)</div>
-              <div className="print-confirm-fields">
-                <div className="field">
-                  <label>Colour</label>
-                  <select
-                    value={jobSettings.colorMode}
-                    onChange={(e) =>
-                      setJobSettings({
-                        ...jobSettings,
-                        colorMode: e.target.value as PrintColorMode,
-                      })
-                    }
-                    disabled={busyId === printDialog.doc.id}
+              <aside className="print-confirm-preview" aria-label="Document preview">
+                <div className="print-confirm-card-title">Document preview</div>
+                <div className="print-confirm-preview-frame">
+                  {printPreviewLoading && (
+                    <div className="print-confirm-preview-empty">Loading preview…</div>
+                  )}
+                  {!printPreviewLoading && printPreviewError && (
+                    <div className="print-confirm-preview-empty">
+                      <span>{printPreviewError}</span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: 12, marginTop: 10 }}
+                        onClick={() => openPrintDialog(printDialog.doc, printDialog.via)}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {!printPreviewLoading && printPreviewUrl && (
+                    <iframe
+                      title={`Preview ${printDialog.doc.recipientName}`}
+                      src={`${printPreviewUrl}#toolbar=0&navpanes=0`}
+                      className="print-confirm-preview-iframe"
+                    />
+                  )}
+                </div>
+                {printPreviewUrl && (
+                  <a
+                    href={printPreviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="print-confirm-preview-open"
                   >
-                    <option value="mono">Black &amp; white</option>
-                    <option value="color">Colour</option>
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Copies</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={jobSettings.copies}
-                    onChange={(e) =>
-                      setJobSettings({
-                        ...jobSettings,
-                        copies: normalizeCopies(e.target.value),
-                      })
-                    }
-                    disabled={busyId === printDialog.doc.id}
-                  />
-                </div>
-                <div className="field">
-                  <label>Paper size</label>
-                  <select
-                    value={jobSettings.paperSize}
-                    onChange={(e) => setJobSettings({ ...jobSettings, paperSize: e.target.value })}
-                    disabled={busyId === printDialog.doc.id}
-                  >
-                    {PAPER_SIZES.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Paper type</label>
-                  <select
-                    value={jobSettings.paperType}
-                    onChange={(e) => setJobSettings({ ...jobSettings, paperType: e.target.value })}
-                    disabled={busyId === printDialog.doc.id}
-                  >
-                    {PAPER_TYPES.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Quality</label>
-                  <select
-                    value={jobSettings.printQuality}
-                    onChange={(e) => setJobSettings({ ...jobSettings, printQuality: e.target.value })}
-                    disabled={busyId === printDialog.doc.id}
-                  >
-                    {PRINT_QUALITIES.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Paper source</label>
-                  <select
-                    value={jobSettings.paperSource}
-                    onChange={(e) => setJobSettings({ ...jobSettings, paperSource: e.target.value })}
-                    disabled={busyId === printDialog.doc.id}
-                  >
-                    {PAPER_SOURCES.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Double-sided</label>
-                  <select
-                    value={jobSettings.doubleSided}
-                    onChange={(e) => setJobSettings({ ...jobSettings, doubleSided: e.target.value })}
-                    disabled={busyId === printDialog.doc.id}
-                  >
-                    {DOUBLE_SIDED.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <label className="checkbox-row print-confirm-borderless">
-                  <input
-                    type="checkbox"
-                    checked={jobSettings.borderless}
-                    onChange={(e) => setJobSettings({ ...jobSettings, borderless: e.target.checked })}
-                    disabled={busyId === printDialog.doc.id}
-                  />
-                  Borderless
-                </label>
-              </div>
-            </div>
-
-            {printDialogError && <div className="form-error" style={{ marginTop: 12 }}>{printDialogError}</div>}
-            <div className="pq-mark-actions">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={closePrintDialog}
-                disabled={busyId === printDialog.doc.id}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busyId === printDialog.doc.id}
-                onClick={() => void confirmPrint()}
-              >
-                {busyId === printDialog.doc.id
-                  ? "Sending…"
-                  : printDialog.via === "EPSON"
-                    ? "Print with these settings"
-                    : "Send EpsonMail"}
-              </button>
+                    Open full PDF ↗
+                  </a>
+                )}
+              </aside>
             </div>
           </Modal>
         )}

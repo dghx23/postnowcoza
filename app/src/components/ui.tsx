@@ -518,14 +518,20 @@ export function Modal({
   title,
   onClose,
   children,
+  className,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Extra class on modal-content (e.g. wide print-confirm dialog) */
+  className?: string;
 }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`modal-content${className ? ` ${className}` : ""}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <div className="modal-title">{title}</div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
