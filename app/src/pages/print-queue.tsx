@@ -11,6 +11,7 @@ import {
   Alert,
   PrinterStatus,
   PrintFeedbackChip,
+  Modal,
 } from "@/components/ui";
 import { FACILITY_ADDRESS } from "@/lib/facility";
 import { buildPrintFeedback, type PrintFeedbackDetail } from "@/lib/printFeedback";
@@ -168,6 +169,14 @@ export default function PrintQueue({
   const [historySyncing, setHistorySyncing] = useState(false);
   const [historyMsg, setHistoryMsg] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [markModal, setMarkModal] = useState<{
+    id: string;
+    recipientName: string;
+  } | null>(null);
+  const [markComment, setMarkComment] = useState("");
+  const [markConfirmed, setMarkConfirmed] = useState(false);
+  const [markSubmitting, setMarkSubmitting] = useState(false);
+  const [markError, setMarkError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/print-settings")
@@ -239,11 +248,15 @@ export default function PrintQueue({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
-  async function handlePrintApi(id: string) {
+  async function handlePrintApi(id: string, via: "EPSON" | "EPSON_DIRECT") {
     setBusyId(id);
     setErrorId(null);
     try {
-      const res = await fetch(`/api/documents/${id}/print`, { method: "POST" });
+      const res = await fetch(`/api/documents/${id}/print`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ via }),
+      });
       const data = await res.json();
 
       if (res.status === 401 && data.auth_url) {
@@ -254,9 +267,9 @@ export default function PrintQueue({
 
       setDocuments((prev) => prev.filter((d) => d.id !== id));
       showToast(
-        printProvider === "EPSON_DIRECT"
-          ? "Email Print sent — awaiting printer confirmation"
-          : "Instant print sent via Epson Connect",
+        via === "EPSON_DIRECT"
+          ? "Print EpsonMail sent — awaiting printer confirmation"
+          : "Print EpsonAPI sent via Epson Connect",
       );
     } catch (err) {
       setErrorId({ id, message: (err as Error).message });
@@ -278,21 +291,53 @@ export default function PrintQueue({
     }
   }
 
-  async function handleMarkPrinted(id: string) {
-    setBusyId(id);
+  function openMarkPrinted(doc: { id: string; recipientName: string }) {
+    setMarkModal({ id: doc.id, recipientName: doc.recipientName });
+    setMarkComment("");
+    setMarkConfirmed(false);
+    setMarkError(null);
+  }
+
+  function closeMarkPrinted() {
+    if (markSubmitting) return;
+    setMarkModal(null);
+    setMarkComment("");
+    setMarkConfirmed(false);
+    setMarkError(null);
+  }
+
+  async function submitMarkPrinted() {
+    if (!markModal) return;
+    if (!markConfirmed) {
+      setMarkError("Tick the confirmation box before submitting.");
+      return;
+    }
+    setMarkSubmitting(true);
+    setMarkError(null);
+    setBusyId(markModal.id);
     setErrorId(null);
     try {
-      const res = await fetch(`/api/documents/${id}/status`, {
+      const res = await fetch(`/api/documents/${markModal.id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "PRINTED" }),
+        body: JSON.stringify({
+          status: "PRINTED",
+          confirmed: true,
+          comment: markComment.trim(),
+        }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed to update status");
+      const id = markModal.id;
       setDocuments((prev) => prev.filter((d) => d.id !== id));
+      setMarkModal(null);
+      setMarkComment("");
+      setMarkConfirmed(false);
       showToast("Marked as printed");
     } catch (err) {
-      setErrorId({ id, message: (err as Error).message });
+      setMarkError((err as Error).message);
+      setErrorId({ id: markModal.id, message: (err as Error).message });
     } finally {
+      setMarkSubmitting(false);
       setBusyId(null);
     }
   }
@@ -323,7 +368,8 @@ export default function PrintQueue({
               )}
               <span className="pq-staff-badge">👤 Staff · Print Ops</span>
               <span className="pq-epson-badge">
-                {printProvider === "EPSON_DIRECT" ? "📧 Email Print" : "🖨️ Epson API"}
+                🖨️ EpsonAPI · 📧 EpsonMail
+                {printProvider ? ` · hub default: ${printProvider === "EPSON_DIRECT" ? "Mail" : "API"}` : ""}
               </span>
               <span className="pq-count-pill">{documents.length} pending</span>
             </div>
@@ -444,24 +490,28 @@ export default function PrintQueue({
                           type="button"
                           className="pq-btn pq-btn-print"
                           disabled={busyId === doc.id}
-                          onClick={() => void handlePrintApi(doc.id)}
+                          title="Print via Epson Connect cloud API"
+                          onClick={() => void handlePrintApi(doc.id, "EPSON")}
                         >
-                          {busyId === doc.id
-                            ? "Sending…"
-                            : printProvider === "EPSON_DIRECT"
-                              ? "📧 Email Print"
-                              : "Print Instant"}
-                          {busyId !== doc.id && printProvider !== "EPSON_DIRECT" && (
-                            <span className="sparkle">✦</span>
-                          )}
+                          {busyId === doc.id ? "Sending…" : "Print EpsonAPI"}
+                          {busyId !== doc.id && <span className="sparkle">✦</span>}
+                        </button>
+                        <button
+                          type="button"
+                          className="pq-btn pq-btn-print-mail"
+                          disabled={busyId === doc.id}
+                          title="Email PDF to the printer (Epson Direct)"
+                          onClick={() => void handlePrintApi(doc.id, "EPSON_DIRECT")}
+                        >
+                          {busyId === doc.id ? "Sending…" : "Print EpsonMail"}
                         </button>
                         <button
                           type="button"
                           className="pq-btn pq-btn-mark"
                           disabled={busyId === doc.id}
-                          onClick={() => void handleMarkPrinted(doc.id)}
+                          onClick={() => openMarkPrinted(doc)}
                         >
-                          {busyId === doc.id ? "…" : "Mark Printed"}
+                          Mark Printed
                         </button>
                       </div>
                       {errorId?.id === doc.id && <div className="form-error" style={{ marginTop: 6 }}>{errorId.message}</div>}
@@ -544,6 +594,58 @@ export default function PrintQueue({
               ×
             </button>
           </div>
+        )}
+
+        {markModal && (
+          <Modal title="Mark as printed" onClose={closeMarkPrinted}>
+            <p className="pq-mark-intro">
+              Confirm that{" "}
+              <strong>{markModal.recipientName}</strong> (
+              <span className="pq-doc-id">#{markModal.id.slice(0, 8).toUpperCase()}</span>) was
+              printed successfully. This advances the document to <strong>PRINTED</strong> and may
+              trigger next-day courier booking if payment is complete.
+            </p>
+            <div className="field" style={{ marginTop: 14 }}>
+              <label htmlFor="mark-comment">Comments (optional)</label>
+              <textarea
+                id="mark-comment"
+                rows={3}
+                value={markComment}
+                onChange={(e) => setMarkComment(e.target.value)}
+                placeholder="e.g. Printed on L3251, 2 pages, slight jam cleared…"
+                maxLength={2000}
+                disabled={markSubmitting}
+              />
+            </div>
+            <label className="pq-mark-confirm">
+              <input
+                type="checkbox"
+                checked={markConfirmed}
+                onChange={(e) => setMarkConfirmed(e.target.checked)}
+                disabled={markSubmitting}
+              />
+              <span>I confirm this document was printed</span>
+            </label>
+            {markError && <div className="form-error" style={{ marginTop: 10 }}>{markError}</div>}
+            <div className="pq-mark-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={closeMarkPrinted}
+                disabled={markSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!markConfirmed || markSubmitting}
+                onClick={() => void submitMarkPrinted()}
+              >
+                {markSubmitting ? "Submitting…" : "Submit"}
+              </button>
+            </div>
+          </Modal>
         )}
       </main>
     </div>

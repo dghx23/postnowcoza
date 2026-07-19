@@ -1782,8 +1782,41 @@ table.data-table tr:last-child td {
 .pq-btn-print { background: #00A8A8; color: #fff; }
 .pq-btn-print:hover:not(:disabled) { background: #009090; }
 .pq-btn-print .sparkle { font-size: 10px; margin-left: 4px; }
+.pq-btn-print-mail { background: #0D9488; color: #fff; border: 1px solid #0F766E; }
+.pq-btn-print-mail:hover:not(:disabled) { background: #0F766E; }
 .pq-btn-mark { background: #0A2540; color: #fff; }
 .pq-btn-mark:hover:not(:disabled) { background: #1A3A5A; }
+.pq-mark-intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.pq-mark-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--navy-900);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.pq-mark-confirm input {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.pq-mark-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
 .pq-empty {
   padding: 28px 20px;
   font-size: 14px;

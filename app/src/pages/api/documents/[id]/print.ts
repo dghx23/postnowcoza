@@ -41,7 +41,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(409).json({ error: `Cannot print a document in status ${document.status}` });
   }
 
-  const { provider, epsonDirectEmail } = await getPrintSettings();
+  const settings = await getPrintSettings();
+  // Per-click override from Print Queue (Print EpsonAPI / Print EpsonMail).
+  // Falls back to Printer Hub default when body.via is omitted.
+  const bodyVia =
+    req.body && typeof req.body === "object" && typeof (req.body as { via?: unknown }).via === "string"
+      ? (req.body as { via: string }).via
+      : null;
+  const provider =
+    bodyVia === "EPSON" || bodyVia === "EPSON_DIRECT" ? bodyVia : settings.provider;
+  const epsonDirectEmail = settings.epsonDirectEmail;
 
   if (provider === "EPSON_DIRECT") {
     if (!epsonDirectEmail) {

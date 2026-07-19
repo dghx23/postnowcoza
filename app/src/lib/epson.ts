@@ -412,11 +412,12 @@ export async function printPdf(accessToken: string, pdfBuffer: Buffer, jobName: 
       jobName,
       printMode: "document",
       printSettings: {
+        // Match L3251 defaults / capability (rear source only; no duplex).
         paperSize: "ps_a4",
         paperType: "pt_plainpaper",
         borderless: false,
         printQuality: "normal",
-        paperSource: "auto",
+        paperSource: "rear",
         colorMode: "mono",
         copies: 1,
       },
