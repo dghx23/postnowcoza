@@ -1,148 +1,134 @@
-# postnow app backend
+# PostNow app (`app.postnow.co.za`)
 
-Deploys to `app.postnow.co.za`. Handles auth, document upload, print/dispatch
-status transitions, and the chain-of-custody audit trail. The marketing site
-at `postnow.co.za` (repo root) is separate and unrelated to this deploy.
+Next.js 14 (Pages Router) product backend: staff operations, document custody, print, dispatch, payments, finance, and audit trail. Marketing site lives at the repo root (`postnow.co.za`).
+
+Full architecture and env catalogue: **[../TECH_SPEC.md](../TECH_SPEC.md)**.  
+Customer portal is parked: **[../docs/CUSTOMER_PORTAL_PARKED.md](../docs/CUSTOMER_PORTAL_PARKED.md)**.
 
 ## Local setup
 
-```
+```bash
 cp .env.example .env.local
 npm install
 npx prisma migrate dev
 npm run dev
 ```
 
-## Data model
+Build (matches Vercel):
 
-- `Document.status` moves through `UPLOADED -> QUEUED_FOR_PRINT -> PRINTED ->
-  DISPATCHED -> IN_TRANSIT -> DELIVERED -> RETURN_REQUESTED ->
-  RETURN_IN_TRANSIT -> RETURNED`. Allowed forward transitions are enforced in
-  `src/pages/api/documents/[id]/status.ts`; the dispatch/return legs are
-  driven by Bob Go webhooks instead (see below).
-- `AuditEvent` is append-only and hash-chained (`src/lib/audit.ts`) — every
-  upload, status change, and audit-log read is recorded here. Application
-  code must never update or delete rows in this table.
-- Uploaded files are encrypted server-side (S3 SSE) and never stored in
-  Postgres — only their storage key and checksum are.
+```bash
+npm run build   # prisma generate && migrate deploy && seed && next build
+```
 
-## Dispatch and returns (Bob Go)
+Seed creates the bootstrap staff user (if `SEED_STAFF_*` set) and idempotent **roadmap** rows.
 
-- `src/lib/bobgo.ts` — thin client over the Bob Go v2 API (rates, shipments,
-  orders, returns, waybill, POD).
-- `src/lib/dispatch.ts` — `dispatchDocument()`: rates the facility-to-customer
-  route, books the cheapest available service level, and moves the document
-  to `DISPATCHED`. Call this once a document is `PRINTED`.
-- `src/lib/returns.ts` — `initiateReturn()`: creates a Bob Go order (required
-  before a return can be booked, since documents aren't e-commerce orders)
-  and books the customer-to-facility leg via `/orders/return`.
-- `src/pages/api/webhooks/bobgo.ts` — receives `tracking/updated` and
-  `shipment_submission_status/updated` webhooks, verifies the
-  `bobgo-webhook-signature` HMAC header against `BOBGO_WEBHOOK_SECRET`, and
-  drives `Document.status` and `BobgoShipment` forward. Every payload is
-  audit-logged verbatim before interpretation.
-- On final delivery of either leg, the proof-of-delivery is fetched and
-  stored (`BobgoShipment.podUrl`) as the closing audit event for that leg.
+## Product surfaces (staff)
 
-To wire this up in the Bob Go dashboard: Settings -> Webhook subscriptions ->
-create a secret (put it in `BOBGO_WEBHOOK_SECRET`), then subscribe
-`https://app.postnow.co.za/api/webhooks/bobgo` to `tracking/updated` and
-`shipment_submission_status/updated`.
+| Route | Role |
+|-------|------|
+| `/dashboard` | Metrics, recent jobs, quote tool, finance summary card |
+| `/dispatch/new` | **Staff** manual job entry → redirect to request payment |
+| `/tracking`, `/tracking/[id]` | Hub + document home (status, pay CTA, print log, courier, custody) |
+| `/pay/[id]` | Staff: **request payment** (email + WhatsApp). Guest/customer: PayFast pay (`?token=` or `?pay=1`) |
+| `/finance` | Full ledger, Zoho two-way, **payment structure**, **facility scans** |
+| `/print-queue`, `/printer` | Queue + Epson Connect / Direct hub |
+| `/roadmap` | Internal feature tracker |
+| `/portal/*` | **Parked** customer self-serve (do not remove) |
 
-## Payments (Bob Pay)
+Sidebar ⚙ (staff): **sync exception log** (Zoho push/pull, billing structure, scans).
 
-- `src/lib/bobpay.ts` — `createPaymentLink()` (wraps `POST
-  /payments/intents/link`) and `validatePayment()` (wraps `POST
-  /payments/intents/validate`).
-- `src/pages/api/documents/[id]/pay.ts` — creates (or returns the existing)
-  payment link for a document's dispatch fee. Requires
-  `Document.dispatchFee` to already be set, which happens automatically in
-  `dispatchDocument()` from the courier rate at booking time.
-- `src/pages/api/webhooks/bobpay.ts` — receives Bob Pay's payment
-  notification. Defense in depth, all three required: (1) source IP must be
-  Bob Pay's documented sandbox/production IP (`src/lib/bobpay-webhook.ts`),
-  (2) the `signature` field's MD5 must match `BOBPAY_PASSPHRASE`, (3) the
-  payload is re-confirmed against Bob Pay via `validatePayment()`. Also
-  checks `paid_amount` against the amount we expected before marking a
-  `Payment` as `PAID`.
-- `BOBPAY_API_TOKEN` is a JWT from `POST /login` that expires after 30 days
-  — there's no refresh flow built yet, so this needs manual (or scheduled)
-  renewal.
+## Data model (high level)
 
-## Printing (Epson Connect)
+- **Document** — status pipeline, address, print prefs, `createdVia` / `staffCreatorEmail`, `dispatchFee`
+- **Payment** — UNPAID→PAID… PayFast; Zoho Books ids + pull snapshot fields; optional `billingItemId`
+- **BillingItem** — payment-structure rates (workspace on `/finance`)
+- **SyncException** — open/resolved exception log for two-way sync
+- **FacilityScan** — saved facility scans (S3) for email/archive
+- **AuditEvent** — append-only hash-chained custody log
+- **BobgoShipment**, **EpsonPrintJob**, **PrintSettings**, **Feature** — as in TECH_SPEC
 
-Rewritten directly against Epson's official OpenAPI v2 spec (see
-TECH_SPEC.md section 6.3) — paths, camelCase field names, both required
-auth headers, and the separate upload host are all read straight from that
-spec rather than inferred, but this has never yet been run against a live
-Epson account/printer. Confirm end-to-end before relying on it.
+Migrations run on deploy (`prisma/migrations/*`). Latest relevant: Zoho map, staff-created docs, two-way finance + scans.
 
-- `src/lib/epson.ts` — OAuth token exchange/refresh, `printPdf()` (creates
-  the job via `POST /printing/jobs`, uploads the file to the returned
-  `uploadUri` on `upload.epsonconnect.com`, then executes via
-  `POST /printing/jobs/{jobId}/print`; returns the `jobId`),
-  `getDeviceInfo()`, `getJobStatus(jobId)`. Every call sends both
-  `Authorization: Bearer` and `x-api-key` headers — both are required.
-- `src/pages/api/epson/callback.ts` — OAuth redirect target
-  (`EPSON_REDIRECT_URI`). Staff/admin only. Stores `access_token`/
-  `refresh_token`/device ID (`subject_id` from the token response) in
-  HTTP-only cookies.
-- `src/pages/api/documents/[id]/print.ts` — sends a document's PDF straight
-  to the connected printer, records the returned job ID in `EpsonPrintJob`,
-  and marks it `PRINTED` on success. Returns `auth_url` in a 401 if not yet
-  connected; the print queue UI redirects the browser there to start the
-  OAuth flow.
-- `src/pages/api/epson/status.ts` — polled every 30s by the `PrinterStatus`
-  component (print queue + dashboard header, staff only) to show
-  online/busy/offline plus a pending-job count. Since Epson has no "list
-  jobs" endpoint, pending jobs are counted by polling every `EpsonPrintJob`
-  we've recorded as not yet settled. Clicking the status line opens a
-  drill-down panel: printer identity, pending jobs, today's print success
-  rate, a recent-jobs table sourced from our own audit trail, and a
-  raw-API-response toggle.
+## Payments
 
-## Quote Tool (Courier Guy)
+### PayFast (primary checkout)
 
-- `src/lib/courierguy.ts` — `getRates()`, always quoting from the facility
-  address (the only collection point this business dispatches from) to a
-  given delivery address. Base URL (`https://api.portal.thecourierguy.co.za`)
-  and Bearer-token auth are confirmed from a real Postman collection. Built
-  on the same request shape as Bob Go since The Courier Guy's direct API is
-  Shiplogic-based. No shipment is created, no `Document` is touched — purely
-  a rate lookup, shown as a card on `/dashboard` with the same address
-  autocomplete as the dispatch form.
+- `src/lib/payfast.ts` + `/api/documents/[id]/pay` + `/api/webhooks/payfast`
+- On **PAID**, ITN path can **push** the payment to Zoho Books (`syncPaymentToZohoBooks`)
 
-## Address autocomplete
+### Staff payment request
 
-`src/pages/api/geocode/autocomplete.ts` proxies OpenStreetMap's free
-Nominatim geocoder (no API key needed), used on the delivery address field
-on `/dispatch/new` and the Quote Tool on `/dashboard`. South Africa only,
-debounced 350ms client-side.
+- Email: branded HTML template in `src/lib/paymentRequestEmail.ts` (existing SMTP / Vercel SMTP)
+- WhatsApp: same secure pay link; **message copy is product-owned** — implement only what is supplied (`src/lib/whatsapp.ts`, `request-payment` channel `whatsapp`)
+- API: `POST /api/documents/[id]/request-payment` `{ channel: "email"|"whatsapp", email?|phone? }`
+- Guest access: one-time `token` on `/pay/[id]?token=…&from=staff`
 
-## Live courier tracking
+### Bob Pay
 
-`/tracking/[id]` polls `/api/documents/[id]/live-tracking` on mount and every
-60s, which calls Bob Go's tracking endpoint directly for the document's most
-recent shipment rather than relying only on cached webhook status. Shows a
-"Live Courier Tracking" card with the tracking reference, live status, and a
-checkpoint table (date/status/location/message) above the chain-of-custody
-log.
+Legacy client + webhook remain; product checkout is PayFast. See TECH_SPEC.
 
-## Feature Roadmap
+## Zoho Books (two-way finance)
 
-`/roadmap` (staff only) — a lightweight internal tracker for planned
-features (`Feature` model), unrelated to the customer-facing product or the
-audit trail. Adding a feature opens a modal popup (rather than an
-always-visible inline form). CRUD via `/api/features` and
-`/api/features/[id]`.
+| Direction | Behaviour |
+|-----------|-----------|
+| **Push** | Contact → invoice → customer payment when PAID (or manual Sync) |
+| **Pull** | `GET` invoice; store status/balance; if Books **paid** and local UNPAID → **auto-mark PAID** + audit `zoho_books_paid_inbound` |
 
-## Still to build
+- Client: `src/lib/zohoBooks.ts` (OAuth refresh, always sends `organization_id`)
+- Orchestration: `src/lib/zohoBooksSync.ts`
+- API: `GET/POST /api/finance/zoho` — `paymentId`, `allUnsynced`, `pull`+`paymentId`, `pullAll`
+- UI: `/finance` — Push paid → Books, Refresh from Zoho, per-row Push/Pull, Invoice ↗
+- Failures: `SyncException` + payment `zohoBooksSyncError`
 
-- Data subject access/deletion endpoints (POPIA requirement).
-- Rate limiting / virus scanning on upload.
-- UI to launch a document's payment link and reflect `Payment.status` on
-  the tracking page (the API exists, no UI yet).
-- Bob Pay API token refresh automation (currently a manual 30-day rotation).
-- Verify the Epson Connect integration against a real account/printer.
-- Verify the Courier Guy Quote Tool against a real `COURIER_GUY_API`
-  credential (auth header placement is a guess — see TECH_SPEC.md 6.4).
+**Env (Vercel):** `ZOHO_BOOKS_CLIENT_ID`, `CLIENT_SECRET`, `REFRESH_TOKEN`, **`ORGANIZATION_ID`**, `REGION`, optional `ITEM_ID` / app URL. Org id docs: [Zoho Books API — organization id](https://www.zoho.com/books/api/v3/introduction/#organization-id).  
+Roadmap item **Configure Zoho Books API in Vercel (two-way finance)** holds the full cutover checklist when env unlock allows.
+
+## Payment structure & scans
+
+- **Billing lines:** `GET/POST/PUT/DELETE /api/finance/billing-items` — codes/rates that will map into ledger rows and Zoho line items (workspace on `/finance#payment-structure`)
+- **Scans:** `POST /api/finance/scans` `{ action: "save"|"email", … }` — save PDF/image to R2, email attachment, optional AES encrypt + password in email body (`src/lib/scanEmail.ts`)
+- Epson Connect **native** scan pull is roadmap (upload path is live)
+
+## Printing (Epson)
+
+- **EPSON** — Connect OAuth + print API (`src/lib/epson.ts`), job webhooks, status/history
+- **EPSON_DIRECT** — Email Print via SMTP to printer address
+- Owner-notification IMAP reconcile: `src/lib/epsonNotifications.ts` + cron/status
+
+## Dispatch & tracking
+
+- Bob Go: `dispatch.ts` / `returns.ts` / webhooks
+- Live tracking: `/api/documents/[id]/live-tracking`
+- Staff-created jobs: `createdVia=STAFF`, tracking STAFF badge; pay CTA **Arrange Dispatch Fee** (dark orange) vs customer green **Pay dispatch fee**
+
+## WhatsApp
+
+Outbound helper: `src/lib/whatsapp.ts`, `POST /api/whatsapp/send`.  
+Webhook: `/api/whatsapp/webhook`.  
+**Product logic and templates are fed by the operator** — do not invent WhatsApp flows without explicit copy/rules.
+
+## Roadmap seed / ensure
+
+`prisma/seed.ts` and `/roadmap` ensure rows including:
+
+- Grok Voice Agent, customer portal (parked), SMTP → `info@postnow.co.za`
+- **Configure Zoho Books API in Vercel (two-way finance)** (HIGH)
+- Payment structure → ledger → Zoho (HIGH / in progress)
+- Epson native scan pull (MEDIUM)
+- WhatsApp permanent token + prod webhook (HIGH)
+
+## Still to build / known gaps
+
+- Wire billing lines automatically onto every new payment + Zoho `item_id`
+- POPIA data-subject export/deletion endpoints
+- Upload rate limiting / virus scan
+- Zoho env live smoke after Vercel unlock
+- Native PDF password (current scan encrypt is AES package + password in email)
+- Voice agent remains roadmap / partial (`/voice`)
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `npm run seed` | Staff user + roadmap features |
+| `npm run bobgo:rates` | Refresh static Bob Go rate card JSON (optional) |

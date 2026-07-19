@@ -1,14 +1,22 @@
 # PostNow — Technical Specification
 
-Status snapshot as of this document's writing. Covers architecture, data model,
+Status snapshot **2026-07** (updated with two-way Zoho finance, staff payment
+requests, facility scans, exception log). Covers architecture, data model,
 third-party integrations, infrastructure, and what's outstanding.
+
+Companion docs: repo root `README.md`, `app/README.md`, `docs/CUSTOMER_PORTAL_PARKED.md`.
 
 ## 1. Product summary
 
 PostNow ("PostNow E2") is a POPIA-first secure physical document dispatch
-service. A customer uploads a document that needs a wet-ink signature; PostNow
-prints it, dispatches it by courier, gets it signed, and — if required —
-returns it, with an immutable chain-of-custody audit trail at every step.
+service. A document that needs a wet-ink signature is ingested (staff entry
+today; customer portal parked), PostNow prints it, dispatches by courier, gets
+it signed, and — if required — returns it, with an immutable chain-of-custody
+audit trail at every step.
+
+**Live product emphasis:** staff operations (dispatch entry, print queue, printer
+hub, financial ledger, payment request by email/WhatsApp, tracking). Customer
+self-serve portal routes are reserved but not the primary nav.
 
 ## 2. Domains & hosting split
 
@@ -62,92 +70,111 @@ Document
   id, ownerId -> User
   status: UPLOADED -> QUEUED_FOR_PRINT -> PRINTED -> DISPATCHED -> IN_TRANSIT
           -> DELIVERED -> RETURN_REQUESTED -> RETURN_IN_TRANSIT -> RETURNED
-  storageKey, checksum, encryptionKeyRef   (file itself lives in S3/R2, never in Postgres)
+  storageKey, checksum, encryptionKeyRef   (file in S3/R2, never Postgres)
   recipientName/Phone/Email, streetAddress, localArea, city, zone, postalCode, country
-  returnPreference: DIRECT | MANAGED   -- Option A/B from the return pathway, default MANAGED
-  dispatchFee (Float?)   -- set from the Bob Go courier rate at booking time
+  returnPreference: DIRECT | MANAGED
+  printColorMode, printCopies
+  createdVia: STAFF | CUSTOMER | PORTAL
+  staffCreatorEmail?   -- set when staff manual entry
+  dispatchFee (Float?) -- default fee and/or courier rate
 
-AuditEvent   (append-only, hash-chained chain-of-custody log)
+AuditEvent   (append-only, hash-chained)
   id, documentId, actorId?, action, metadata (Json), ip, prevHash, hash, createdAt
-  -- every insert's hash = sha256(documentId+actorId+action+metadata+prevHash)
-  -- application code never updates or deletes rows in this table
 
-BobgoShipment   (one row per courier leg — outbound dispatch, or a return)
-  id, documentId, direction (OUTBOUND|RETURN), bobgoOrderId?, providerSlug,
-  serviceLevelCode, trackingReference (unique), submissionStatus, trackingStatus,
-  failedReason, waybillUrl, podUrl, rawPayload (Json)
+BobgoShipment   (outbound or return leg)
+  id, documentId, direction, bobgoOrderId?, providerSlug, serviceLevelCode,
+  trackingReference, submissionStatus, trackingStatus, waybillUrl, podUrl, …
 
-Payment   (Bob Pay payment intent for a document's dispatch fee)
+Payment   (dispatch fee; PayFast primary; Bob Pay fields retained)
   id, documentId, customPaymentId (unique), bobpayUuid?, amount,
   status (UNPAID|PAID|FAILED|CANCELLED|REFUNDED), paymentMethod, paymentUrl, rawPayload
+  -- Zoho Books mapping
+  zohoBooksInvoiceId?, zohoBooksContactId?, zohoBooksPaymentId?
+  zohoBooksSyncedAt?, zohoBooksSyncError?
+  zohoBooksInvoiceStatus?, zohoBooksBalance?, zohoBooksLastPullAt?
+  billingItemId? -> BillingItem
 
-Feature   (internal staff roadmap tracker - unrelated to the product/audit trail)
-  id, name, priority (HIGH|MEDIUM|LOW), status (NOT_STARTED|IN_PROGRESS|READY|IMPLEMENTED),
-  comment?, checked, createdBy, createdAt, updatedAt
+BillingItem   (payment-structure workspace rates)
+  id, code (unique), name, description?, amount, zohoItemId?, active, sortOrder, notes?
 
-EpsonPrintJob   (tracks Epson job IDs we create, since Epson has no "list jobs" endpoint)
-  id, documentId -> Document, jobId (unique, Epson's own job ID), status, createdAt, updatedAt
+SyncException   (two-way Zoho / structure / scan errors for ⚙ panel)
+  id, source (zoho_push|zoho_pull|payment_structure|scan|other), severity,
+  title, detail?, paymentId?, documentId?, metadata?, resolved, createdAt, resolvedAt?
 
-PrintSettings   (singleton row, id fixed to "singleton" - which printing backend is active)
-  id, provider (EPSON|EPSON_DIRECT), epsonDirectEmail?, updatedAt
+FacilityScan   (facility PDF/image archive)
+  id, fileName, storageKey, contentType, sizeBytes, comments?, createdBy?, createdAt
+
+Feature   (staff roadmap tracker)
+  id, name, priority, status, comment?, checked, createdBy, …
+
+EpsonPrintJob
+  id, documentId, jobId, status, via?, print settings snapshot fields, …
+
+PrintSettings   (singleton "singleton")
+  provider (EPSON|EPSON_DIRECT), epsonDirectEmail?,
+  epsonAccessToken?, epsonRefreshToken?, epsonTokenExpiresAt?,
+  facility default paper/quality fields
 ```
 
-Migrations are hand-generated via `prisma migrate diff` (schema-to-schema,
-no live DB connection needed) rather than `migrate dev`, since there's no
-local database in this environment:
-- `20260101000000_init` — initial schema
-- `20260102000000_return_preference` — adds `Document.returnPreference`
-- `20260103000000_add_feature_tracker` — adds the `Feature` model
-- `20260104000000_epson_print_jobs` — adds the `EpsonPrintJob` model
-- `20260105000000_linux_print_agent` — adds `PrintSettings` and `LinuxPrintJob`
-  (superseded by the next migration below — the Linux Print Agent feature
-  was replaced with Epson Direct almost immediately after being built)
-- `20260106000000_epson_direct_email_print` — renames `PrintProvider`'s
-  `LINUX_AGENT` value to `EPSON_DIRECT`, drops `LinuxPrintJob`, adds
-  `PrintSettings.epsonDirectEmail`
+Migrations (selected):
+- `20260101000000_init` … `20260106000000_epson_direct_email_print` — core + print backends
+- `20260119000000_epson_connect_tokens` — device tokens on PrintSettings
+- `20260119000001_print_preferences` / `…_print_job_detail_log` — print prefs & job log
+- `20260119000003_document_staff_created` — createdVia / staffCreatorEmail
+- `20260119000004_zoho_books_payment_map` — Zoho ids on Payment
+- `20260120000000_zoho_two_way_finance_scans` — pull fields, BillingItem, SyncException, FacilityScan
 
 `npm run build` runs `prisma generate && prisma migrate deploy && npm run seed
-&& next build` — migrations and seeding both happen automatically on every
-production build.
+&& next build` on every Vercel deploy.
 
 ## 5. App routes
+
+### 5.1 Pages
 
 | Route | Purpose | Auth |
 |---|---|---|
 | `/login` | NextAuth credentials sign-in | public |
-| `/dashboard` | Live metrics (active dispatches, in-transit, delivered, exceptions) + recent documents table + staff Quote Tool (see 6.4) | session required |
-| `/dispatch/new` | Upload form: file + recipient/address fields (with address autocomplete, see 6.5) + return preference (Direct/Fully Managed) | session required |
-| `/roadmap` | Internal feature/task tracker for staff — not customer-facing, not part of the audit trail | STAFF/ADMIN |
-| `/tracking/[id]` | Status timeline + live courier tracking card (polled, see 6.3.1) + chain-of-custody log + compliance badges for one document | session required, owner or staff |
-| `/print-queue` | Staff print queue: search/filter/sort, documents in `UPLOADED`/`QUEUED_FOR_PRINT`, download original file, mark as printed, one-click print via Epson Connect, live printer status with drill-down; each row links through to `/tracking/[id]` | STAFF/ADMIN |
-| `/printer` | Full printer details page: identity, default print settings, complete capability matrix, notification config, raw response (see 6.3.2) | STAFF/ADMIN |
-| `/api/documents/upload` | POST — encrypts & stores file to S3/R2, creates `Document`, first `uploaded` audit event | session required |
-| `/api/documents/[id]/status` | PATCH — staff-only manual status transitions (`UPLOADED→QUEUED_FOR_PRINT`, `UPLOADED→PRINTED`, `QUEUED_FOR_PRINT→PRINTED`, etc.) | STAFF/ADMIN |
-| `/api/documents/[id]/download` | GET — presigned R2 download URL for the original file, audit-logs the download | owner or staff |
-| `/api/documents/[id]/print` | POST — sends the document's PDF to the connected Epson printer, marks `PRINTED` on success (see 6.3) | STAFF/ADMIN |
-| `/api/epson/callback` | GET — Epson OAuth redirect target, exchanges code for tokens, stores in HTTP-only cookies | STAFF/ADMIN |
-| `/api/epson/status` | GET — polled printer status (online/busy/offline + pending job count) | STAFF/ADMIN |
-| `/api/documents/[id]/dispatch` | POST — books the outbound Bob Go shipment (see 6.1) | STAFF/ADMIN |
-| `/api/documents/[id]/return` | POST — books the Bob Go managed return (see 6.1) | owner or STAFF/ADMIN |
-| `/api/documents/[id]/pay` | POST — creates/returns a Bob Pay payment link for the dispatch fee | owner or STAFF/ADMIN |
-| `/api/audit/[documentId]` | GET — full audit log for a document | owner or staff |
-| `/api/webhooks/bobgo` | POST — Bob Go tracking/submission-status webhook receiver | HMAC-verified, no session |
-| `/api/webhooks/bobpay` | POST — Bob Pay payment notification receiver | IP + signature verified, no session |
-| `/api/auth/[...nextauth]` | NextAuth handler | — |
-| `/api/quote` | POST — Courier Guy rate lookup from the facility to a given address, dashboard-only tool, doesn't touch any `Document` (see 6.4) | STAFF/ADMIN |
-| `/api/geocode/autocomplete` | GET — proxies OpenStreetMap Nominatim for address suggestions on the dispatch form (see 6.5) | session required |
-| `/api/features` | GET/POST — list/create roadmap items (add is via a modal popup on `/roadmap`) | STAFF/ADMIN |
-| `/api/features/[id]` | PATCH/DELETE — update or remove a roadmap item | STAFF/ADMIN |
-| `/api/documents/[id]/live-tracking` | GET — live Bob Go tracking status/checkpoints for a document's most recent shipment (see 6.3.1) | owner or STAFF/ADMIN |
-| `/api/epson/details` | GET — device info + default settings + full capability matrix + notification settings in one call, powers `/printer` (see 6.3.2) | STAFF/ADMIN |
-| `/api/print-settings` | GET/PATCH — current printing backend (Epson Connect or Epson Direct) plus the configured Epson Direct email address, powers the toggle on `/printer` (see 6.3.3) | STAFF/ADMIN |
-| `/api/epson/notifications/sync` | GET/POST — IMAP-pull Epson owner-notification emails from the Zoho print-agent mailbox and reconcile `EpsonPrintJob` + audit trail (see 6.3.4) | STAFF/ADMIN or `CRON_SECRET` |
-| `/voice` | In-app Grok Voice Agent UI (mic session + transcript) — read-only status/tracking (see 6.7) | session required |
-| `/api/voice/session` | POST — mints a short-lived xAI ephemeral client secret for the browser WebSocket | session required |
-| `/api/voice/tools/list-documents` | GET/POST — recent documents the caller may see | session required |
-| `/api/voice/tools/get-document` | GET/POST — status + delivery summary (no PDF bytes / storage keys) | owner or staff |
-| `/api/voice/tools/live-tracking` | GET/POST — live Bob Go checkpoints for a document's latest shipment | owner or staff |
-| `/api/voice/tools/audit-summary` | GET/POST — chain-of-custody summary for voice narration | owner or staff |
+| `/dashboard` | Metrics, recent docs, quote tool, finance summary (`FinanceSection`) | session |
+| `/dispatch/new` | **Staff** manual job entry → redirect to request payment | STAFF/ADMIN |
+| `/portal`, `/portal/dispatch/new` | **Parked** customer self-serve (see `docs/CUSTOMER_PORTAL_PARKED.md`) | session |
+| `/pay/[id]` | Staff: request payment (email + WhatsApp). Guest/token or `?pay=1`: PayFast checkout | staff / owner / token |
+| `/finance` | Staff ledger, Zoho two-way, payment structure, facility scans | STAFF/ADMIN |
+| `/roadmap` | Internal feature tracker (+ ensure-seed of known items) | STAFF/ADMIN |
+| `/tracking`, `/tracking/[id]` | Tracking hub + document home (timeline, pay CTA, print log, courier, custody). Staff-created: STAFF badge, **Arrange Dispatch Fee** CTA | owner or staff |
+| `/print-queue` | Staff print queue | STAFF/ADMIN |
+| `/printer` | Printer hub (Connect + Direct, webhooks, mailbox sync) | STAFF/ADMIN |
+| `/voice` | Grok Voice Agent UI (partial / roadmap) | session |
+
+Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (open count badge).
+
+### 5.2 APIs (selected)
+
+| Route | Purpose | Auth |
+|---|---|---|
+| `/api/documents/upload` | Store PDF, create Document + audit | session |
+| `/api/documents/[id]/status` | Manual status transitions | STAFF/ADMIN |
+| `/api/documents/[id]/download` | Presigned R2 URL | owner or staff |
+| `/api/documents/[id]/print` | Epson Connect or Direct print | STAFF/ADMIN |
+| `/api/documents/[id]/dispatch` | Book Bob Go outbound | STAFF/ADMIN |
+| `/api/documents/[id]/return` | Book managed return | owner or staff |
+| `/api/documents/[id]/pay` | Start PayFast payment (fields for form POST) | owner / staff / token |
+| `/api/documents/[id]/request-payment` | Staff: send payment request email or WhatsApp | STAFF/ADMIN |
+| `/api/documents/[id]/live-tracking` | Live Bob Go checkpoints | owner or staff |
+| `/api/finance/zoho` | GET config; POST push/pull Zoho Books | STAFF/ADMIN |
+| `/api/finance/exceptions` | GET/POST SyncException list + resolve | STAFF/ADMIN |
+| `/api/finance/billing-items` | CRUD payment-structure lines | STAFF/ADMIN |
+| `/api/finance/scans` | Save scan / email scan PDF | STAFF/ADMIN |
+| `/api/webhooks/payfast` | PayFast ITN → PAID + Zoho push | IP/signature, no session |
+| `/api/webhooks/bobgo` | Courier webhooks | HMAC |
+| `/api/webhooks/bobpay` | Legacy Bob Pay (if used) | IP + signature |
+| `/api/whatsapp/send` | Outbound Cloud API text | (internal; env-gated) |
+| `/api/whatsapp/webhook` | Meta verify + inbound | Meta |
+| `/api/epson/*` | OAuth, status, details, job webhooks, notifications sync | staff / Epson |
+| `/api/print-settings` | Provider + Direct email + defaults | STAFF/ADMIN |
+| `/api/quote`, `/api/rate-cards`, `/api/geocode/autocomplete` | Quotes & address | staff / session |
+| `/api/features`, `/api/features/[id]` | Roadmap CRUD | STAFF/ADMIN |
+| `/api/voice/*` | Ephemeral session + read-only tools | session |
+| `/api/auth/[...nextauth]` | NextAuth | — |
 
 ## 6. Third-party integrations
 
@@ -173,24 +200,69 @@ production build.
   keys" section in the Bob Go dashboard appeared inaccessible (suspected
   plan-gating), deferred. Webhook secret was generated and is set.
 
-### 6.2 Bob Pay (payments — dispatch fee)
+### 6.2 Payments — PayFast (primary) + Bob Pay (legacy)
 
-- `src/lib/bobpay.ts` — `createPaymentLink()` (`POST
-  /payments/intents/link`), `validatePayment()` (`POST
-  /payments/intents/validate`).
-- `src/pages/api/documents/[id]/pay.ts` — creates a payment link for
-  `Document.dispatchFee`, idempotent (returns the existing link if one's
-  already unpaid/paid).
-- `src/pages/api/webhooks/bobpay.ts` — three-layer verification before
-  trusting a notification: (1) source IP must match Bob Pay's documented
-  sandbox/production IPs, (2) the payload's `signature` field (MD5 over a
-  fixed field order + account passphrase) must match, (3) the payload is
-  re-confirmed via `validatePayment()`. Amount is cross-checked against the
-  expected `Payment.amount` before marking paid.
-- **Known gaps**: `BOBPAY_API_TOKEN` (requires one manual `POST /login` call
-  with sandbox credentials — not yet made) and `BOBPAY_PASSPHRASE` (couldn't
-  be located in the account UI) are both still unset. Payment link
-  creation/webhook verification will fail until these are in.
+**Primary checkout is PayFast**, not Bob Pay.
+
+#### 6.2.1 PayFast
+
+- `src/lib/payfast.ts` — merchant config (`Merchant_ID_Payfast` /
+  `Merchant_Key_Payfast` or `PAYFAST_*`), form field generation, ITN
+  signature verification.
+- `src/pages/api/documents/[id]/pay.ts` — builds PayFast checkout fields for
+  the document’s dispatch fee (default `DEFAULT_DISPATCH_FEE` if unset).
+- `src/pages/api/webhooks/payfast.ts` — ITN receiver; on PAID updates
+  `Payment`, audit, and calls `syncPaymentToZohoBooks` when Zoho is configured.
+- UI: `/pay/[id]` guest/self-serve pay mode + payment method logo strip;
+  tracking CTAs deep-link here.
+
+#### 6.2.2 Staff payment request (email + WhatsApp)
+
+- `src/lib/paymentRequestEmail.ts` — one-time token on unpaid `Payment.rawPayload`,
+  branded HTML email (PostNow E2 template), plain-text fallback, audit
+  `payment_request_sent`. SMTP: existing Vercel / Zoho print-agent vars
+  (roadmap: reconfigure From to `info@postnow.co.za`).
+- WhatsApp body: `buildWhatsAppPaymentRequestMessage` (product template;
+  **operator supplies WhatsApp product logic** going forward).
+- `src/lib/whatsapp.ts` — Cloud API send, SA number normalize (`0…` → `27…`).
+- `POST /api/documents/[id]/request-payment` — `{ channel: "email"|"whatsapp",
+  email?|phone? }`.
+- Guest pay: `/pay/{id}?token=…&from=staff` validated via
+  `validatePaymentRequestToken`.
+
+#### 6.2.3 Bob Pay (legacy)
+
+- `src/lib/bobpay.ts` + `/api/webhooks/bobpay` remain for historical/sandbox
+  use. New product flows should not depend on Bob Pay tokens.
+
+### 6.2.4 Zoho Books (two-way finance)
+
+- **Env:** `ZOHO_BOOKS_CLIENT_ID`, `CLIENT_SECRET`, `REFRESH_TOKEN`,
+  **`ORGANIZATION_ID`** (required query param on every API call — see
+  [Zoho org id docs](https://www.zoho.com/books/api/v3/introduction/#organization-id)),
+  `REGION` (`com`|`eu`|`in`|`com.au`|`jp`), optional `ITEM_ID`, app URLs.
+- `src/lib/zohoBooks.ts` — OAuth refresh-token client; `findOrCreateContact`,
+  `createInvoice`, `markInvoicePaid`, `getInvoice`, `listInvoices`; all
+  requests pass `organization_id`.
+- `src/lib/zohoBooksSync.ts`
+  - **Push** `syncPaymentToZohoBooks` — contact → invoice → customer payment if PAID; idempotent when fully mapped.
+  - **Pull** `pullPaymentFromZohoBooks` / `pullLinkedPaymentsFromZohoBooks` — snapshot status/balance; if Zoho `paid` and local ≠ PAID (amount within R0.05), **auto-mark PAID**, audit `zoho_books_paid_inbound`. Never auto-unpay.
+- Failures: `Payment.zohoBooksSyncError` + `logSyncException` (`src/lib/syncExceptions.ts`).
+- API: `/api/finance/zoho` — push one / push unsynced PAID / pull one / pullAll.
+- UI: `/finance` bar + ledger Zoho column (Invoice ↗, status badge, Push/Pull).
+
+### 6.2.5 Financial ledger, payment structure, scans
+
+- `src/lib/finance.ts` — facility or owner-scoped `FinanceSummary`.
+- `/finance` — metrics, ledger filters, two-way Zoho actions.
+- **Payment structure** (`BillingItem`, `/api/finance/billing-items`,
+  `#payment-structure`) — staff workspace for rate lines that will map into
+  payments and Zoho line items (auto-apply still roadmap).
+- **Facility scans** (`FacilityScan`, `/api/finance/scans`, `#facility-scans`) —
+  save PDF/image to R2, optional comments/file name, email via SMTP with
+  attachment; optional AES-GCM encrypt package + password in email body
+  (`src/lib/scanEmail.ts`). Native Epson Connect scan API: roadmap.
+- **Exception gear** — `AppHeader` ⚙ → `/api/finance/exceptions` open list + resolve.
 
 ### 6.3 Epson Connect (printing)
 
@@ -476,25 +548,18 @@ and successes.
 
 ### 6.7 Feature Roadmap tracker (internal staff tool)
 
-- `/roadmap` (`src/pages/roadmap.tsx`) — not a third-party integration, but a
-  lightweight internal planning tool for staff: add/track/prioritize planned
-  features (`Feature` model — name, priority, status, comment, checked),
-  entirely separate from the customer-facing product and the audit trail.
-  CRUD via `/api/features` and `/api/features/[id]`.
-- Adding a feature opens via a **modal popup** (`Modal` component in
-  `src/components/ui.tsx`, reusable) triggered by a "+ Add Feature" button,
-  rather than an always-visible inline form.
-- Built from a large pasted spec that (like other pasted specs this session)
-  assumed `session.user.role` works (see the gotcha above — it was corrected
-  to the real pattern), used Tailwind classes (this codebase has no
-  Tailwind, only the custom `globals.css` design system), a nested
-  `/staff/roadmap` route (corrected to the flat `/roadmap` this app actually
-  uses), and — a real bug — sorted the `priority` enum as a plain string
-  column, which gives `HIGH < LOW < MEDIUM` alphabetically instead of
-  high-to-low; fixed with an explicit `PRIORITY_RANK` map used for sorting
-  both server- and client-side.
+- `/roadmap` (`src/pages/roadmap.tsx`) — staff planning (`Feature` model).
+  CRUD via `/api/features` and `/api/features/[id]`. Priority sort via
+  `PRIORITY_RANK` (not string alpha).
+- **Ensure-on-load** + `prisma/seed.ts` keep known items present, including:
+  - Configure Zoho Books API in Vercel (two-way finance) — **HIGH**, full env checklist
+  - Payment structure → ledger → Zoho line items — **HIGH** / in progress
+  - Reconfigure SMTP to `info@postnow.co.za` — MEDIUM
+  - WhatsApp permanent token + prod webhook — HIGH
+  - Epson Connect native scan pull — MEDIUM
+  - Customer portal (parked), Grok Voice Agent, courier label maker (parked)
 
-### 6.7 Grok Voice Agent (xAI Realtime)
+### 6.8 Grok Voice Agent (xAI Realtime)
 
 In-app speech-to-speech agent at `/voice`, powered by the Grok Voice Agent
 API (`wss://api.x.ai/v1/realtime`). Architecture:
