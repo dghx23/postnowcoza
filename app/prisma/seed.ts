@@ -60,6 +60,13 @@ async function main() {
       comment:
         "PARKED. Live app is staff ops. Reserved: /portal hub, /portal/dispatch/new (customer new dispatch → classic Pay dispatch fee self-serve), and /pay/[id] customer/guest mode (not staff request-payment email). Wire sidebar + auth for CUSTOMER when ready; staff keeps /dispatch/new → request payment by email.",
     },
+    {
+      name: "Reconfigure SMTP to info@postnow.co.za",
+      priority: "MEDIUM",
+      status: "NOT_STARTED",
+      comment:
+        "Payment-request emails currently use the existing Vercel SMTP (Zoho_PrintAgent_User / SMTP_*). Switch From + auth to info@postnow.co.za (or dedicated transactional mailbox), update SMTP_FROM_EMAIL / SMTP_USER / SMTP_PASSWORD (or Zoho app password) in Vercel, verify SPF/DKIM, and smoke-test staff “Send payment request email”. Keep branded HTML template unchanged.",
+    },
   ];
 
   for (const item of roadmapItems) {

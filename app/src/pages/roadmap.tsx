@@ -48,6 +48,31 @@ export const getServerSideProps: GetServerSideProps<RoadmapProps> = async (conte
     return { redirect: { destination: "/dashboard", permanent: false } };
   }
 
+  // Ensure known product-roadmap items exist (idempotent; same names as prisma seed).
+  const ensureRoadmap = [
+    {
+      name: "Reconfigure SMTP to info@postnow.co.za",
+      priority: "MEDIUM" as const,
+      status: "NOT_STARTED" as const,
+      comment:
+        "Payment-request emails currently use the existing Vercel SMTP (Zoho_PrintAgent_User / SMTP_*). Switch From + auth to info@postnow.co.za (or dedicated transactional mailbox), update SMTP_FROM_EMAIL / SMTP_USER / SMTP_PASSWORD (or Zoho app password) in Vercel, verify SPF/DKIM, and smoke-test staff “Send payment request email”. Keep branded HTML template unchanged.",
+    },
+  ];
+  for (const item of ensureRoadmap) {
+    const existing = await prisma.feature.findFirst({ where: { name: item.name } });
+    if (!existing) {
+      await prisma.feature.create({
+        data: {
+          name: item.name,
+          priority: item.priority,
+          status: item.status,
+          comment: item.comment,
+          createdBy: "system",
+        },
+      });
+    }
+  }
+
   const features = await prisma.feature.findMany({ orderBy: { createdAt: "desc" } });
   features.sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]);
 

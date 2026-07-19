@@ -28,8 +28,9 @@ export function buildPaymentRequestToken(): string {
   return randomBytes(24).toString("hex");
 }
 
-export function paymentLinkFor(documentId: string, token: string): string {
-  return `${APP_URL}/pay/${documentId}?token=${encodeURIComponent(token)}`;
+export function paymentLinkFor(documentId: string, token: string, fromStaff = false): string {
+  const base = `${APP_URL}/pay/${documentId}?token=${encodeURIComponent(token)}`;
+  return fromStaff ? `${base}&from=staff` : base;
 }
 
 export function getStoredPaymentRequestToken(raw: unknown): string | null {
@@ -48,7 +49,37 @@ type PreparedPaymentRequest = {
   colour: string;
   returnPref: string;
   address: string;
+  shortAddress: string;
+  firstName: string;
+  printLabel: string;
 };
+
+function firstNameOf(name: string): string {
+  const t = name.trim();
+  if (!t) return "Customer";
+  return t.split(/\s+/)[0] || t;
+}
+
+function shortAddressOf(document: Document): string {
+  // Compact line for WhatsApp: "3 Karee St, Gqeberha 6005"
+  const street = (document.streetAddress || "").trim();
+  const city = (document.city || "").trim();
+  const postal = (document.postalCode || "").trim();
+  const parts: string[] = [];
+  if (street) {
+    parts.push(
+      street
+        .replace(/\bStreet\b/gi, "St")
+        .replace(/\bAvenue\b/gi, "Ave")
+        .replace(/\bRoad\b/gi, "Rd")
+        .replace(/\bDrive\b/gi, "Dr")
+    );
+  }
+  if (city && postal) parts.push(`${city} ${postal}`);
+  else if (city) parts.push(city);
+  else if (postal) parts.push(postal);
+  return parts.join(", ") || "—";
+}
 
 /** Ensure fee, unpaid payment row, and a fresh one-time pay token/link. */
 async function preparePaymentRequest(
@@ -115,11 +146,13 @@ async function preparePaymentRequest(
     });
   }
 
-  const payUrl = paymentLinkFor(document.id, token);
+  const payUrl = paymentLinkFor(document.id, token, true);
   const ref = document.id.slice(0, 10).toUpperCase();
   const colour = document.printColorMode === "color" ? "Colour" : "Black & white";
   const returnPref =
-    document.returnPreference === "MANAGED" ? "Fully managed return via PostNow" : "Direct return";
+    document.returnPreference === "MANAGED"
+      ? "Fully managed return via PostNow E2"
+      : "Direct return";
   const address = [
     document.streetAddress,
     document.localArea,
@@ -129,6 +162,7 @@ async function preparePaymentRequest(
   ]
     .filter(Boolean)
     .join(", ");
+  const printLabel = `${colour} · ${document.printCopies} cop${document.printCopies === 1 ? "y" : "ies"}`;
 
   return {
     document,
@@ -140,29 +174,210 @@ async function preparePaymentRequest(
     colour,
     returnPref,
     address,
+    shortAddress: shortAddressOf(document),
+    firstName: firstNameOf(document.recipientName),
+    printLabel,
   };
 }
 
-function buildWhatsAppMessage(p: PreparedPaymentRequest): string {
-  const { document, amount, ref, colour, returnPref, address, payUrl } = p;
+/**
+ * WhatsApp payment-request template (staff-sent).
+ * Keep under Meta free-form limits; link is the one-time secure pay URL.
+ */
+export function buildWhatsAppPaymentRequestMessage(p: PreparedPaymentRequest): string {
+  const { document, amount, ref, printLabel, shortAddress, payUrl } = p;
+  const returnShort =
+    document.returnPreference === "MANAGED" ? "Managed" : "Direct";
+  const amountLabel = amount.toFixed(2);
+
   return [
-    `PostNow — payment request`,
+    `🔔 PAYMENT REQUEST`,
     ``,
-    `Hi${document.recipientName ? ` ${document.recipientName.split(" ")[0]}` : ""},`,
+    `To: ${document.recipientName || p.firstName} | Ref: #${ref}`,
+    `Amount: R ${amountLabel}`,
+    `Address: ${shortAddress}`,
+    `Print: ${printLabel} | Return: ${returnShort}`,
     ``,
-    `We've prepared a secure document dispatch. Please pay the dispatch fee so we can print and book courier collection.`,
+    `🔗 Pay now (expires after use):`,
+    payUrl,
+    ``,
+    `PostNow • POPIA • Chain of Custody • Zero‑Touch`,
+  ].join("\n");
+}
+
+/** Branded HTML email for staff payment requests (table layout for clients). */
+export function buildPaymentRequestEmailHtml(p: PreparedPaymentRequest): string {
+  const { document, amount, ref, returnPref, address, payUrl, firstName, printLabel } = p;
+  const amountLabel = amount.toFixed(2);
+  const phone = document.recipientPhone || "—";
+  const year = new Date().getFullYear();
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostNow Dispatch Payment</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f6f9; padding: 20px 0;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; max-width: 600px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 28px 30px 16px 30px; border-bottom: 1px solid #e8ecf1; background-color: #fafbfc;">
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td>
+                                        <span style="font-size: 26px; font-weight: 700; color: #0b2b5e; letter-spacing: -0.5px;">Post<span style="font-weight: 300;">Now</span></span>
+                                    </td>
+                                    <td align="right" style="font-size: 12px; color: #6b7a8f; font-weight: 500; letter-spacing: 0.3px; text-transform: uppercase;">
+                                        E2
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding-top: 6px;">
+                                        <span style="font-size: 14px; color: #3d4e6a; font-weight: 400; letter-spacing: -0.1px;">POPIA-first secure document dispatch — print, courier, sign, return.</span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 30px 30px 10px 30px;">
+                            <p style="margin: 0; font-size: 16px; color: #1a1a1a;">Dear <strong>${escapeHtml(firstName)}</strong>,</p>
+                            <p style="margin: 12px 0 0 0; font-size: 15px; color: #333; line-height: 1.6;">
+                                A secure document dispatch has been prepared for you. Please review the details and complete your payment using the secure link below.
+                            </p>
+
+                            <!-- Order Summary Box -->
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 20px; background-color: #f9fafc; border: 1px solid #e1e5ec; border-radius: 10px;">
+                                <tr>
+                                    <td style="padding: 20px;">
+                                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                                            <tr>
+                                                <td style="font-size: 14px; color: #5a6378; padding: 4px 0;">Reference</td>
+                                                <td style="font-size: 14px; font-weight: 600; text-align: right; padding: 4px 0; color: #0b2b5e;">#${escapeHtml(ref)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #5a6378; padding: 4px 0;">Recipient</td>
+                                                <td style="font-size: 14px; font-weight: 600; text-align: right; padding: 4px 0; color: #0b2b5e;">${escapeHtml(document.recipientName)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #5a6378; padding: 4px 0; vertical-align: top;">Delivery address</td>
+                                                <td style="font-size: 14px; font-weight: 600; text-align: right; padding: 4px 0; color: #0b2b5e; max-width: 320px;">${escapeHtml(address)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #5a6378; padding: 4px 0;">Phone</td>
+                                                <td style="font-size: 14px; font-weight: 600; text-align: right; padding: 4px 0; color: #0b2b5e;">${escapeHtml(phone)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #5a6378; padding: 4px 0;">Print</td>
+                                                <td style="font-size: 14px; font-weight: 600; text-align: right; padding: 4px 0; color: #0b2b5e;">${escapeHtml(printLabel)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #5a6378; padding: 4px 0;">Return</td>
+                                                <td style="font-size: 14px; font-weight: 600; text-align: right; padding: 4px 0; color: #0b2b5e;">${escapeHtml(returnPref)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #5a6378; padding: 4px 0;">Service</td>
+                                                <td style="font-size: 14px; font-weight: 600; text-align: right; padding: 4px 0; color: #0b2b5e;">Secure physical document dispatch</td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan="2" style="padding-top: 15px; font-size: 28px; font-weight: 700; color: #0b2b5e;">R ${amountLabel}</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Payment Button -->
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 24px;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="${payUrl}" style="display: inline-block; background-color: #2e6edf; color: #ffffff; text-decoration: none; padding: 14px 36px; border-radius: 6px; font-weight: 600; font-size: 16px; letter-spacing: 0.2px; box-shadow: 0 2px 6px rgba(46,110,223,0.25);">Pay R${amountLabel} now</a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin: 20px 0 0 0; font-size: 13px; color: #6b7280;">
+                                This is a one‑time secure payment link. It will expire after use.
+                            </p>
+
+                            <p style="margin: 16px 0 0 0; font-size: 13px; color: #6b7280; line-height: 1.5;">
+                                We accept: Visa, Mastercard, American Express, Instant EFT, Apple Pay, Samsung Pay, Google Pay, Capitec Pay, Mobicred, SnapScan, Zapper, Masterpass, RCS, and more.
+                            </p>
+
+                            <p style="margin: 16px 0 0 0; font-size: 12px; color: #99a0af; line-height: 1.45; word-break: break-all;">
+                                If the button does not work, open this link:<br/>
+                                <a href="${payUrl}" style="color: #2e6edf;">${payUrl}</a>
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 24px; padding-top: 20px; border-top: 1px solid #e8ecf1;">
+                                <tr>
+                                    <td align="center" style="padding-bottom: 12px;">
+                                        <span style="font-size: 18px; font-weight: 700; color: #0b2b5e; letter-spacing: -0.3px;">Post<span style="font-weight: 300;">Now</span></span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td align="center" style="padding-bottom: 14px;">
+                                        <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                                            <tr>
+                                                <td style="padding: 4px 10px; background-color: #eef1f6; border-radius: 20px; font-size: 11px; font-weight: 600; color: #0b2b5e; letter-spacing: 0.2px; white-space: nowrap;">POPIA Compliant</td>
+                                                <td style="width: 6px;"></td>
+                                                <td style="padding: 4px 10px; background-color: #eef1f6; border-radius: 20px; font-size: 11px; font-weight: 600; color: #0b2b5e; letter-spacing: 0.2px; white-space: nowrap;">Chain of Custody</td>
+                                                <td style="width: 6px;"></td>
+                                                <td style="padding: 4px 10px; background-color: #eef1f6; border-radius: 20px; font-size: 11px; font-weight: 600; color: #0b2b5e; letter-spacing: 0.2px; white-space: nowrap;">Zero-Touch</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td align="center" style="font-size: 12px; color: #99a0af;">
+                                        © ${year} PostNow. Secure physical document dispatch.
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`;
+}
+
+function buildPaymentRequestEmailText(p: PreparedPaymentRequest): string {
+  const { document, amount, ref, returnPref, address, payUrl, firstName, printLabel } = p;
+  return [
+    `Dear ${firstName},`,
+    ``,
+    `A secure document dispatch has been prepared for you. Please review the details and complete your payment using the secure link below.`,
     ``,
     `Reference: #${ref}`,
     `Recipient: ${document.recipientName}`,
-    `Deliver to: ${address}`,
-    `Print: ${colour} · ${document.printCopies} cop${document.printCopies === 1 ? "y" : "ies"}`,
+    `Delivery address: ${address}`,
+    `Phone: ${document.recipientPhone || "—"}`,
+    `Print: ${printLabel}`,
     `Return: ${returnPref}`,
-    `Amount due: R ${amount.toFixed(2)}`,
+    `Service: Secure physical document dispatch`,
+    `Amount: R ${amount.toFixed(2)}`,
     ``,
-    `Pay securely here:`,
+    `Pay now (one-time link, expires after use):`,
     payUrl,
     ``,
-    `— PostNow E2`,
+    `We accept: Visa, Mastercard, American Express, Instant EFT, Apple Pay, Samsung Pay, Google Pay, Capitec Pay, Mobicred, SnapScan, Zapper, Masterpass, RCS, and more.`,
+    ``,
+    `— PostNow E2 · POPIA · Chain of Custody · Zero-Touch`,
   ].join("\n");
 }
 
@@ -177,61 +392,11 @@ export async function sendDispatchPaymentRequest(input: {
     paymentRequestChannel: "email",
   });
 
-  const { document, payment, token, payUrl, amount, ref, colour, returnPref, address } = prepared;
+  const { document, payment, token, payUrl, amount, ref } = prepared;
 
   const subject = `PostNow — payment request for dispatch #${ref}`;
-  const text = [
-    `Hello,`,
-    ``,
-    `PostNow has prepared a secure document dispatch and is requesting payment of the dispatch fee.`,
-    ``,
-    `Order details`,
-    `-------------`,
-    `Reference: #${ref}`,
-    `Recipient: ${document.recipientName}`,
-    `Deliver to: ${address}`,
-    `Contact phone: ${document.recipientPhone || "—"}`,
-    `Contact email: ${document.recipientEmail || "—"}`,
-    `Print: ${colour} · ${document.printCopies} cop${document.printCopies === 1 ? "y" : "ies"}`,
-    `Return: ${returnPref}`,
-    `Amount due: R ${amount.toFixed(2)}`,
-    ``,
-    `Pay securely here:`,
-    payUrl,
-    ``,
-    `After payment we print your document and book next-day courier collection from our facility.`,
-    `You can track progress from the same link after paying.`,
-    ``,
-    `— PostNow E2`,
-  ].join("\n");
-
-  const html = `
-    <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;color:#0A2540">
-      <h2 style="margin:0 0 8px">Payment request — dispatch fee</h2>
-      <p style="color:#4B5563;font-size:14px;line-height:1.5">
-        PostNow has prepared a secure document dispatch. Please pay the fee below so we can print and book courier collection.
-      </p>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;margin:20px 0">
-        <tr><td style="padding:8px 0;color:#6B7280">Reference</td><td style="padding:8px 0;font-weight:700;text-align:right">#${ref}</td></tr>
-        <tr><td style="padding:8px 0;color:#6B7280">Recipient</td><td style="padding:8px 0;font-weight:600;text-align:right">${escapeHtml(document.recipientName)}</td></tr>
-        <tr><td style="padding:8px 0;color:#6B7280">Deliver to</td><td style="padding:8px 0;text-align:right;max-width:280px">${escapeHtml(address)}</td></tr>
-        <tr><td style="padding:8px 0;color:#6B7280">Phone</td><td style="padding:8px 0;text-align:right">${escapeHtml(document.recipientPhone || "—")}</td></tr>
-        <tr><td style="padding:8px 0;color:#6B7280">Print</td><td style="padding:8px 0;text-align:right">${colour} · ${document.printCopies} cop${document.printCopies === 1 ? "y" : "ies"}</td></tr>
-        <tr><td style="padding:8px 0;color:#6B7280">Return</td><td style="padding:8px 0;text-align:right">${returnPref}</td></tr>
-        <tr><td style="padding:12px 0;border-top:1px solid #E5E7EB;font-weight:700">Amount due</td><td style="padding:12px 0;border-top:1px solid #E5E7EB;font-weight:800;text-align:right;color:#0D9488;font-size:18px">R ${amount.toFixed(2)}</td></tr>
-      </table>
-      <p style="text-align:center;margin:28px 0">
-        <a href="${payUrl}" style="display:inline-block;background:#0D9488;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px">
-          Pay dispatch fee securely
-        </a>
-      </p>
-      <p style="font-size:12px;color:#9CA3AF;line-height:1.45">
-        If the button does not work, open this link:<br/>
-        <a href="${payUrl}" style="color:#0D9488;word-break:break-all">${payUrl}</a>
-      </p>
-      <p style="font-size:12px;color:#9CA3AF">— PostNow E2 · Secure physical document dispatch</p>
-    </div>
-  `;
+  const text = buildPaymentRequestEmailText(prepared);
+  const html = buildPaymentRequestEmailHtml(prepared);
 
   const transport = getTransport();
   await transport.sendMail({
@@ -275,7 +440,7 @@ export async function sendDispatchPaymentRequestWhatsApp(input: {
     paymentRequestChannel: "whatsapp",
   });
 
-  const message = buildWhatsAppMessage(prepared);
+  const message = buildWhatsAppPaymentRequestMessage(prepared);
   const result = await sendWhatsAppText({ to: toNorm, message });
 
   await appendAuditEvent({
