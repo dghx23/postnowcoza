@@ -30,6 +30,28 @@ async function main() {
     create: { id: "singleton", provider: "EPSON_DIRECT", epsonDirectEmail },
   });
   console.log(`Epson Direct email ready: ${epsonDirectEmail}`);
+
+  // Staff roadmap tracker item — idempotent so every deploy keeps it present
+  // without duplicating rows if someone already added it by hand.
+  const voiceAgentName = "Grok Voice Agent";
+  const existingVoice = await prisma.feature.findFirst({
+    where: { name: voiceAgentName },
+  });
+  if (!existingVoice) {
+    await prisma.feature.create({
+      data: {
+        name: voiceAgentName,
+        priority: "HIGH",
+        status: "IN_PROGRESS",
+        comment:
+          "In-app voice assistant on /voice (xAI Grok Realtime). Read-only tools first: list documents, get status, live courier tracking, audit summary. Ephemeral client secrets keep XAI_API_KEY server-side. Next: customer actions (pay/return), staff ops tools, public marketing FAQ agent.",
+        createdBy: "seed",
+      },
+    });
+    console.log(`Roadmap feature ready: ${voiceAgentName}`);
+  } else {
+    console.log(`Roadmap feature already present: ${voiceAgentName}`);
+  }
 }
 
 main()
