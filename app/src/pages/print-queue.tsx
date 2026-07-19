@@ -76,6 +76,14 @@ interface HistoryRow {
   documentStatus: string;
   updatedAt: string;
   feedback: PrintFeedbackDetail;
+  via: string | null;
+  jobId: string;
+  customerColorMode: string | null;
+  customerCopies: number | null;
+  printedColorMode: string | null;
+  printedCopies: number | null;
+  confirmedAt: string | null;
+  summary: string;
 }
 
 interface PrintQueueProps {
@@ -107,7 +115,7 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
 
   const printJobs = await prisma.epsonPrintJob.findMany({
     orderBy: { updatedAt: "desc" },
-    take: 40,
+    take: 50,
     include: {
       document: {
         select: {
@@ -126,21 +134,39 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
         where: {
           documentId: { in: docIds },
           action: {
-            in: ["epson_print_confirmed", "epson_print_failed", "email_print_failed"],
+            in: [
+              "epson_print_confirmed",
+              "epson_print_failed",
+              "email_print_failed",
+              "epson_print_attention",
+              "print_job_submitted",
+            ],
           },
         },
         orderBy: { createdAt: "desc" },
       })
     : [];
 
-  const latestAuditByDoc = new Map<string, (typeof printAudits)[0]>();
-  for (const a of printAudits) {
-    if (!latestAuditByDoc.has(a.documentId)) latestAuditByDoc.set(a.documentId, a);
+  // Prefer audit that references this jobId; else latest outcome audit for the document.
+  function auditForJob(documentId: string, jobId: string) {
+    const forJob = printAudits.find((a) => {
+      if (a.documentId !== documentId) return false;
+      const meta = a.metadata as { jobId?: string } | null;
+      return meta?.jobId === jobId;
+    });
+    if (forJob) return forJob;
+    return printAudits.find(
+      (a) =>
+        a.documentId === documentId &&
+        ["epson_print_confirmed", "epson_print_failed", "email_print_failed"].includes(a.action)
+    );
   }
+
+  const { buildPrintJobSummary } = await import("@/lib/printJobLog");
 
   const history: HistoryRow[] = [];
   for (const job of printJobs) {
-    const audit = latestAuditByDoc.get(job.documentId);
+    const audit = auditForJob(job.documentId, job.jobId);
     const feedback = buildPrintFeedback({
       jobStatus: job.status,
       jobId: job.jobId,
@@ -151,6 +177,26 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
       documentStatus: job.document.status,
     });
     if (!feedback) continue;
+
+    // Enrich via from job row when audit lacks it
+    if (!feedback.via && job.via) {
+      feedback.via = job.via;
+      if (job.via === "epson_connect") feedback.source = "epson_connect";
+      if (job.via === "epson_direct") feedback.source = "epson_direct";
+    }
+
+    const customer =
+      job.customerColorMode != null
+        ? { colorMode: job.customerColorMode, copies: job.customerCopies ?? 1 }
+        : null;
+    const printed =
+      job.printedColorMode != null
+        ? {
+            colorMode: job.printedColorMode as "mono" | "color",
+            copies: job.printedCopies ?? 1,
+          }
+        : null;
+
     history.push({
       id: job.id,
       documentId: job.documentId,
@@ -159,6 +205,19 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
       documentStatus: job.document.status,
       updatedAt: job.updatedAt.toISOString(),
       feedback,
+      via: job.via,
+      jobId: job.jobId,
+      customerColorMode: job.customerColorMode,
+      customerCopies: job.customerCopies,
+      printedColorMode: job.printedColorMode,
+      printedCopies: job.printedCopies,
+      confirmedAt: job.confirmedAt?.toISOString() ?? null,
+      summary: buildPrintJobSummary({
+        via: job.via,
+        customer,
+        printed,
+        status: job.status,
+      }),
     });
   }
 
@@ -240,22 +299,22 @@ export default function PrintQueue({
     window.setTimeout(() => setToast(null), 4200);
   }
 
-  async function refreshHistoryFromMailbox() {
+  async function refreshPrintHistory() {
     setHistorySyncing(true);
     setHistoryMsg(null);
     try {
-      const res = await fetch("/api/epson/notifications/sync?includeSeen=1", { method: "POST" });
+      // Cross-match: Connect job status API + Zoho mailbox for Email Print
+      const res = await fetch("/api/epson/jobs/reconcile", { method: "POST" });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const diag =
-          json.diag && typeof json.diag === "object"
-            ? ` [userSet=${json.diag.userSet}, passSet=${json.diag.passwordSet}, passLen=${json.diag.passwordLength}, host=${json.diag.host}]`
-            : "";
-        throw new Error((json.error ?? "Mailbox sync failed") + diag);
+      if (!res.ok) throw new Error(json.error ?? "Reconcile failed");
+      const parts = [
+        `Connect: polled ${json.connectPolled ?? 0}, updated ${json.connectUpdated ?? 0}`,
+        `Mailbox: ${json.mailboxFetched ?? 0} msg, ${json.mailboxApplied ?? 0} applied`,
+      ];
+      if (Array.isArray(json.errors) && json.errors.length) {
+        parts.push(`Notes: ${json.errors.slice(0, 2).join("; ")}`);
       }
-      setHistoryMsg(
-        `Mailbox checked: ${json.fetched ?? 0} notification(s), ${json.applied ?? 0} applied. Reloading…`,
-      );
+      setHistoryMsg(`${parts.join(" · ")}. Reloading…`);
       router.replace(router.asPath);
     } catch (err) {
       setHistoryMsg((err as Error).message);
@@ -603,7 +662,7 @@ export default function PrintQueue({
           )}
         </div>
 
-        {/* ═══ HISTORY ═══ */}
+        {/* ═══ HISTORY — platform submission ↔ printer feedback ═══ */}
         <div className="pq-history">
           <div className="pq-history-head">
             <h3>📋 Print history</h3>
@@ -611,56 +670,108 @@ export default function PrintQueue({
               type="button"
               className="pq-btn pq-btn-download"
               disabled={historySyncing}
-              onClick={() => void refreshHistoryFromMailbox()}
+              onClick={() => void refreshPrintHistory()}
+              title="Poll Epson Connect job status + pull Email Print notifications from Zoho"
             >
-              {historySyncing ? "Checking mailbox…" : "↻ Refresh from mailbox"}
+              {historySyncing ? "Matching feedback…" : "↻ Match printer feedback"}
             </button>
           </div>
           <p className="pq-history-note">
-            Outcomes from Epson Connect and Email Print notifications. Request IDs open tracking.
+            Each row is a <strong>platform print submission</strong> cross-matched with{" "}
+            <strong>printer feedback</strong> (Connect API / webhook for EpsonAPI, owner email for
+            EpsonMail). Request IDs open tracking.
           </p>
           {historyMsg && <div className="pq-history-msg">{historyMsg}</div>}
           {history.length === 0 ? (
-            <div className="pq-empty">No print jobs recorded yet.</div>
+            <div className="pq-empty">No print jobs recorded yet. Submit a print from the queue above.</div>
           ) : (
-            <table className="pq-table">
+            <table className="pq-table pq-history-table">
               <thead>
                 <tr>
                   <th>When</th>
-                  <th>Request ID</th>
-                  <th>Recipient</th>
-                  <th>Doc status</th>
-                  <th>Print outcome</th>
-                  <th>Detail</th>
+                  <th>Request</th>
+                  <th>Channel</th>
+                  <th>Customer → Printed</th>
+                  <th>Doc</th>
+                  <th>Match</th>
+                  <th>Outcome</th>
                 </tr>
               </thead>
               <tbody>
-                {history.map((row) => (
-                  <tr key={row.id}>
-                    <td title={new Date(row.updatedAt).toISOString()}>{timeAgo(row.updatedAt)}</td>
-                    <td>
-                      <Link href={`/tracking/${row.documentId}`} className="pq-doc-id">
-                        #{row.documentId.slice(0, 10).toUpperCase()}
-                      </Link>
-                    </td>
-                    <td>
-                      <div className="pq-recipient">{row.recipientName}</div>
-                      <div className="pq-city">{row.city}</div>
-                    </td>
-                    <td>
-                      <StatusPill status={row.documentStatus} />
-                    </td>
-                    <td>
-                      <PrintFeedbackChip feedback={row.feedback} size="sm" />
-                    </td>
-                    <td className="pq-detail-cell" title={row.feedback.summary}>
-                      {row.feedback.subject ||
-                        row.feedback.snippet?.slice(0, 80) ||
-                        row.feedback.summary}
-                      {(row.feedback.snippet?.length ?? 0) > 80 ? "…" : ""}
-                    </td>
-                  </tr>
-                ))}
+                {history.map((row) => {
+                  const viaLabel =
+                    row.via === "epson_connect"
+                      ? "EpsonAPI"
+                      : row.via === "epson_direct"
+                        ? "EpsonMail"
+                        : row.via === "manual_mark"
+                          ? "Manual"
+                          : row.feedback.source === "epson_connect"
+                            ? "EpsonAPI"
+                            : "Print";
+                  const cust =
+                    row.customerColorMode != null
+                      ? `${row.customerColorMode === "color" ? "Colour" : "B&W"} ×${row.customerCopies ?? 1}`
+                      : "—";
+                  const printed =
+                    row.printedColorMode != null
+                      ? `${row.printedColorMode === "color" ? "Colour" : "B&W"} ×${row.printedCopies ?? 1}`
+                      : "—";
+                  const matchClass =
+                    row.feedback.matchState === "matched_ok"
+                      ? "ok"
+                      : row.feedback.matchState === "matched_fail"
+                        ? "fail"
+                        : row.feedback.matchState === "awaiting"
+                          ? "await"
+                          : "";
+                  return (
+                    <tr key={row.id}>
+                      <td title={new Date(row.updatedAt).toISOString()}>{timeAgo(row.updatedAt)}</td>
+                      <td>
+                        <Link href={`/tracking/${row.documentId}`} className="pq-doc-id">
+                          #{row.documentId.slice(0, 10).toUpperCase()}
+                        </Link>
+                        <div className="pq-job-id" title={row.jobId}>
+                          job {row.jobId.slice(0, 14)}
+                          {row.jobId.length > 14 ? "…" : ""}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="pq-channel">{viaLabel}</span>
+                      </td>
+                      <td>
+                        <div className="pq-cross">
+                          <span className="pq-cross-cust" title="Customer selected">
+                            {cust}
+                          </span>
+                          <span className="pq-cross-arrow" aria-hidden>
+                            →
+                          </span>
+                          <span className="pq-cross-print" title="Sent to printer">
+                            {printed}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <StatusPill status={row.documentStatus} />
+                      </td>
+                      <td>
+                        <span className={`pq-match ${matchClass}`} title={row.feedback.matchLabel}>
+                          {row.feedback.matchLabel ?? row.feedback.label}
+                        </span>
+                      </td>
+                      <td>
+                        <PrintFeedbackChip feedback={row.feedback} size="sm" />
+                        {row.confirmedAt && (
+                          <div className="pq-confirmed-at">
+                            Confirmed {timeAgo(row.confirmedAt)}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

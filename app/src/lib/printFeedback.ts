@@ -27,6 +27,9 @@ export interface PrintFeedbackDetail {
   via: string | null;
   outcome: string | null;
   source: "epson_connect" | "epson_direct" | "email_notification" | "epson_webhook" | "unknown";
+  /** Cross-match: platform submission vs printer feedback */
+  matchState?: "matched_ok" | "matched_fail" | "awaiting" | "submitted_only" | "unknown";
+  matchLabel?: string;
 }
 
 export function printOutcomeLabel(status: string): {
@@ -125,6 +128,30 @@ export function buildPrintFeedback(input: {
   if (subject) summaryParts.push(subject);
   else if (snippet) summaryParts.push(snippet.slice(0, 120));
 
+  let matchState: PrintFeedbackDetail["matchState"] = "unknown";
+  let matchLabel = "Unknown";
+  if (status === "completed") {
+    matchState = "matched_ok";
+    matchLabel =
+      source === "epson_webhook" || source === "epson_connect"
+        ? "Matched · Connect feedback"
+        : source === "email_notification" || source === "epson_direct"
+          ? "Matched · Email feedback"
+          : "Matched · Confirmed";
+  } else if (isFailureStatus(status)) {
+    matchState = "matched_fail";
+    matchLabel =
+      source === "email_notification"
+        ? "Matched · Printer email reported failure"
+        : "Matched · Printer reported failure";
+  } else if (isPendingStatus(status) || status === "submitted") {
+    matchState = "awaiting";
+    matchLabel =
+      source === "epson_direct" || (input.jobId ?? "").startsWith("email-")
+        ? "Submitted · awaiting email confirmation"
+        : "Submitted · awaiting Connect / webhook";
+  }
+
   return {
     status,
     jobId: input.jobId ?? metaString(input.auditMetadata, "jobId"),
@@ -138,6 +165,8 @@ export function buildPrintFeedback(input: {
     via,
     outcome,
     source,
+    matchState,
+    matchLabel,
   };
 }
 
