@@ -15,6 +15,24 @@ import {
 } from "@/components/ui";
 import { FACILITY_ADDRESS } from "@/lib/facility";
 import { buildPrintFeedback, type PrintFeedbackDetail } from "@/lib/printFeedback";
+import {
+  resolveJobPrintSettings,
+  labelColorMode,
+  labelPaperSize,
+  labelPaperType,
+  labelQuality,
+  labelDoubleSided,
+  PAPER_SIZES,
+  PAPER_TYPES,
+  PRINT_QUALITIES,
+  PAPER_SOURCES,
+  DOUBLE_SIDED,
+  normalizeColorMode,
+  normalizeCopies,
+  type JobPrintSettings,
+  type PrintColorMode,
+} from "@/lib/printJobSettings";
+import { getPrintSettings } from "@/lib/printSettings";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -37,6 +55,17 @@ interface QueueDocument {
   zone: string;
   returnPreference: "DIRECT" | "MANAGED";
   status: string;
+  printColorMode: string;
+  printCopies: number;
+}
+
+interface FacilityPrintDefaults {
+  printPaperSize: string;
+  printPaperType: string;
+  printQuality: string;
+  printPaperSource: string;
+  printBorderless: boolean;
+  printDoubleSided: string;
 }
 
 interface HistoryRow {
@@ -54,6 +83,7 @@ interface PrintQueueProps {
   facilityLabel: string;
   documents: QueueDocument[];
   history: HistoryRow[];
+  facilityDefaults: FacilityPrintDefaults;
 }
 
 export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (context) => {
@@ -67,10 +97,13 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
     return { redirect: { destination: "/dashboard", permanent: false } };
   }
 
-  const documents = await prisma.document.findMany({
-    where: { status: { in: ["UPLOADED", "QUEUED_FOR_PRINT"] } },
-    orderBy: { createdAt: "asc" },
-  });
+  const [documents, facilityDefaults] = await Promise.all([
+    prisma.document.findMany({
+      where: { status: { in: ["UPLOADED", "QUEUED_FOR_PRINT"] } },
+      orderBy: { createdAt: "asc" },
+    }),
+    getPrintSettings(),
+  ]);
 
   const printJobs = await prisma.epsonPrintJob.findMany({
     orderBy: { updatedAt: "desc" },
@@ -144,8 +177,18 @@ export const getServerSideProps: GetServerSideProps<PrintQueueProps> = async (co
         zone: d.zone,
         returnPreference: d.returnPreference,
         status: d.status,
+        printColorMode: d.printColorMode,
+        printCopies: d.printCopies,
       })),
       history,
+      facilityDefaults: {
+        printPaperSize: facilityDefaults.printPaperSize,
+        printPaperType: facilityDefaults.printPaperType,
+        printQuality: facilityDefaults.printQuality,
+        printPaperSource: facilityDefaults.printPaperSource,
+        printBorderless: facilityDefaults.printBorderless,
+        printDoubleSided: facilityDefaults.printDoubleSided,
+      },
     },
   };
 };
@@ -155,6 +198,7 @@ export default function PrintQueue({
   facilityLabel,
   documents: initialDocuments,
   history: initialHistory,
+  facilityDefaults,
 }: PrintQueueProps) {
   const router = useRouter();
   const [documents, setDocuments] = useState(initialDocuments);
@@ -169,6 +213,12 @@ export default function PrintQueue({
   const [historySyncing, setHistorySyncing] = useState(false);
   const [historyMsg, setHistoryMsg] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [printDialog, setPrintDialog] = useState<{
+    doc: QueueDocument;
+    via: "EPSON" | "EPSON_DIRECT";
+  } | null>(null);
+  const [jobSettings, setJobSettings] = useState<JobPrintSettings | null>(null);
+  const [printDialogError, setPrintDialogError] = useState<string | null>(null);
   const [markModal, setMarkModal] = useState<{
     id: string;
     recipientName: string;
@@ -248,14 +298,37 @@ export default function PrintQueue({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
-  async function handlePrintApi(id: string, via: "EPSON" | "EPSON_DIRECT") {
-    setBusyId(id);
+  function openPrintDialog(doc: QueueDocument, via: "EPSON" | "EPSON_DIRECT") {
+    const resolved = resolveJobPrintSettings({
+      facility: facilityDefaults,
+      customer: {
+        printColorMode: doc.printColorMode,
+        printCopies: doc.printCopies,
+      },
+    });
+    setJobSettings(resolved);
+    setPrintDialog({ doc, via });
+    setPrintDialogError(null);
+  }
+
+  function closePrintDialog() {
+    if (busyId) return;
+    setPrintDialog(null);
+    setJobSettings(null);
+    setPrintDialogError(null);
+  }
+
+  async function confirmPrint() {
+    if (!printDialog || !jobSettings) return;
+    const { doc, via } = printDialog;
+    setBusyId(doc.id);
     setErrorId(null);
+    setPrintDialogError(null);
     try {
-      const res = await fetch(`/api/documents/${id}/print`, {
+      const res = await fetch(`/api/documents/${doc.id}/print`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ via }),
+        body: JSON.stringify({ via, settings: jobSettings }),
       });
       const data = await res.json();
 
@@ -265,14 +338,17 @@ export default function PrintQueue({
       }
       if (!res.ok) throw new Error(data.error ?? "Print failed");
 
-      setDocuments((prev) => prev.filter((d) => d.id !== id));
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      setPrintDialog(null);
+      setJobSettings(null);
       showToast(
         via === "EPSON_DIRECT"
           ? "Print EpsonMail sent — awaiting printer confirmation"
           : "Print EpsonAPI sent via Epson Connect",
       );
     } catch (err) {
-      setErrorId({ id, message: (err as Error).message });
+      setPrintDialogError((err as Error).message);
+      setErrorId({ id: doc.id, message: (err as Error).message });
     } finally {
       setBusyId(null);
     }
@@ -467,6 +543,10 @@ export default function PrintQueue({
                     <td>
                       <div className="pq-recipient">{doc.recipientName}</div>
                       <div className="pq-city">{doc.city}</div>
+                      <div className="pq-print-pref">
+                        {labelColorMode(normalizeColorMode(doc.printColorMode))} · {doc.printCopies}{" "}
+                        {doc.printCopies === 1 ? "copy" : "copies"}
+                      </div>
                     </td>
                     <td>{timeAgo(doc.createdAt)}</td>
                     <td>
@@ -491,7 +571,7 @@ export default function PrintQueue({
                           className="pq-btn pq-btn-print"
                           disabled={busyId === doc.id}
                           title="Print via Epson Connect cloud API"
-                          onClick={() => void handlePrintApi(doc.id, "EPSON")}
+                          onClick={() => openPrintDialog(doc, "EPSON")}
                         >
                           {busyId === doc.id ? "Sending…" : "Print EpsonAPI"}
                           {busyId !== doc.id && <span className="sparkle">✦</span>}
@@ -501,7 +581,7 @@ export default function PrintQueue({
                           className="pq-btn pq-btn-print-mail"
                           disabled={busyId === doc.id}
                           title="Email PDF to the printer (Epson Direct)"
-                          onClick={() => void handlePrintApi(doc.id, "EPSON_DIRECT")}
+                          onClick={() => openPrintDialog(doc, "EPSON_DIRECT")}
                         >
                           {busyId === doc.id ? "Sending…" : "Print EpsonMail"}
                         </button>
@@ -594,6 +674,214 @@ export default function PrintQueue({
               ×
             </button>
           </div>
+        )}
+
+        {printDialog && jobSettings && (
+          <Modal
+            title={printDialog.via === "EPSON" ? "Confirm Print EpsonAPI" : "Confirm Print EpsonMail"}
+            onClose={closePrintDialog}
+          >
+            <p className="pq-mark-intro">
+              Customer selected print options for{" "}
+              <strong>{printDialog.doc.recipientName}</strong> (
+              <span className="pq-doc-id">#{printDialog.doc.id.slice(0, 8).toUpperCase()}</span>).
+              Review what the printer will do, then confirm.
+            </p>
+
+            <div className="print-confirm-grid">
+              <div className="print-confirm-card customer">
+                <div className="print-confirm-card-title">Customer selected</div>
+                <dl className="print-confirm-dl">
+                  <div>
+                    <dt>Colour</dt>
+                    <dd>{labelColorMode(normalizeColorMode(printDialog.doc.printColorMode))}</dd>
+                  </div>
+                  <div>
+                    <dt>Copies</dt>
+                    <dd>{printDialog.doc.printCopies}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="print-confirm-card printer">
+                <div className="print-confirm-card-title">Printer will use</div>
+                <dl className="print-confirm-dl">
+                  <div>
+                    <dt>Colour</dt>
+                    <dd>{labelColorMode(jobSettings.colorMode)}</dd>
+                  </div>
+                  <div>
+                    <dt>Copies</dt>
+                    <dd>{jobSettings.copies}</dd>
+                  </div>
+                  <div>
+                    <dt>Paper</dt>
+                    <dd>
+                      {labelPaperSize(jobSettings.paperSize)} · {labelPaperType(jobSettings.paperType)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Quality</dt>
+                    <dd>{labelQuality(jobSettings.printQuality)}</dd>
+                  </div>
+                  <div>
+                    <dt>Sides</dt>
+                    <dd>{labelDoubleSided(jobSettings.doubleSided)}</dd>
+                  </div>
+                  <div>
+                    <dt>Borderless</dt>
+                    <dd>{jobSettings.borderless ? "Yes" : "No"}</dd>
+                  </div>
+                </dl>
+                {printDialog.via === "EPSON_DIRECT" && (
+                  <p className="print-confirm-note">
+                    EpsonMail cannot set colour/copies via API — preferences are noted in the email
+                    subject for the operator.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="print-confirm-adjust">
+              <div className="print-confirm-card-title">Adjust for this job (optional)</div>
+              <div className="print-confirm-fields">
+                <div className="field">
+                  <label>Colour</label>
+                  <select
+                    value={jobSettings.colorMode}
+                    onChange={(e) =>
+                      setJobSettings({
+                        ...jobSettings,
+                        colorMode: e.target.value as PrintColorMode,
+                      })
+                    }
+                    disabled={busyId === printDialog.doc.id}
+                  >
+                    <option value="mono">Black &amp; white</option>
+                    <option value="color">Colour</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Copies</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={jobSettings.copies}
+                    onChange={(e) =>
+                      setJobSettings({
+                        ...jobSettings,
+                        copies: normalizeCopies(e.target.value),
+                      })
+                    }
+                    disabled={busyId === printDialog.doc.id}
+                  />
+                </div>
+                <div className="field">
+                  <label>Paper size</label>
+                  <select
+                    value={jobSettings.paperSize}
+                    onChange={(e) => setJobSettings({ ...jobSettings, paperSize: e.target.value })}
+                    disabled={busyId === printDialog.doc.id}
+                  >
+                    {PAPER_SIZES.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Paper type</label>
+                  <select
+                    value={jobSettings.paperType}
+                    onChange={(e) => setJobSettings({ ...jobSettings, paperType: e.target.value })}
+                    disabled={busyId === printDialog.doc.id}
+                  >
+                    {PAPER_TYPES.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Quality</label>
+                  <select
+                    value={jobSettings.printQuality}
+                    onChange={(e) => setJobSettings({ ...jobSettings, printQuality: e.target.value })}
+                    disabled={busyId === printDialog.doc.id}
+                  >
+                    {PRINT_QUALITIES.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Paper source</label>
+                  <select
+                    value={jobSettings.paperSource}
+                    onChange={(e) => setJobSettings({ ...jobSettings, paperSource: e.target.value })}
+                    disabled={busyId === printDialog.doc.id}
+                  >
+                    {PAPER_SOURCES.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Double-sided</label>
+                  <select
+                    value={jobSettings.doubleSided}
+                    onChange={(e) => setJobSettings({ ...jobSettings, doubleSided: e.target.value })}
+                    disabled={busyId === printDialog.doc.id}
+                  >
+                    {DOUBLE_SIDED.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <label className="checkbox-row print-confirm-borderless">
+                  <input
+                    type="checkbox"
+                    checked={jobSettings.borderless}
+                    onChange={(e) => setJobSettings({ ...jobSettings, borderless: e.target.checked })}
+                    disabled={busyId === printDialog.doc.id}
+                  />
+                  Borderless
+                </label>
+              </div>
+            </div>
+
+            {printDialogError && <div className="form-error" style={{ marginTop: 12 }}>{printDialogError}</div>}
+            <div className="pq-mark-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={closePrintDialog}
+                disabled={busyId === printDialog.doc.id}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busyId === printDialog.doc.id}
+                onClick={() => void confirmPrint()}
+              >
+                {busyId === printDialog.doc.id
+                  ? "Sending…"
+                  : printDialog.via === "EPSON"
+                    ? "Print with these settings"
+                    : "Send EpsonMail"}
+              </button>
+            </div>
+          </Modal>
         )}
 
         {markModal && (

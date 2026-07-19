@@ -35,11 +35,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     postalCode: string;
     country?: string;
     returnPreference?: ReturnPreference;
+    printColorMode?: string;
+    printCopies?: number | string;
   };
   try {
     deliveryAddress = JSON.parse(deliveryAddressHeader);
   } catch {
     return res.status(400).json({ error: "x-delivery-address must be JSON" });
+  }
+
+  const printColorMode = deliveryAddress.printColorMode === "color" ? "color" : "mono";
+  let printCopies = 1;
+  if (deliveryAddress.printCopies !== undefined && deliveryAddress.printCopies !== null) {
+    const n = Number(deliveryAddress.printCopies);
+    if (Number.isFinite(n)) printCopies = Math.min(10, Math.max(1, Math.round(n)));
   }
 
   const chunks: Buffer[] = [];
@@ -89,6 +98,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       postalCode: deliveryAddress.postalCode,
       country: deliveryAddress.country ?? "ZA",
       returnPreference: deliveryAddress.returnPreference ?? "MANAGED",
+      printColorMode,
+      printCopies,
     },
   });
 
@@ -96,7 +107,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     documentId: document.id,
     actorId: user.id,
     action: "uploaded",
-    metadata: { filename, checksum },
+    metadata: { filename, checksum, printColorMode, printCopies },
     ip: req.socket.remoteAddress ?? undefined,
   });
 

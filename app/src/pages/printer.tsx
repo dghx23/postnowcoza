@@ -12,6 +12,13 @@ import type {
   EpsonPrintCapability,
   EpsonNotificationSettings,
 } from "@/lib/epson";
+import {
+  PAPER_SIZES,
+  PAPER_TYPES,
+  PRINT_QUALITIES,
+  PAPER_SOURCES,
+  DOUBLE_SIDED,
+} from "@/lib/printJobSettings";
 
 interface PrinterPageProps {
   userLabel: string;
@@ -96,6 +103,13 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   const [providerError, setProviderError] = useState<string | null>(null);
   const [epsonDirectEmail, setEpsonDirectEmail] = useState("");
   const [emailSaved, setEmailSaved] = useState(false);
+  const [printPaperSize, setPrintPaperSize] = useState("ps_a4");
+  const [printPaperType, setPrintPaperType] = useState("pt_plainpaper");
+  const [printQuality, setPrintQuality] = useState("normal");
+  const [printPaperSource, setPrintPaperSource] = useState("rear");
+  const [printBorderless, setPrintBorderless] = useState(false);
+  const [printDoubleSided, setPrintDoubleSided] = useState("none");
+  const [defaultsSaved, setDefaultsSaved] = useState(false);
   const [notifSyncing, setNotifSyncing] = useState(false);
   const [notifResult, setNotifResult] = useState<string | null>(null);
   const [notifError, setNotifError] = useState<string | null>(null);
@@ -171,9 +185,50 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
       .then((json) => {
         setProvider(json.provider ?? "EPSON");
         setEpsonDirectEmail(json.epsonDirectEmail ?? "");
+        setPrintPaperSize(json.printPaperSize ?? "ps_a4");
+        setPrintPaperType(json.printPaperType ?? "pt_plainpaper");
+        setPrintQuality(json.printQuality ?? "normal");
+        setPrintPaperSource(json.printPaperSource ?? "rear");
+        setPrintBorderless(Boolean(json.printBorderless));
+        setPrintDoubleSided(json.printDoubleSided ?? "none");
       })
       .catch(() => setProvider("EPSON"));
   }, []);
+
+  async function saveFacilityPrintDefaults(e: React.FormEvent) {
+    e.preventDefault();
+    setProviderSaving(true);
+    setProviderError(null);
+    setDefaultsSaved(false);
+    try {
+      const res = await fetch("/api/print-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          printPaperSize,
+          printPaperType,
+          printQuality,
+          printPaperSource,
+          printBorderless,
+          printDoubleSided,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to save print defaults");
+      setPrintPaperSize(json.printPaperSize);
+      setPrintPaperType(json.printPaperType);
+      setPrintQuality(json.printQuality);
+      setPrintPaperSource(json.printPaperSource);
+      setPrintBorderless(json.printBorderless);
+      setPrintDoubleSided(json.printDoubleSided);
+      setDefaultsSaved(true);
+      setTimeout(() => setDefaultsSaved(false), 2000);
+    } catch (err) {
+      setProviderError((err as Error).message);
+    } finally {
+      setProviderSaving(false);
+    }
+  }
 
   async function handleDisconnectEpson() {
     setDisconnecting(true);
@@ -565,6 +620,81 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
             </button>
           </form>
           {providerError && <div className="form-error" style={{ marginTop: 8 }}>{providerError}</div>}
+        </Card>
+
+        <Card title="Default print settings (manual adjusters)">
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
+            Facility defaults for Epson Connect jobs. Customers choose <strong>colour</strong> and{" "}
+            <strong>copies</strong> on New Dispatch; staff can override everything in the print
+            confirmation dialog.
+          </div>
+          <form onSubmit={saveFacilityPrintDefaults}>
+            <div className="print-defaults-grid">
+              <div className="field">
+                <label>Paper size</label>
+                <select value={printPaperSize} onChange={(e) => setPrintPaperSize(e.target.value)}>
+                  {PAPER_SIZES.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Paper type</label>
+                <select value={printPaperType} onChange={(e) => setPrintPaperType(e.target.value)}>
+                  {PAPER_TYPES.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Print quality</label>
+                <select value={printQuality} onChange={(e) => setPrintQuality(e.target.value)}>
+                  {PRINT_QUALITIES.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Paper source</label>
+                <select value={printPaperSource} onChange={(e) => setPrintPaperSource(e.target.value)}>
+                  {PAPER_SOURCES.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Double-sided</label>
+                <select value={printDoubleSided} onChange={(e) => setPrintDoubleSided(e.target.value)}>
+                  {DOUBLE_SIDED.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="checkbox-row" style={{ alignItems: "center", marginTop: 22 }}>
+                <input
+                  type="checkbox"
+                  checked={printBorderless}
+                  onChange={(e) => setPrintBorderless(e.target.checked)}
+                />
+                Borderless
+              </label>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <button type="submit" className="btn btn-primary" disabled={providerSaving}>
+                {defaultsSaved ? "✓ Defaults saved" : "Save print defaults"}
+              </button>
+            </div>
+          </form>
         </Card>
 
         <Card title="Email print notifications → platform">

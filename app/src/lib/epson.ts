@@ -1,5 +1,7 @@
 import axios from "axios";
 import { prisma } from "@/lib/db";
+import type { JobPrintSettings } from "@/lib/printJobSettings";
+import { toEpsonPrintSettingsBody } from "@/lib/printJobSettings";
 
 // Epson Connect API v2 — verified against Epson's official tutorial
 // (developer.epsonconnect.com/Portals/tutorial) and OpenAPI shape.
@@ -410,24 +412,31 @@ interface CreateJobResponse {
   uploadUri: string;
 }
 
-// Settings match Epson's tutorial sample (no duplex — many devices report
-// doubleSided:false for plain A4 and reject "long").
-export async function printPdf(accessToken: string, pdfBuffer: Buffer, jobName: string): Promise<string> {
+const DEFAULT_JOB_SETTINGS: JobPrintSettings = {
+  paperSize: "ps_a4",
+  paperType: "pt_plainpaper",
+  borderless: false,
+  printQuality: "normal",
+  paperSource: "rear",
+  colorMode: "mono",
+  copies: 1,
+  doubleSided: "none",
+};
+
+/** Print a PDF via Epson Connect, honouring customer/facility/job settings. */
+export async function printPdf(
+  accessToken: string,
+  pdfBuffer: Buffer,
+  jobName: string,
+  settings?: Partial<JobPrintSettings> | null
+): Promise<string> {
+  const jobSettings: JobPrintSettings = { ...DEFAULT_JOB_SETTINGS, ...settings };
   const createRes = await axios.post<CreateJobResponse>(
     `${API_BASE}/printing/jobs`,
     {
       jobName,
       printMode: "document",
-      printSettings: {
-        // Match L3251 defaults / capability (rear source only; no duplex).
-        paperSize: "ps_a4",
-        paperType: "pt_plainpaper",
-        borderless: false,
-        printQuality: "normal",
-        paperSource: "rear",
-        colorMode: "mono",
-        copies: 1,
-      },
+      printSettings: toEpsonPrintSettingsBody(jobSettings),
     },
     { headers: { ...epsonHeaders(accessToken), "Content-Type": "application/json" } }
   );

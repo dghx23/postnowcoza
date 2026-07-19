@@ -15,10 +15,12 @@ import {
   EPSON_REFRESH_COOKIE,
 } from "@/lib/epson";
 import { maybeAutoDispatchIfPaid } from "@/lib/autoDispatch";
+import {
+  resolveJobPrintSettings,
+  type JobPrintSettings,
+  type PrintColorMode,
+} from "@/lib/printJobSettings";
 
-// Same UPLOADED/QUEUED_FOR_PRINT -> PRINTED transitions the manual
-// "Mark as Printed" button allows (src/pages/api/documents/[id]/status.ts) -
-// this is just a second way to reach PRINTED, not a different state machine.
 const PRINTABLE_STATUSES = new Set(["UPLOADED", "QUEUED_FOR_PRINT"]);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -41,21 +43,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(409).json({ error: `Cannot print a document in status ${document.status}` });
   }
 
-  const settings = await getPrintSettings();
-  // Per-click override from Print Queue (Print EpsonAPI / Print EpsonMail).
-  // Falls back to Printer Hub default when body.via is omitted.
-  const bodyVia =
-    req.body && typeof req.body === "object" && typeof (req.body as { via?: unknown }).via === "string"
-      ? (req.body as { via: string }).via
-      : null;
+  const facility = await getPrintSettings();
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as {
+    via?: string;
+    settings?: Partial<JobPrintSettings>;
+  };
+
+  const bodyVia = typeof body.via === "string" ? body.via : null;
   const provider =
-    bodyVia === "EPSON" || bodyVia === "EPSON_DIRECT" ? bodyVia : settings.provider;
-  const epsonDirectEmail = settings.epsonDirectEmail;
+    bodyVia === "EPSON" || bodyVia === "EPSON_DIRECT" ? bodyVia : facility.provider;
+  const epsonDirectEmail = facility.epsonDirectEmail;
+
+  const jobSettings = resolveJobPrintSettings({
+    facility: {
+      printPaperSize: facility.printPaperSize,
+      printPaperType: facility.printPaperType,
+      printQuality: facility.printQuality,
+      printPaperSource: facility.printPaperSource,
+      printBorderless: facility.printBorderless,
+      printDoubleSided: facility.printDoubleSided,
+    },
+    customer: {
+      printColorMode: document.printColorMode,
+      printCopies: document.printCopies,
+    },
+    override: body.settings ?? null,
+  });
 
   if (provider === "EPSON_DIRECT") {
     if (!epsonDirectEmail) {
       return res.status(400).json({
-        error: "No printer email address configured. Set it on the Printing Method card on /printer first.",
+        error: "No printer email address configured. Set it on the Printer Hub first.",
       });
     }
 
@@ -68,34 +86,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         documentId: id,
         actorId: user.id,
         action: "email_print_failed",
-        metadata: { via: "epson_direct", to: epsonDirectEmail, error: `Stored file is not a valid PDF (${pdfBuffer.length} bytes)` },
+        metadata: {
+          via: "epson_direct",
+          to: epsonDirectEmail,
+          error: `Stored file is not a valid PDF (${pdfBuffer.length} bytes)`,
+          printSettings: jobSettings,
+        },
         ip: req.socket.remoteAddress ?? undefined,
       });
       return res.status(502).json({ error: "Stored document is not a valid PDF — re-upload it and try again." });
     }
 
-    // Subject must include the document id so Epson owner-notification emails
-    // (errors/completed) can be matched back via IMAP (see epsonNotifications.ts).
-    const emailSubject = `PostNow document ${document.id}`;
+    // Note customer prefs in subject — Email Print cannot set color/copies via API.
+    const colorLabel = jobSettings.colorMode === "color" ? "colour" : "B&W";
+    const emailSubject = `PostNow document ${document.id} · ${colorLabel} · ${jobSettings.copies}x`;
     try {
-      await sendPrintEmail(
-        epsonDirectEmail,
-        pdfBuffer,
-        `${document.id}.pdf`,
-        emailSubject,
-      );
+      await sendPrintEmail(epsonDirectEmail, pdfBuffer, `${document.id}.pdf`, emailSubject);
     } catch (err) {
       await appendAuditEvent({
         documentId: id,
         actorId: user.id,
         action: "email_print_failed",
-        metadata: { via: "epson_direct", to: epsonDirectEmail, error: (err as Error).message },
+        metadata: {
+          via: "epson_direct",
+          to: epsonDirectEmail,
+          error: (err as Error).message,
+          printSettings: jobSettings,
+        },
         ip: req.socket.remoteAddress ?? undefined,
       });
       return res.status(502).json({ error: "Failed to send print email" });
     }
 
-    // Track pending confirmation from Epson's email notifications.
     await prisma.epsonPrintJob.create({
       data: {
         documentId: id,
@@ -114,10 +136,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         to: epsonDirectEmail,
         subject: emailSubject,
         await_email_confirmation: true,
+        printSettings: jobSettings,
+        customerRequested: {
+          colorMode: document.printColorMode as PrintColorMode,
+          copies: document.printCopies,
+        },
       },
       ip: req.socket.remoteAddress ?? undefined,
     });
-    // Paid + printed → book next-day collection automatically.
     try {
       await maybeAutoDispatchIfPaid(id, user.id);
     } catch {
@@ -127,6 +153,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       id: updated.id,
       status: updated.status,
       printConfirmation: "pending",
+      printSettings: jobSettings,
     });
   }
 
@@ -152,7 +179,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       documentId: id,
       actorId: user.id,
       action: "epson_print_failed",
-      metadata: { via: "epson_connect", reason: "invalid_pdf", error: `Stored file is not a valid PDF (${pdfBuffer.length} bytes)` },
+      metadata: {
+        via: "epson_connect",
+        reason: "invalid_pdf",
+        error: `Stored file is not a valid PDF (${pdfBuffer.length} bytes)`,
+      },
       ip: req.socket.remoteAddress ?? undefined,
     });
     return res.status(502).json({ error: "Stored document is not a valid PDF — re-upload it and try again." });
@@ -162,10 +193,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let epsonJobId: string;
   try {
-    epsonJobId = await printPdf(session.accessToken, pdfBuffer, jobName);
+    epsonJobId = await printPdf(session.accessToken, pdfBuffer, jobName, jobSettings);
   } catch (err) {
-    // getValidDeviceSession already refreshed near-expiry tokens; a 401 here
-    // usually means the refresh token itself is dead — force re-auth.
     if (axios.isAxiosError(err) && err.response?.status === 401) {
       await appendAuditEvent({
         documentId: id,
@@ -176,6 +205,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           reason: "session_expired",
           error: (err as Error).message,
           epson: err.response?.data,
+          printSettings: jobSettings,
         },
         ip: req.socket.remoteAddress ?? undefined,
       });
@@ -193,10 +223,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         reason: "request_failed",
         error: (err as Error).message,
         epson: axios.isAxiosError(err) ? err.response?.data : undefined,
+        printSettings: jobSettings,
       },
       ip: req.socket.remoteAddress ?? undefined,
     });
-    return res.status(502).json({ error: "Epson Connect print request failed" });
+    return res.status(502).json({
+      error: "Epson Connect print request failed",
+      detail: axios.isAxiosError(err) ? err.response?.data : undefined,
+    });
   }
 
   await prisma.epsonPrintJob.create({
@@ -212,7 +246,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     documentId: id,
     actorId: user.id,
     action: `status_changed:${document.status}->PRINTED`,
-    metadata: { via: "epson_connect" },
+    metadata: {
+      via: "epson_connect",
+      printSettings: jobSettings,
+      customerRequested: {
+        colorMode: document.printColorMode,
+        copies: document.printCopies,
+      },
+      epsonJobId,
+    },
     ip: req.socket.remoteAddress ?? undefined,
   });
 
@@ -222,5 +264,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     /* non-fatal */
   }
 
-  return res.status(200).json({ id: updated.id, status: updated.status });
+  return res.status(200).json({
+    id: updated.id,
+    status: updated.status,
+    printSettings: jobSettings,
+    epsonJobId,
+  });
 }

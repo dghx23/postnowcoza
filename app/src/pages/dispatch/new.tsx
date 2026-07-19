@@ -34,6 +34,8 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
   const [zone, setZone] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [returnPreference, setReturnPreference] = useState<"DIRECT" | "MANAGED">("MANAGED");
+  const [printColorMode, setPrintColorMode] = useState<"mono" | "color">("mono");
+  const [printCopies, setPrintCopies] = useState(1);
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +104,8 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
             zone,
             postalCode,
             returnPreference,
+            printColorMode,
+            printCopies,
           }),
         },
         body: file,
@@ -209,6 +213,58 @@ export default function NewDispatch({ userLabel }: { userLabel: string }) {
                 <div className="field">
                   <label>Mobile</label>
                   <input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} required />
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "var(--text-primary)" }}>
+                  Print options
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 10 }}>
+                  How should we print your document at the facility? Staff will honour these settings.
+                </div>
+                <div className="radio-cards">
+                  <label className={`radio-card${printColorMode === "mono" ? " selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="printColorMode"
+                      checked={printColorMode === "mono"}
+                      onChange={() => setPrintColorMode("mono")}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <div className="radio-card-title">Black &amp; white</div>
+                      <div className="radio-card-desc">Monochrome — best for signatures and forms.</div>
+                    </div>
+                  </label>
+                  <label className={`radio-card${printColorMode === "color" ? " selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="printColorMode"
+                      checked={printColorMode === "color"}
+                      onChange={() => setPrintColorMode("color")}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <div className="radio-card-title">Colour</div>
+                      <div className="radio-card-desc">Full colour print when needed.</div>
+                    </div>
+                  </label>
+                </div>
+                <div className="field" style={{ marginTop: 14, maxWidth: 200 }}>
+                  <label htmlFor="print-copies">Number of copies</label>
+                  <input
+                    id="print-copies"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={printCopies}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      setPrintCopies(Number.isFinite(n) ? Math.min(10, Math.max(1, Math.round(n))) : 1);
+                    }}
+                    required
+                  />
                 </div>
               </div>
 

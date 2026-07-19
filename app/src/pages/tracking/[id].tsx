@@ -84,6 +84,8 @@ interface TrackingProps {
     postalCode: string;
     returnPreference: "DIRECT" | "MANAGED";
     createdAt: string;
+    printColorMode: string;
+    printCopies: number;
   };
 }
 
@@ -212,6 +214,8 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
         postalCode: document.postalCode,
         returnPreference: document.returnPreference,
         createdAt: document.createdAt.toISOString(),
+        printColorMode: document.printColorMode,
+        printCopies: document.printCopies,
       },
     },
   };
@@ -510,6 +514,11 @@ export default function Tracking({
                   <div>
                     <span style={{ color: "var(--text-secondary)" }}>Return preference: </span>
                     {dispatch.returnPreference === "MANAGED" ? "Fully Managed via PostNow" : "Direct Return"}
+                  </div>
+                  <div>
+                    <span style={{ color: "var(--text-secondary)" }}>Print: </span>
+                    {dispatch.printColorMode === "color" ? "Colour" : "Black & white"} ·{" "}
+                    {dispatch.printCopies} {dispatch.printCopies === 1 ? "copy" : "copies"}
                   </div>
                   <div>
                     <span style={{ color: "var(--text-secondary)" }}>Submitted: </span>

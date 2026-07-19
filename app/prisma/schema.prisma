@@ -114,6 +114,12 @@ model Document {
   // the customer chose at submission time.
   returnPreference ReturnPreference @default(MANAGED)
 
+  // Print preferences chosen by the customer at dispatch (honoured by
+  // Epson Connect Print EpsonAPI; staff can override in the print dialog).
+  // colorMode: mono | color. copies: 1–10.
+  printColorMode   String         @default("mono")
+  printCopies      Int            @default(1)
+
   // Courier rate charged for the outbound dispatch, set once a shipment is
   // booked (src/lib/dispatch.ts). The dispatch fee payment is created from
   // this amount, not recomputed at payment time.
@@ -211,6 +217,14 @@ model PrintSettings {
   epsonAccessToken    String?
   epsonRefreshToken   String?
   epsonTokenExpiresAt DateTime?
+  // Facility default job settings (manual adjusters on Printer Hub).
+  // Customer-chosen color/copies live on Document; staff may override at print.
+  printPaperSize      String        @default("ps_a4")
+  printPaperType      String        @default("pt_plainpaper")
+  printQuality        String        @default("normal")
+  printPaperSource    String        @default("rear")
+  printBorderless     Boolean       @default(false)
+  printDoubleSided    String        @default("none")
   updatedAt           DateTime      @updatedAt
 }
 
