@@ -107,7 +107,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     documentId: document.id,
     actorId: user.id,
     action: "uploaded",
-    metadata: { filename, checksum, printColorMode, printCopies },
+    metadata: {
+      filename,
+      checksum,
+      printPreferences: {
+        colorMode: printColorMode,
+        colorLabel: printColorMode === "color" ? "Colour" : "Black & white",
+        copies: printCopies,
+      },
+    },
     ip: req.socket.remoteAddress ?? undefined,
   });
 

@@ -217,7 +217,32 @@ async function applyNotification(
     data: { status: n.kind },
   });
 
+  const printLog = {
+    customerRequested: {
+      colorMode: job.customerColorMode,
+      copies: job.customerCopies,
+    },
+    printed: {
+      colorMode: job.printedColorMode,
+      copies: job.printedCopies,
+      settings: job.printSettings,
+    },
+    via: job.via ?? "epson_direct",
+  };
+
   if (n.kind === "completed") {
+    await prisma.epsonPrintJob.update({
+      where: { id: job.id },
+      data: {
+        confirmedAt: new Date(),
+        outcomeDetail: {
+          via: "email_notification",
+          subject: n.subject,
+          snippet: n.snippet,
+          printLog,
+        },
+      },
+    });
     await appendAuditEvent({
       documentId,
       action: "epson_print_confirmed",
@@ -227,6 +252,7 @@ async function applyNotification(
         subject: n.subject,
         snippet: n.snippet,
         from: n.from,
+        printLog,
       },
     });
     return { applied: true, reason: "completed", documentId };
@@ -246,9 +272,23 @@ async function applyNotification(
         reason: n.kind,
         subject: n.subject,
         snippet: n.snippet,
+        printLog,
       },
     });
   }
+
+  await prisma.epsonPrintJob.update({
+    where: { id: job.id },
+    data: {
+      confirmedAt: new Date(),
+      outcomeDetail: {
+        via: "email_notification",
+        outcome: n.kind,
+        subject: n.subject,
+        printLog,
+      },
+    },
+  });
 
   await appendAuditEvent({
     documentId,
@@ -260,6 +300,7 @@ async function applyNotification(
       subject: n.subject,
       snippet: n.snippet,
       from: n.from,
+      printLog,
     },
   });
 

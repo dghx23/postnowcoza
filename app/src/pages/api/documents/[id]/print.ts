@@ -15,11 +15,8 @@ import {
   EPSON_REFRESH_COOKIE,
 } from "@/lib/epson";
 import { maybeAutoDispatchIfPaid } from "@/lib/autoDispatch";
-import {
-  resolveJobPrintSettings,
-  type JobPrintSettings,
-  type PrintColorMode,
-} from "@/lib/printJobSettings";
+import { resolveJobPrintSettings, type JobPrintSettings } from "@/lib/printJobSettings";
+import { customerRequestFromDocument, recordPrintJobSubmission } from "@/lib/printJobLog";
 
 const PRINTABLE_STATUSES = new Set(["UPLOADED", "QUEUED_FOR_PRINT"]);
 
@@ -118,12 +115,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(502).json({ error: "Failed to send print email" });
     }
 
-    await prisma.epsonPrintJob.create({
-      data: {
-        documentId: id,
-        jobId: `email-print:${document.id}:${Date.now()}`,
-        status: "pending",
+    const customer = customerRequestFromDocument(document);
+    const { summary } = await recordPrintJobSubmission({
+      documentId: id,
+      jobId: `email-print:${document.id}:${Date.now()}`,
+      via: "epson_direct",
+      actorId: user.id,
+      customer,
+      printed: jobSettings,
+      status: "pending",
+      extraMeta: {
+        to: epsonDirectEmail,
+        subject: emailSubject,
+        await_email_confirmation: true,
+        note: "Email Print cannot force colour/copies on the device; prefs recorded for audit.",
       },
+      ip: req.socket.remoteAddress ?? undefined,
     });
 
     const updated = await prisma.document.update({ where: { id }, data: { status: "PRINTED" } });
@@ -136,11 +143,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         to: epsonDirectEmail,
         subject: emailSubject,
         await_email_confirmation: true,
-        printSettings: jobSettings,
-        customerRequested: {
-          colorMode: document.printColorMode as PrintColorMode,
-          copies: document.printCopies,
-        },
+        printLog: summary,
       },
       ip: req.socket.remoteAddress ?? undefined,
     });
@@ -154,6 +157,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       status: updated.status,
       printConfirmation: "pending",
       printSettings: jobSettings,
+      printLog: summary,
     });
   }
 
@@ -233,8 +237,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  await prisma.epsonPrintJob.create({
-    data: { documentId: id, jobId: epsonJobId, status: "pending" },
+  const customer = customerRequestFromDocument(document);
+  const { summary } = await recordPrintJobSubmission({
+    documentId: id,
+    jobId: epsonJobId,
+    via: "epson_connect",
+    actorId: user.id,
+    customer,
+    printed: jobSettings,
+    status: "pending",
+    extraMeta: { epsonJobId },
+    ip: req.socket.remoteAddress ?? undefined,
   });
 
   const updated = await prisma.document.update({
@@ -248,12 +261,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     action: `status_changed:${document.status}->PRINTED`,
     metadata: {
       via: "epson_connect",
-      printSettings: jobSettings,
-      customerRequested: {
-        colorMode: document.printColorMode,
-        copies: document.printCopies,
-      },
       epsonJobId,
+      printLog: summary,
     },
     ip: req.socket.remoteAddress ?? undefined,
   });
@@ -269,5 +278,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     status: updated.status,
     printSettings: jobSettings,
     epsonJobId,
+    printLog: summary,
   });
 }

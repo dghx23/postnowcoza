@@ -187,11 +187,31 @@ export async function applyConnectJobNotification(
     raw: parsed.raw,
   };
 
+  const printLog = {
+    customerRequested: {
+      colorMode: job.customerColorMode,
+      copies: job.customerCopies,
+    },
+    printed: {
+      colorMode: job.printedColorMode,
+      copies: job.printedCopies,
+      settings: job.printSettings,
+    },
+    via: job.via ?? "epson_connect",
+  };
+
   if (nextStatus === "completed") {
+    await prisma.epsonPrintJob.update({
+      where: { id: job.id },
+      data: {
+        confirmedAt: new Date(),
+        outcomeDetail: { ...metaBase, printLog } as object,
+      },
+    });
     await appendAuditEvent({
       documentId: job.documentId,
       action: "epson_print_confirmed",
-      metadata: metaBase,
+      metadata: { ...metaBase, printLog },
     });
     return {
       applied: true,
@@ -203,6 +223,13 @@ export async function applyConnectJobNotification(
   }
 
   if (FAILURE.has(nextStatus)) {
+    await prisma.epsonPrintJob.update({
+      where: { id: job.id },
+      data: {
+        confirmedAt: new Date(),
+        outcomeDetail: { ...metaBase, printLog, outcome: nextStatus } as object,
+      },
+    });
     const doc = await prisma.document.findUnique({ where: { id: job.documentId } });
     if (doc?.status === "PRINTED") {
       await prisma.document.update({
@@ -212,13 +239,13 @@ export async function applyConnectJobNotification(
       await appendAuditEvent({
         documentId: job.documentId,
         action: "status_changed:PRINTED->QUEUED_FOR_PRINT",
-        metadata: { ...metaBase, reason: nextStatus },
+        metadata: { ...metaBase, reason: nextStatus, printLog },
       });
     }
     await appendAuditEvent({
       documentId: job.documentId,
       action: "epson_print_failed",
-      metadata: { ...metaBase, outcome: nextStatus },
+      metadata: { ...metaBase, outcome: nextStatus, printLog },
     });
     return {
       applied: true,
@@ -231,10 +258,14 @@ export async function applyConnectJobNotification(
 
   // In-flight / attention states — status on job row is enough; audit for sticky issues.
   if (IN_FLIGHT.has(nextStatus) && nextStatus !== "pending" && nextStatus !== "processing" && nextStatus !== "preparing" && nextStatus !== "reserved") {
+    await prisma.epsonPrintJob.update({
+      where: { id: job.id },
+      data: { outcomeDetail: { ...metaBase, printLog } as object },
+    });
     await appendAuditEvent({
       documentId: job.documentId,
       action: "epson_print_attention",
-      metadata: metaBase,
+      metadata: { ...metaBase, printLog },
     });
     return {
       applied: true,

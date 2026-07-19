@@ -191,14 +191,28 @@ model Feature {
 // Epson's API has no "list all jobs" endpoint, only lookup by ID - this
 // records every job we create so status.ts can poll each one individually
 // to build a pending-jobs count instead of asking Epson for a list.
+// Detail columns log customer request vs settings actually sent to the printer
+// (audit trail + customer tracking visibility).
 model EpsonPrintJob {
-  id         String   @id @default(cuid())
-  documentId String
-  document   Document @relation(fields: [documentId], references: [id])
-  jobId      String   @unique
-  status     String   @default("pending")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                String    @id @default(cuid())
+  documentId        String
+  document          Document  @relation(fields: [documentId], references: [id])
+  jobId             String    @unique
+  status            String    @default("pending")
+  /// epson_connect | epson_direct | manual_mark
+  via               String?
+  submittedById     String?
+  customerColorMode String?
+  customerCopies    Int?
+  printedColorMode  String?
+  printedCopies     Int?
+  /// Full JobPrintSettings payload sent (or intended) to the printer
+  printSettings     Json?
+  /// Webhook / email outcome payload summary
+  outcomeDetail     Json?
+  confirmedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([documentId])
 }

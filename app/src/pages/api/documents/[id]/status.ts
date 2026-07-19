@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db";
 import { appendAuditEvent } from "@/lib/audit";
 import { getSessionUser } from "@/lib/session";
 import { maybeAutoDispatchIfPaid } from "@/lib/autoDispatch";
+import { getPrintSettings } from "@/lib/printSettings";
+import { resolveJobPrintSettings } from "@/lib/printJobSettings";
+import { customerRequestFromDocument, recordPrintJobSubmission } from "@/lib/printJobLog";
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   UPLOADED: ["QUEUED_FOR_PRINT", "PRINTED"],
@@ -61,6 +64,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const comment =
     typeof body.comment === "string" ? body.comment.trim().slice(0, 2000) : "";
 
+  let printLogSummary: string | undefined;
+
+  if (nextStatus === "PRINTED") {
+    // Log customer request vs assumed printed settings for manual confirmation.
+    const facility = await getPrintSettings();
+    const customer = customerRequestFromDocument(document);
+    const printed = resolveJobPrintSettings({
+      facility: {
+        printPaperSize: facility.printPaperSize,
+        printPaperType: facility.printPaperType,
+        printQuality: facility.printQuality,
+        printPaperSource: facility.printPaperSource,
+        printBorderless: facility.printBorderless,
+        printDoubleSided: facility.printDoubleSided,
+      },
+      customer: {
+        printColorMode: customer.colorMode,
+        printCopies: customer.copies,
+      },
+    });
+    const { summary } = await recordPrintJobSubmission({
+      documentId: id,
+      jobId: `manual-mark:${document.id}:${Date.now()}`,
+      via: "manual_mark",
+      actorId: user.id,
+      customer,
+      printed,
+      status: "completed",
+      extraMeta: {
+        confirmed: true,
+        ...(comment ? { comment } : {}),
+        note: "Staff manually confirmed print; settings assumed from customer request + facility defaults.",
+      },
+      ip: req.socket.remoteAddress ?? undefined,
+    });
+    printLogSummary = summary;
+  }
+
   await appendAuditEvent({
     documentId: id,
     actorId: user.id,
@@ -69,6 +110,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       via: "manual_mark",
       confirmed: body.confirmed === true,
       ...(comment ? { comment } : {}),
+      ...(printLogSummary ? { printLog: printLogSummary } : {}),
     },
     ip: req.socket.remoteAddress ?? undefined,
   });
@@ -81,5 +123,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  return res.status(200).json({ id: updated.id, status: updated.status });
+  return res.status(200).json({ id: updated.id, status: updated.status, printLog: printLogSummary });
 }

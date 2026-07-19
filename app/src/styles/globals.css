@@ -1079,6 +1079,79 @@ table.data-table tr:last-child td {
   line-height: 1.45;
 }
 
+/* Tracking — print job log (customer + staff transparency) */
+.print-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.print-log-item {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--surface-page, #f8fafc);
+}
+.print-log-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.print-log-via {
+  font-weight: 700;
+  color: var(--navy-900);
+  background: var(--teal-050);
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.print-log-status {
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+.print-log-time {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.print-log-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 13px;
+}
+@media (max-width: 480px) {
+  .print-log-grid { grid-template-columns: 1fr; }
+}
+.print-log-k {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.print-log-v {
+  font-weight: 600;
+  color: var(--navy-900);
+}
+.print-log-mismatch {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #B45309;
+  background: #FFFBEB;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.print-log-confirmed {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .btn-full { width: 100%; }
 .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
 .form-error {

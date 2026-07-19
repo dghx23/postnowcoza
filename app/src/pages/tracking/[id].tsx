@@ -67,6 +67,20 @@ interface TrackingProps {
   logRows: Array<{ time: string; event: string }>;
   /** Latest printer confirmation from Epson API or email notifications. */
   printFeedback: PrintFeedbackDetail | null;
+  /** Full print job log (customer request vs printed) for transparency. */
+  printJobs: Array<{
+    id: string;
+    jobId: string;
+    status: string;
+    via: string | null;
+    customerColorMode: string | null;
+    customerCopies: number | null;
+    printedColorMode: string | null;
+    printedCopies: number | null;
+    summary: string;
+    createdAt: string;
+    confirmedAt: string | null;
+  }>;
   payment: {
     status: string | null;
     amount: number | null;
@@ -109,6 +123,7 @@ function formatAuditAction(action: string): string {
     email_print_failed: "Email Print submission failed",
     epson_print_confirmed: "Printer confirmed print completed",
     epson_print_attention: "Printer needs attention (paper, ink, or stopped)",
+    print_job_submitted: "Print job logged (settings recorded)",
     bobgo_webhook_received: "Courier status update received",
     pod_fetch_failed: "Proof-of-delivery fetch failed",
     shipment_exception: "Courier reported a delivery exception",
@@ -147,15 +162,38 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
     state: i < currentIndex ? "done" : i === currentIndex ? "current" : "pending",
   }));
 
-  const logRows = document.auditEvents.map((e) => ({
-    time: e.createdAt.toISOString().slice(11, 16),
-    event: formatAuditAction(e.action),
-  }));
+  const logRows = document.auditEvents.map((e) => {
+    let event = formatAuditAction(e.action);
+    if (e.action === "print_job_submitted" && e.metadata && typeof e.metadata === "object") {
+      const summary = (e.metadata as { summary?: string }).summary;
+      if (summary) event = `Print job logged — ${summary}`;
+    }
+    return {
+      time: e.createdAt.toISOString().slice(11, 16),
+      event,
+    };
+  });
 
-  const latestPrintJob = await prisma.epsonPrintJob.findFirst({
+  const allPrintJobs = await prisma.epsonPrintJob.findMany({
     where: { documentId: id },
     orderBy: { createdAt: "desc" },
   });
+  const latestPrintJob = allPrintJobs[0] ?? null;
+
+  const { snapshotPrintJobs } = await import("@/lib/printJobLog");
+  const printJobs = snapshotPrintJobs(allPrintJobs).map((j) => ({
+    id: j.id,
+    jobId: j.jobId,
+    status: j.status,
+    via: j.via,
+    customerColorMode: j.customerColorMode,
+    customerCopies: j.customerCopies,
+    printedColorMode: j.printedColorMode,
+    printedCopies: j.printedCopies,
+    summary: j.summary,
+    createdAt: j.createdAt,
+    confirmedAt: j.confirmedAt,
+  }));
 
   const printAudit = [...document.auditEvents]
     .reverse()
@@ -193,6 +231,7 @@ export const getServerSideProps: GetServerSideProps<TrackingProps> = async (cont
       timeline,
       logRows,
       printFeedback,
+      printJobs,
       payment: {
         status: paymentStatus,
         amount: fee,
@@ -233,6 +272,7 @@ export default function Tracking({
   timeline,
   logRows,
   printFeedback: initialPrintFeedback,
+  printJobs,
   payment: initialPayment,
   dispatch,
 }: TrackingProps) {
@@ -544,6 +584,89 @@ export default function Tracking({
                     </div>
                   )}
                 </div>
+              </Card>
+
+              <Card title="Print log">
+                {printJobs.length === 0 ? (
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.45 }}>
+                    No print jobs yet. When staff print this document, you&apos;ll see colour, copies, and
+                    confirmation here.
+                  </div>
+                ) : (
+                  <div className="print-log-list">
+                    {printJobs.map((job) => {
+                      const custColor =
+                        job.customerColorMode === "color"
+                          ? "Colour"
+                          : job.customerColorMode
+                            ? "Black & white"
+                            : "—";
+                      const printedColor =
+                        job.printedColorMode === "color"
+                          ? "Colour"
+                          : job.printedColorMode
+                            ? "Black & white"
+                            : "—";
+                      const viaLabel =
+                        job.via === "epson_connect"
+                          ? "EpsonAPI"
+                          : job.via === "epson_direct"
+                            ? "EpsonMail"
+                            : job.via === "manual_mark"
+                              ? "Manual"
+                              : job.via ?? "Print";
+                      return (
+                        <div key={job.id} className="print-log-item">
+                          <div className="print-log-item-head">
+                            <span className="print-log-via">{viaLabel}</span>
+                            <span className="print-log-status">{job.status.replace(/_/g, " ")}</span>
+                            <span className="print-log-time">
+                              {new Date(job.createdAt).toLocaleString([], {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </span>
+                          </div>
+                          <div className="print-log-grid">
+                            <div>
+                              <span className="print-log-k">You selected</span>
+                              <span className="print-log-v">
+                                {custColor}
+                                {job.customerCopies != null ? ` · ${job.customerCopies} cop${job.customerCopies === 1 ? "y" : "ies"}` : ""}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="print-log-k">Sent to printer</span>
+                              <span className="print-log-v">
+                                {printedColor}
+                                {job.printedCopies != null ? ` · ${job.printedCopies} cop${job.printedCopies === 1 ? "y" : "ies"}` : ""}
+                              </span>
+                            </div>
+                          </div>
+                          {(job.customerColorMode &&
+                            job.printedColorMode &&
+                            job.customerColorMode !== job.printedColorMode) ||
+                          (job.customerCopies != null &&
+                            job.printedCopies != null &&
+                            job.customerCopies !== job.printedCopies) ? (
+                            <div className="print-log-mismatch">
+                              Staff adjusted settings from your selection for this job.
+                            </div>
+                          ) : null}
+                          {job.confirmedAt && (
+                            <div className="print-log-confirmed">
+                              Outcome recorded{" "}
+                              {new Date(job.confirmedAt).toLocaleString([], {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </Card>
             </div>
             <div style={{ flex: "1 1 360px", display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
