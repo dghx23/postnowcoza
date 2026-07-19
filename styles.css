@@ -473,15 +473,49 @@ nav.site-nav a.nav-link:hover {
 }
 
 footer.site-footer {
-  padding: 32px 48px;
+  padding: 24px 48px 20px;
   border-top: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.footer-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 footer.site-footer .copyright {
   font-size: 13px;
   color: var(--text-muted);
+}
+.footer-payment-logos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-default);
+}
+.footer-payment-logos li {
+  display: flex;
+  align-items: center;
+  line-height: 0;
+}
+.footer-payment-logos img {
+  display: block;
+  height: 14px;
+  width: auto;
+  opacity: 0.55;
+  filter: grayscale(1);
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+.footer-payment-logos img:hover {
+  opacity: 0.9;
+  filter: grayscale(0);
 }
 
 .coverage-grid {
@@ -619,140 +653,6 @@ footer.site-footer .copyright {
   line-height: 1.65;
 }
 
-/* Payments strip — full method set, larger logos */
-.payments-strip {
-  padding-top: 40px;
-  padding-bottom: 40px;
-}
-.payments-inner {
-  max-width: 960px;
-  margin: 0 auto;
-  text-align: center;
-}
-.payments-network-parent {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 22px;
-  opacity: 0.8;
-}
-.payments-network-mark {
-  display: block;
-  opacity: 0.85;
-  width: 18px;
-  height: 18px;
-}
-.payments-rows {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 40px;
-  flex-wrap: wrap;
-}
-.payments-row {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  min-width: 220px;
-  flex: 1 1 280px;
-  max-width: 720px;
-}
-.payments-row-online {
-  flex: 1 1 100%;
-  max-width: 100%;
-}
-.payments-kind {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.payments-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  text-decoration: none;
-  opacity: 0.95;
-  transition: opacity 0.15s ease;
-}
-.payments-logo:hover {
-  opacity: 1;
-}
-.payments-logo-img {
-  display: block;
-  height: 36px;
-  width: auto;
-}
-.payments-method-logos {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 16px 18px;
-}
-.payments-method-logos li {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  box-shadow: none;
-  line-height: 0;
-}
-.payments-method-logos li:hover {
-  transform: none;
-  box-shadow: none;
-  opacity: 0.92;
-}
-.payments-method-logos img {
-  display: block;
-  height: 56px;
-  width: auto;
-  min-width: 80px;
-}
-.payments-divider {
-  width: 1px;
-  height: 72px;
-  background: var(--border-default);
-  align-self: center;
-  flex-shrink: 0;
-}
-.payments-footnote {
-  margin: 20px auto 0;
-  max-width: 520px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-muted);
-}
-.payments-brand-end {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-default);
-}
-.payments-postnow {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 14px;
-  color: var(--navy-900);
-  letter-spacing: -0.02em;
-  opacity: 0.55;
-}
-.payments-postnow span {
-  color: var(--teal-600);
-}
 
 .site-footer .footer-payments {
   display: flex;
@@ -781,8 +681,6 @@ footer.site-footer .copyright {
   nav.site-nav { gap: 16px; }
   .wrap, .section, header.site-header, .hero, footer.site-footer, .trust-bar { padding-left: 20px; padding-right: 20px; }
   .team-grid, .values-grid, .faq-grid { grid-template-columns: 1fr; }
-  .payments-divider { display: none; }
-  .payments-rows { gap: 24px; flex-direction: column; align-items: center; }
 }
 
 @media (max-width: 640px) {

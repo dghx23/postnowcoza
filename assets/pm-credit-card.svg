@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 40" role="img" aria-label="Debit &amp; Credit Cards">
-  <title>Debit &amp; Credit Cards</title>
-  <rect x="2" y="5" width="60" height="30" rx="4" fill="#F3F4F6" stroke="#C9D3D8" stroke-width="1.2"/>
-  <rect x="2" y="12" width="60" height="7" fill="#0A2540"/>
-  <rect x="8" y="26" width="18" height="4" rx="1" fill="#C9D3D8"/>
-  <circle cx="46" cy="28" r="4.5" fill="#EB001B"/>
-  <circle cx="53" cy="28" r="4.5" fill="#F79E1B" opacity="0.9"/>
-</svg>
