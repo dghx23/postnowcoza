@@ -233,8 +233,8 @@ export async function fetchEpsonNotificationEmails(options?: {
     }
 
     try {
-      const mailbox = client.mailbox;
-      const total = mailbox && mailbox !== false ? mailbox.exists : 0;
+      // After getMailboxLock, mailbox is open; exists is the message count.
+      const total = Number((client.mailbox as { exists?: number } | null)?.exists ?? 0);
       if (total === 0) return out;
 
       // Sequence range of the newest messages (1-based inclusive).
