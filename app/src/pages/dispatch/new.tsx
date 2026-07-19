@@ -62,6 +62,7 @@ export default function NewDispatch({
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
 
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -163,8 +164,8 @@ export default function NewDispatch({
       }
 
       const { id } = await res.json();
-      // Staff: request-payment screen. Customer (if any): self-serve PayFast.
-      router.push(isStaff ? `/pay/${id}?from=staff` : `/pay/${id}?from=upload`);
+      // Staff always: request payment of dispatch fee (email the payer).
+      router.push(`/pay/${id}?from=staff`);
     } catch (err) {
       setError((err as Error).message);
       setSubmitting(false);
