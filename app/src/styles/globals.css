@@ -3493,6 +3493,51 @@ a.ops-feed-item-link:hover .ops-feed-doc {
   .finance-search { min-width: 100%; width: 100%; }
 }
 
+/* Compact Epson webhook status (always-on) */
+.epson-webhook-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px 12px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.epson-webhook-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #9CA3AF;
+}
+.epson-webhook-dot.on {
+  background: #10B981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+.epson-webhook-dot.off {
+  background: #F59E0B;
+}
+.epson-webhook-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.epson-webhook-text strong {
+  font-size: 12px;
+  color: var(--navy-900);
+}
+.epson-webhook-text span {
+  color: var(--text-muted);
+  word-break: break-all;
+  font-size: 11px;
+}
+
 /* Tracking — staff-created job badge */
 .track-staff-created {
   display: flex;

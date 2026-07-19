@@ -169,6 +169,36 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
       setError(null);
       // Open advanced panel automatically once linked.
       if (json.connected) setShowAdvanced(true);
+      // Keep job webhooks always on when Connect is linked.
+      if (json.connected && json.notification?.notification !== true) {
+        void fetch("/api/epson/notifications/configure", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: true }),
+        })
+          .then((r) => r.json())
+          .then((cfg) => {
+            if (cfg.ok || cfg.notification) {
+              setWebhookUri(cfg.registeredCallbackUri ?? cfg.callbackUri ?? null);
+              setData((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      notification: {
+                        notification: true,
+                        callbackUri: cfg.callbackUri ?? cfg.registeredCallbackUri ?? prev.notification?.callbackUri,
+                      },
+                    }
+                  : prev
+              );
+            }
+          })
+          .catch(() => {
+            /* non-fatal — status strip will show if still off */
+          });
+      } else if (json.notification?.callbackUri) {
+        setWebhookUri(json.notification.callbackUri);
+      }
     } catch (err) {
       setError((err as Error).message);
     }

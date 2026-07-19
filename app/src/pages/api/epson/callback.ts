@@ -7,6 +7,8 @@ import {
   describeCredentialHealth,
   epsonCookieOptions,
   epsonRefreshCookieOptions,
+  setNotificationSettings,
+  buildEpsonWebhookCallbackUri,
   EPSON_ACCESS_COOKIE,
   EPSON_REFRESH_COOKIE,
   EPSON_DEVICE_ID_COOKIE,
@@ -43,6 +45,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Source of truth: DB (shared across staff). Cookies kept as a browser
     // cache so older clients still see a "connected" cookie if they look.
     await saveDeviceTokens(tokens);
+
+    // Always-on job webhooks: Epson POSTs print outcomes into PostNow.
+    try {
+      await setNotificationSettings({
+        notification: true,
+        callbackUri: buildEpsonWebhookCallbackUri(),
+      });
+    } catch (notifErr) {
+      console.error("Epson OAuth callback: auto-enable webhooks failed (non-fatal)", {
+        message: (notifErr as Error).message,
+      });
+    }
 
     const cookieParts = [
       serialize(EPSON_ACCESS_COOKIE, tokens.access_token, epsonCookieOptions(tokens.expires_in ?? 3600)),
