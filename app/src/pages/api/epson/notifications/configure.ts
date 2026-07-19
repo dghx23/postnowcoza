@@ -11,7 +11,7 @@ import {
  * (app-level — applies to jobs submitted with this client_id).
  *
  * POST body: { enabled?: boolean, callbackUri?: string }
- * Omitting callbackUri uses our default /api/epson/webhooks/job URL.
+ * Omitting callbackUri uses our default /api/epson/job-webhook URL.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const user = await getSessionUser(req, res);
@@ -61,15 +61,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         callbackUri,
       });
       // Re-read in case Epson echoes a normalized URI
-      let current = updated;
+      let current: { notification?: boolean; callbackUri?: string } = updated ?? {};
       try {
         current = await getNotificationSettings();
       } catch {
-        /* use POST response */
+        /* use write response */
       }
+      const notified =
+        current.notification === true ||
+        (updated as { notification?: boolean })?.notification === true ||
+        enabled;
       return res.status(200).json({
         ok: true,
-        ...current,
+        notification: notified,
+        callbackUri: current.callbackUri ?? callbackUri,
         recommendedCallbackUri: buildEpsonWebhookCallbackUri(),
         registeredCallbackUri: callbackUri,
       });
@@ -85,6 +90,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         error: "Epson rejected notification settings update",
         detail: axiosErr.response?.data ?? axiosErr.message,
         attemptedCallbackUri: callbackUri,
+        hint:
+          "Ensure EPSON_CLIENT_ID/SECRET/API_KEY are set, NEXTAUTH_URL is https://app.postnow.co.za, and the webhook URL is public HTTPS.",
       });
     }
   }

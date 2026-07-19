@@ -732,10 +732,71 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
           </form>
         </Card>
 
-        <Card title="Email print notifications → platform">
+        <Card title="Epson Connect job webhooks (Print EpsonAPI outcomes)">
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.5 }}>
+            Right now Epson has <strong>notifications off</strong> until you enable them. Click{" "}
+            <strong>Enable &amp; register callback</strong> so completed / failed / delayed jobs POST into
+            PostNow (tracking, queue, audit). This is the cloud equivalent of mailbox sync for{" "}
+            <strong>Print EpsonAPI</strong>.
+          </div>
+          <DataTable
+            columns={["Setting", "Value"]}
+            rows={[
+              [
+                "Notifications enabled",
+                data?.notification?.notification
+                  ? "Yes"
+                  : hub?.authorized || data?.connected
+                    ? "No — click Enable below"
+                    : "— link Epson first —",
+              ],
+              [
+                "Callback URI",
+                data?.notification?.callbackUri ||
+                  webhookUri ||
+                  "Will be set to /api/epson/job-webhook when you enable",
+              ],
+            ]}
+          />
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={notifConfiguring || !(hub?.authorized || data?.connected)}
+              onClick={() => void configureEpsonWebhook(true)}
+            >
+              {notifConfiguring ? "Registering with Epson…" : "Enable & register callback"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={notifConfiguring || !(hub?.authorized || data?.connected)}
+              onClick={() => void configureEpsonWebhook(false)}
+            >
+              Disable
+            </button>
+          </div>
+          {notifConfigMsg && (
+            <div style={{ marginTop: 12, fontSize: 13, color: "var(--success, #12633f)", lineHeight: 1.45 }}>
+              {notifConfigMsg}
+            </div>
+          )}
+          {notifConfigError && (
+            <div className="form-error" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
+              {notifConfigError}
+            </div>
+          )}
+          <p style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            After deploy, this endpoint must return JSON on GET:{" "}
+            <code>/api/epson/job-webhook</code>. Optional Vercel env{" "}
+            <code>EPSON_WEBHOOK_SECRET</code> adds <code>?key=…</code> for security.
+          </p>
+        </Card>
+
+        <Card title="Email print notifications → platform (EpsonMail / owner email)">
           <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
-            Pull completed/error notices from the Zoho print-agent mailbox into print confirmation status.
-            This is separate from live Epson Connect status (no longer blocks the hub refresh).
+            Pull completed/error notices from the Zoho print-agent mailbox (for Email Print and owner
+            emails). Separate from Connect webhooks above.
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <button

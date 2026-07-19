@@ -409,30 +409,49 @@ export async function getNotificationSettings(): Promise<EpsonNotificationSettin
 
 /**
  * Enable/disable Epson Connect job-status webhooks for this API client.
- * Per Epson tutorial this is App Authentication (not device token).
- * Body field names are camelCase on v2 (notification + callbackUri).
+ * App Authentication (client_credentials), not device token.
+ * Tries POST then PUT, camelCase then snake_case — Epson docs/samples vary.
  */
 export async function setNotificationSettings(input: {
   notification: boolean;
   callbackUri: string;
 }): Promise<EpsonNotificationSettings> {
   const appToken = await getAppToken();
-  // Official samples use POST for notification settings (same shape as GET response).
-  const res = await axios.post<EpsonNotificationSettings>(
-    `${API_BASE}/printing/settings/notification`,
-    {
-      notification: input.notification,
-      callbackUri: input.callbackUri,
-    },
-    { headers: { ...epsonHeaders(appToken), "Content-Type": "application/json" } }
-  );
-  return res.data;
+  const headers = { ...epsonHeaders(appToken), "Content-Type": "application/json" };
+  const url = `${API_BASE}/printing/settings/notification`;
+  const bodies = [
+    { notification: input.notification, callbackUri: input.callbackUri },
+    { notification: input.notification, callback_uri: input.callbackUri },
+  ];
+  const methods = ["post", "put"] as const;
+
+  let lastErr: unknown;
+  for (const method of methods) {
+    for (const body of bodies) {
+      try {
+        const res = await axios.request<EpsonNotificationSettings>({
+          method,
+          url,
+          data: body,
+          headers,
+        });
+        return res.data ?? { notification: input.notification, callbackUri: input.callbackUri };
+      } catch (err) {
+        lastErr = err;
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+        // 404/405 → try next method; 400 may be body shape
+        if (status && status !== 400 && status !== 404 && status !== 405 && status !== 415) {
+          throw err;
+        }
+      }
+    }
+  }
+  throw lastErr;
 }
 
 /**
  * Public HTTPS URL Epson will POST job status to.
- * Optional `EPSON_WEBHOOK_SECRET` (or CRON_SECRET) is appended as ?key= so the
- * webhook can reject unauthenticated traffic.
+ * Prefer NEXTAUTH_URL / production host. Optional secret as ?key=.
  */
 export function buildEpsonWebhookCallbackUri(baseUrl?: string): string {
   const raw =
@@ -441,7 +460,8 @@ export function buildEpsonWebhookCallbackUri(baseUrl?: string): string {
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
     "https://app.postnow.co.za";
   const origin = raw.replace(/\/$/, "");
-  const url = new URL(`${origin}/api/epson/webhooks/job`);
+  // Flat path (avoids nested-folder deploy quirks); also register webhooks/job below.
+  const url = new URL(`${origin}/api/epson/job-webhook`);
   const secret = (process.env.EPSON_WEBHOOK_SECRET || process.env.CRON_SECRET || "").trim();
   if (secret) url.searchParams.set("key", secret);
   return url.toString();
