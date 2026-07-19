@@ -507,12 +507,21 @@ export default function Tracking({
 
                 <div className="post-submit-actions">
                   {payment.canPay && (
-                    <button type="button" className="btn btn-primary" disabled={paying} onClick={() => void handlePay()}>
+                    <button
+                      type="button"
+                      className={`btn ${createdByStaff ? "btn-arrange-fee" : "btn-primary"}`}
+                      disabled={paying}
+                      onClick={() => void handlePay()}
+                    >
                       {paying
                         ? "Opening payment…"
-                        : payment.amount != null
-                          ? `Pay dispatch fee · R${payment.amount.toFixed(2)}`
-                          : "Pay dispatch fee"}
+                        : createdByStaff
+                          ? payment.amount != null
+                            ? `Arrange Dispatch Fee · R${payment.amount.toFixed(2)}`
+                            : "Arrange Dispatch Fee"
+                          : payment.amount != null
+                            ? `Pay dispatch fee · R${payment.amount.toFixed(2)}`
+                            : "Pay dispatch fee"}
                     </button>
                   )}
                   {payment.status === "PAID" && (
@@ -573,8 +582,19 @@ export default function Tracking({
                 </button>
               )}
               {payment.canPay && !justSubmitted && !isEarly && (
-                <button type="button" className="btn btn-primary" disabled={paying} onClick={() => void handlePay()}>
-                  {paying ? "Opening…" : `Pay R${(payment.amount ?? 0).toFixed(2)}`}
+                <button
+                  type="button"
+                  className={`btn ${createdByStaff ? "btn-arrange-fee" : "btn-primary"}`}
+                  disabled={paying}
+                  onClick={() => void handlePay()}
+                >
+                  {paying
+                    ? "Opening…"
+                    : createdByStaff
+                      ? payment.amount != null
+                        ? `Arrange Dispatch Fee · R${payment.amount.toFixed(2)}`
+                        : "Arrange Dispatch Fee"
+                      : `Pay R${(payment.amount ?? 0).toFixed(2)}`}
                 </button>
               )}
               <StatusPill status={docStatus} />
