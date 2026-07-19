@@ -38,9 +38,9 @@ export function AppHeader({
     { key: "dashboard", label: "Dashboard", href: "/dashboard" },
     { key: "dispatch", label: "New Dispatch", href: "/dispatch/new" },
     { key: "tracking", label: "Tracking", href: "/tracking" },
-    ...(financeNav ? [{ key: "finance" as const, label: "Financial", href: "/finance" }] : []),
     ...(showPrintQueue ? [{ key: "print-queue" as const, label: "Print Queue", href: "/print-queue" }] : []),
     ...(showPrintQueue ? [{ key: "printer" as const, label: "Printer", href: "/printer" }] : []),
+    ...(financeNav ? [{ key: "finance" as const, label: "Financial", href: "/finance" }] : []),
     ...(showRoadmap ? [{ key: "roadmap" as const, label: "Roadmap", href: "/roadmap" }] : []),
   ];
 
