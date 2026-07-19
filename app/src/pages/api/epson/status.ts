@@ -7,6 +7,7 @@ import {
   getDeviceInfo,
   getJobStatus,
   getValidDeviceSession,
+  isDeviceOnline,
   EPSON_ACCESS_COOKIE,
   EPSON_REFRESH_COOKIE,
 } from "@/lib/epson";
@@ -15,24 +16,16 @@ import { syncIfPendingJobs } from "@/lib/epsonNotifications";
 const IN_FLIGHT_STATUSES = new Set(["preparing", "reserved", "pending", "processing"]);
 const SETTLED_STATUSES = new Set(["canceled", "error_occurred", "completed", "expired"]);
 
-// Epson has no "list all jobs" endpoint - only lookup by ID - so we poll
-// every job we've recorded as still in-flight and reconcile its real status.
-// Jobs expire after 3 days on Epson's side regardless, so this list never
-// grows unbounded even if a job's terminal status is never observed.
-//
-// Email-Print jobs use jobIds like "email-print:…" — those are confirmed via
-// IMAP (syncIfPendingJobs), not the Epson Connect job API.
 function isEmailPrintJob(jobId: string) {
   return jobId.startsWith("email-print:") || jobId.startsWith("email-notify:");
 }
 
+/**
+ * Poll tracked Epson Connect jobs only (DB + job status API).
+ * Does NOT call IMAP — mailbox sync is slow and was blocking the hub on
+ * "Updating… / Offline" while details already showed Online.
+ */
 async function pollPendingJobs(accessToken: string | null): Promise<number> {
-  try {
-    await syncIfPendingJobs();
-  } catch {
-    // IMAP blips shouldn't break the printer status widget.
-  }
-
   const tracked = await prisma.epsonPrintJob.findMany({
     where: { status: { notIn: [...SETTLED_STATUSES] } },
   });
@@ -50,8 +43,6 @@ async function pollPendingJobs(accessToken: string | null): Promise<number> {
       }
       if (IN_FLIGHT_STATUSES.has(live.status)) pending += 1;
     } catch {
-      // Job no longer resolvable (expired/deleted on Epson's side) - stop
-      // counting it as pending without guessing at a terminal status.
       await prisma.epsonPrintJob.update({ where: { id: job.id }, data: { status: "expired" } });
     }
   }
@@ -122,9 +113,12 @@ async function getRecentJobs(): Promise<{
   return { recentJobs, today };
 }
 
-// Polled by the print queue / dashboard every ~30s, so this always returns
-// 200 with a status payload rather than surfacing HTTP error codes for
-// ordinary "not connected yet" states.
+/**
+ * Polled every ~30s by Printer Hub / dashboard.
+ * Fast path: device info + DB job counts. IMAP only when ?sync=1 or
+ * fire-and-forget after response isn't possible on Vercel — so mailbox
+ * sync stays on the dedicated notifications/sync button and daily cron.
+ */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -136,6 +130,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "Forbidden" });
   }
 
+  const wantSync =
+    req.query.sync === "1" || req.query.sync === "true" || req.query.sync === "yes";
+
+  // Optional mailbox pull — never on the default poll path.
+  if (wantSync) {
+    try {
+      await syncIfPendingJobs();
+    } catch {
+      /* non-fatal */
+    }
+  }
+
   const cookies = parse(req.headers.cookie ?? "");
   const session = await getValidDeviceSession({
     accessToken: cookies[EPSON_ACCESS_COOKIE],
@@ -143,8 +149,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
   const accessToken = session?.accessToken ?? null;
 
-  const pendingFromJobs = await pollPendingJobs(accessToken);
-  const { recentJobs, today } = await getRecentJobs();
+  // Parallel: device reachability + job reconciliation (no IMAP).
+  const [pendingFromJobs, history, deviceResult] = await Promise.all([
+    pollPendingJobs(accessToken),
+    getRecentJobs(),
+    accessToken
+      ? getDeviceInfo(accessToken)
+          .then((device) => ({ ok: true as const, device }))
+          .catch((err: unknown) => ({
+            ok: false as const,
+            err,
+          }))
+      : Promise.resolve(null),
+  ]);
+
+  const { recentJobs, today } = history;
 
   if (!accessToken) {
     return res.status(200).json({
@@ -152,61 +171,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       message:
         pendingFromJobs > 0
           ? `${pendingFromJobs} print confirmation${pendingFromJobs > 1 ? "s" : ""} pending`
-          : "Not connected to Epson Connect (Email Print notifications still sync)",
+          : "Not linked to Epson Connect",
       pendingJobs: pendingFromJobs,
-      /** OAuth device tokens present (DB/cookies) — distinct from printer network online. */
       authorized: false,
       connected: false,
+      reachability: "unlinked",
       recentJobs,
       today: { ...today, pending: pendingFromJobs },
     });
   }
 
-  try {
-    const device = await getDeviceInfo(accessToken);
-    const connected = device.connected === true;
-
-    let status: "online" | "busy" | "offline" = "offline";
-    let message = "Printer offline";
-    if (connected) {
-      if (pendingFromJobs > 0) {
-        status = "busy";
-        message = `${pendingFromJobs} job${pendingFromJobs > 1 ? "s" : ""} pending`;
-      } else {
-        status = "online";
-        message = "Ready";
-      }
-    } else if (pendingFromJobs > 0) {
-      status = "busy";
-      message = `${pendingFromJobs} confirmation${pendingFromJobs > 1 ? "s" : ""} pending`;
-    }
-
-    return res.status(200).json({
-      status,
-      message,
-      pendingJobs: pendingFromJobs,
-      authorized: true,
-      connected,
-      productName: device.productName ?? "Printer",
-      serialNumber: device.serialNumber,
-      recentJobs,
-      today: { ...today, pending: pendingFromJobs },
-      raw: { device, pendingJobs: pendingFromJobs },
-    });
-  } catch (err) {
+  if (!deviceResult || !deviceResult.ok) {
+    const err = deviceResult && !deviceResult.ok ? deviceResult.err : null;
     return res.status(200).json({
       status: pendingFromJobs > 0 ? "busy" : "unknown",
       message:
         pendingFromJobs > 0
           ? `${pendingFromJobs} print confirmation(s) pending`
-          : "Unable to reach printer",
+          : "Linked — unable to reach Epson device API",
       pendingJobs: pendingFromJobs,
-      // Tokens exist but device API failed — still authorized for disconnect UI.
       authorized: true,
       connected: false,
+      reachability: "error",
       recentJobs,
       today: { ...today, pending: pendingFromJobs },
       raw: axios.isAxiosError(err) ? { error: err.response?.data ?? err.message } : undefined,
     });
   }
+
+  const device = deviceResult.device;
+  const connected = isDeviceOnline(device);
+
+  let status: "online" | "busy" | "offline" = "offline";
+  let message = "Linked · printer offline / sleeping";
+  if (connected) {
+    if (pendingFromJobs > 0) {
+      status = "busy";
+      message = `Ready · ${pendingFromJobs} job${pendingFromJobs > 1 ? "s" : ""} pending`;
+    } else {
+      status = "online";
+      message = "Ready";
+    }
+  } else if (pendingFromJobs > 0) {
+    status = "busy";
+    message = `${pendingFromJobs} confirmation${pendingFromJobs > 1 ? "s" : ""} pending · printer offline`;
+  }
+
+  return res.status(200).json({
+    status,
+    message,
+    pendingJobs: pendingFromJobs,
+    authorized: true,
+    connected,
+    reachability: connected ? "online" : "offline",
+    productName: device.productName ?? "Printer",
+    serialNumber: device.serialNumber,
+    recentJobs,
+    today: { ...today, pending: pendingFromJobs },
+    raw: { device, pendingJobs: pendingFromJobs },
+  });
 }

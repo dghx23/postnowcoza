@@ -304,6 +304,13 @@ export interface EpsonDeviceInfo {
   [key: string]: unknown;
 }
 
+/** Normalize Epson `connected` (bool / string / number). */
+export function isDeviceOnline(device: EpsonDeviceInfo | null | undefined): boolean {
+  if (!device) return false;
+  const c = device.connected as unknown;
+  return c === true || c === "true" || c === 1 || c === "1";
+}
+
 export async function getDeviceInfo(accessToken: string): Promise<EpsonDeviceInfo> {
   const res = await axios.get<EpsonDeviceInfo>(`${API_BASE}/printing/devices/info`, {
     headers: epsonHeaders(accessToken),

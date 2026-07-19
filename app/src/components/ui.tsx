@@ -174,6 +174,7 @@ interface PrinterStatusData {
   status: "online" | "busy" | "offline" | "not_connected" | "unknown";
   message: string;
   pendingJobs: number;
+  authorized?: boolean;
   productName?: string;
   serialNumber?: string;
   recentJobs?: RecentJob[];
@@ -227,6 +228,15 @@ export function PrinterStatus() {
 
   const todayTotal = (data.today?.success ?? 0) + (data.today?.failed ?? 0);
   const successRate = todayTotal === 0 ? null : Math.round(((data.today?.success ?? 0) / todayTotal) * 100);
+  const linked = data.authorized === true || data.status !== "not_connected";
+  const live =
+    data.status === "online" || data.status === "busy"
+      ? data.status === "busy"
+        ? "● Busy"
+        : "● Online"
+      : data.status === "not_connected"
+        ? "○ Not linked"
+        : "● Offline";
 
   return (
     <details className="printer-status-details">
@@ -240,11 +250,14 @@ export function PrinterStatus() {
         <div className="printer-panel-grid">
           <div className="printer-mini-card">
             <div className="printer-mini-title">🖨️ Printer</div>
-            <div className="printer-mini-value">{data.productName ?? "Not connected"}</div>
+            <div className="printer-mini-value">{data.productName ?? (linked ? "Printer" : "Not linked")}</div>
             {data.serialNumber && <div className="printer-mini-sub">SN: {data.serialNumber}</div>}
-            <Badge tone={data.status === "online" || data.status === "busy" ? "success" : "navy"}>
-              {data.status === "online" ? "● Online" : data.status === "busy" ? "● Busy" : "● Offline"}
-            </Badge>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+              <Badge tone={data.status === "online" || data.status === "busy" ? "success" : "navy"}>
+                {live}
+              </Badge>
+              {linked && data.status !== "not_connected" && <Badge tone="teal">Linked</Badge>}
+            </div>
           </div>
           <div className="printer-mini-card">
             <div className="printer-mini-title">📄 Pending Jobs</div>

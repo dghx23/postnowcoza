@@ -33,19 +33,23 @@ export const getServerSideProps: GetServerSideProps<PrinterPageProps> = async (c
 
 interface DetailsResponse {
   connected: boolean;
+  authorized?: boolean;
+  deviceOnline?: boolean;
   device?: EpsonDeviceInfo;
   defaults?: { printSettings: EpsonPrintSettings };
   capability?: { document: EpsonPrintCapability; photo: EpsonPrintCapability };
-  notification?: EpsonNotificationSettings;
+  notification?: EpsonNotificationSettings | null;
+  error?: string;
 }
 
 interface StatusResponse {
   status: string;
   message: string;
   pendingJobs: number;
-  /** True when Epson device OAuth tokens are stored (not the same as online). */
+  /** OAuth tokens stored — not the same as printer network online. */
   authorized?: boolean;
   connected: boolean;
+  reachability?: "unlinked" | "online" | "offline" | "error";
   productName?: string;
   serialNumber?: string;
   recentJobs?: Array<{
@@ -96,12 +100,15 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
   const [notifResult, setNotifResult] = useState<string | null>(null);
   const [notifError, setNotifError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [hubLoading, setHubLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [epsonBanner, setEpsonBanner] = useState<"connected" | "error" | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
-  const loadHub = useCallback(async () => {
+  const loadHub = useCallback(async (opts?: { quiet?: boolean }) => {
+    if (!opts?.quiet) setHubLoading(true);
     try {
+      // Fast status only — no IMAP on the poll path.
       const res = await fetch("/api/epson/status");
       const json = await res.json();
       setHub(json);
@@ -112,7 +119,11 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
         message: "Unable to reach status API",
         pendingJobs: 0,
         connected: false,
+        authorized: false,
+        reachability: "error",
       });
+    } finally {
+      setHubLoading(false);
     }
   }, []);
 
@@ -123,6 +134,8 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
       if (!res.ok) throw new Error(json.error ?? "Failed to load printer details");
       setData(json);
       setError(null);
+      // Open advanced panel automatically once linked.
+      if (json.connected) setShowAdvanced(true);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -136,7 +149,8 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
 
   useEffect(() => {
     void refreshAll();
-    const interval = setInterval(() => void loadHub(), 30_000);
+    // Quiet polls so the header doesn't flash "Refreshing…" every 30s.
+    const interval = setInterval(() => void loadHub({ quiet: true }), 30_000);
     return () => clearInterval(interval);
   }, [refreshAll, loadHub]);
 
@@ -247,37 +261,70 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
     }
   }
 
-  const online =
+  // Unified view: hub poll + details snapshot (details can fill identity while hub loads).
+  const epsonLinked =
+    hub?.authorized === true ||
+    data?.authorized === true ||
+    data?.connected === true ||
+    Boolean(hub?.productName) ||
+    Boolean(data?.device?.productName);
+
+  const deviceOnline =
     hub?.status === "online" ||
     hub?.status === "busy" ||
-    (hub?.connected === true && hub?.status !== "offline");
-  // OAuth linked (tokens in DB) — not the same as printer network online.
-  const epsonLinked = hub?.authorized === true || data?.connected === true;
+    hub?.connected === true ||
+    data?.deviceOnline === true ||
+    // truthy connected on device payload from details
+    data?.device?.connected === true;
+
+  const busy = hub?.status === "busy";
+  const statusLabel = !epsonLinked
+    ? "Not linked"
+    : hubLoading && !hub
+      ? "Checking…"
+      : busy
+        ? "Busy"
+        : deviceOnline
+          ? "Online"
+          : hub?.reachability === "error"
+            ? "API error"
+            : "Offline";
+  const statusTone =
+    !epsonLinked || hub?.reachability === "error"
+      ? "red"
+      : deviceOnline || busy
+        ? "green"
+        : "amber";
+
   const todayTotal = (hub?.today?.success ?? 0) + (hub?.today?.failed ?? 0);
   const successRate =
     todayTotal === 0 ? null : Math.round(((hub?.today?.success ?? 0) / todayTotal) * 100);
-  const productName = hub?.productName ?? data?.device?.productName ?? "—";
+  const productName = hub?.productName ?? data?.device?.productName ?? (epsonLinked ? "Printer" : "—");
   const serial = hub?.serialNumber ?? data?.device?.serialNumber;
+  const pendingJobs = hub?.pendingJobs ?? 0;
 
   return (
     <div className="app-shell">
       <AppHeader active="printer" userLabel={userLabel} showPrintQueue showRoadmap />
       <main className="app-main printer-hub">
-        {/* ═══ HEADER (inspired by Printer Hub mockup) ═══ */}
+        {/* ═══ HEADER ═══ */}
         <header className="printer-hub-header">
           <div className="printer-hub-logo">
             Post<span>Now</span>
             <small>· Printer Hub</small>
           </div>
           <div className="printer-hub-header-right">
-            <span className={`printer-hub-status-dot${online ? "" : " offline"}`}>
+            <span className={`printer-hub-status-dot tone-${statusTone}`}>
               <span className="dot" />
-              {online ? (hub?.status === "busy" ? "Busy" : "Online") : hub?.message || "Offline"}
+              {statusLabel}
+              {productName && productName !== "—" ? ` · ${productName}` : ""}
             </span>
             <span className="printer-hub-updated">
               {lastUpdated
-                ? `Last updated: ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
-                : "Updating…"}
+                ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                : hubLoading
+                  ? "Loading status…"
+                  : "—"}
             </span>
             <button
               type="button"
@@ -285,7 +332,7 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               disabled={refreshing}
               onClick={() => void refreshAll()}
             >
-              {refreshing ? "⏳ Refreshing…" : "↻ Refresh"}
+              {refreshing ? "Refreshing…" : "↻ Refresh"}
             </button>
             {epsonLinked ? (
               <button
@@ -295,11 +342,11 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
                 disabled={disconnecting}
                 onClick={() => void handleDisconnectEpson()}
               >
-                {disconnecting ? "Disconnecting…" : "Disconnect Epson"}
+                {disconnecting ? "Disconnecting…" : "Disconnect"}
               </button>
             ) : (
               <a href="/api/epson/connect" className="btn btn-primary" style={{ fontSize: 13 }}>
-                Connect Epson Connect
+                Connect Epson
               </a>
             )}
             <Link href="/print-queue" className="btn btn-secondary" style={{ fontSize: 13 }}>
@@ -310,7 +357,8 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
 
         {epsonBanner === "connected" && (
           <Alert title="Epson Connect linked">
-            Device authorized. Tokens are stored server-side so any staff browser can print.
+            Device authorized. Tokens are stored server-side so any staff browser can print with{" "}
+            <strong>Print EpsonAPI</strong>.
           </Alert>
         )}
         {epsonBanner === "error" && (
@@ -320,33 +368,79 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
           </Alert>
         )}
 
+        {/* ═══ CONNECTION STRIP ═══ */}
+        <div className="epson-conn-strip">
+          <div className="epson-conn-item">
+            <span className="epson-conn-label">Account</span>
+            <span className={`epson-conn-value ${epsonLinked ? "ok" : "bad"}`}>
+              {epsonLinked ? "● Linked" : "○ Not linked"}
+            </span>
+          </div>
+          <div className="epson-conn-item">
+            <span className="epson-conn-label">Device</span>
+            <span className={`epson-conn-value tone-${statusTone}`}>
+              ● {statusLabel}
+            </span>
+          </div>
+          <div className="epson-conn-item">
+            <span className="epson-conn-label">Model</span>
+            <span className="epson-conn-value">{productName}</span>
+          </div>
+          <div className="epson-conn-item">
+            <span className="epson-conn-label">Serial</span>
+            <span className="epson-conn-value mono">{serial ?? "—"}</span>
+          </div>
+          <div className="epson-conn-item grow">
+            <span className="epson-conn-label">Status message</span>
+            <span className="epson-conn-value muted">
+              {hub?.message ?? (hubLoading ? "Checking Epson Connect…" : "—")}
+            </span>
+          </div>
+          {!epsonLinked && (
+            <a href="/api/epson/connect" className="btn btn-primary epson-conn-cta">
+              Connect Epson Connect
+            </a>
+          )}
+        </div>
+
         {/* ═══ TOP STATS ═══ */}
         <div className="printer-hub-grid">
           <div className="printer-hub-card">
             <div className="printer-hub-card-title">🖨️ Printer</div>
-            <div className="printer-hub-card-number printer-hub-card-name">{productName}</div>
-            <div className="printer-hub-card-sub">{serial ? `SN: ${serial}` : "Serial not reported"}</div>
-            <div style={{ marginTop: 8 }}>
-              <span className={`printer-hub-badge ${online ? "green" : "red"}`}>
-                {online ? "● Online" : "● Offline"}
+            <div className="printer-hub-card-number printer-hub-card-name">
+              {hubLoading && !hub && !data ? "…" : productName}
+            </div>
+            <div className="printer-hub-card-sub">
+              {serial ? `SN: ${serial}` : epsonLinked ? "Serial not reported" : "Connect to load identity"}
+            </div>
+            <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+              <span className={`printer-hub-badge ${statusTone === "green" ? "green" : statusTone === "amber" ? "yellow" : "red"}`}>
+                ● {statusLabel}
               </span>
+              {epsonLinked && (
+                <span className="printer-hub-badge teal">Epson Connect</span>
+              )}
               {provider && (
-                <span className="printer-hub-badge yellow" style={{ marginLeft: 6 }}>
-                  {provider === "EPSON_DIRECT" ? "Email Print" : "Epson Connect"}
+                <span className="printer-hub-badge yellow">
+                  Hub default: {provider === "EPSON_DIRECT" ? "EpsonMail" : "EpsonAPI"}
                 </span>
               )}
             </div>
           </div>
           <div className="printer-hub-card">
             <div className="printer-hub-card-title">📄 Pending Jobs</div>
-            <div className="printer-hub-card-number">{hub?.pendingJobs ?? "—"}</div>
+            <div className="printer-hub-card-number">
+              {hubLoading && hub == null ? "…" : pendingJobs}
+            </div>
             <div className="printer-hub-card-sub">Waiting for confirmation / queue</div>
           </div>
           <div className="printer-hub-card">
             <div className="printer-hub-card-title">📊 Today&apos;s Prints</div>
-            <div className="printer-hub-card-number">{todayTotal}</div>
+            <div className="printer-hub-card-number">
+              {hubLoading && hub == null ? "…" : todayTotal}
+            </div>
             <div className="printer-hub-card-sub">
-              Success rate: {successRate === null ? "—" : `${successRate}%`}
+              Success rate: {hubLoading && hub == null ? "…" : successRate === null ? "—" : `${successRate}%`}
               {hub?.today ? (
                 <span style={{ color: "var(--text-muted, #9CA3AF)" }}>
                   {" "}
@@ -430,9 +524,10 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
         </div>
 
         {/* ═══ SETTINGS (secondary) ═══ */}
-        <Card title="Printing Method">
+        <Card title="Print Queue defaults">
           <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
-            Backend used by Print Queue &quot;Print (API)&quot; / Email to Printer.
+            Hub default for bulk tooling. Each queue row still offers both{" "}
+            <strong>Print EpsonAPI</strong> (cloud) and <strong>Print EpsonMail</strong> (email).
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <button
@@ -441,7 +536,7 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               disabled={providerSaving || provider === null}
               onClick={() => updateProvider("EPSON")}
             >
-              ☁️ Epson Connect (Cloud)
+              ☁️ EpsonAPI (Connect cloud)
             </button>
             <button
               type="button"
@@ -449,34 +544,33 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
               disabled={providerSaving || provider === null}
               onClick={() => updateProvider("EPSON_DIRECT")}
             >
-              📧 Epson Direct (Email Print)
+              📧 EpsonMail (Email Print)
             </button>
           </div>
-          {provider === "EPSON_DIRECT" && (
-            <form
-              onSubmit={saveEpsonDirectEmail}
-              style={{ display: "flex", gap: 12, alignItems: "flex-end", marginTop: 16, flexWrap: "wrap" }}
-            >
-              <div className="field" style={{ flex: "1 1 280px" }}>
-                <label>Printer&apos;s Epson Email Print address</label>
-                <input
-                  type="email"
-                  placeholder="e.g. postnow@print.epsonconnect.com"
-                  value={epsonDirectEmail}
-                  onChange={(e) => setEpsonDirectEmail(e.target.value)}
-                />
-              </div>
-              <button type="submit" className="btn btn-secondary" disabled={providerSaving}>
-                {emailSaved ? "✓ Saved" : "Save address"}
-              </button>
-            </form>
-          )}
+          <form
+            onSubmit={saveEpsonDirectEmail}
+            style={{ display: "flex", gap: 12, alignItems: "flex-end", marginTop: 16, flexWrap: "wrap" }}
+          >
+            <div className="field" style={{ flex: "1 1 280px" }}>
+              <label>Printer&apos;s Epson Email Print address (for EpsonMail)</label>
+              <input
+                type="email"
+                placeholder="e.g. postnow@print.epsonconnect.com"
+                value={epsonDirectEmail}
+                onChange={(e) => setEpsonDirectEmail(e.target.value)}
+              />
+            </div>
+            <button type="submit" className="btn btn-secondary" disabled={providerSaving}>
+              {emailSaved ? "✓ Saved" : "Save address"}
+            </button>
+          </form>
           {providerError && <div className="form-error" style={{ marginTop: 8 }}>{providerError}</div>}
         </Card>
 
-        <Card title="Epson email notifications → platform">
+        <Card title="Email print notifications → platform">
           <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
             Pull completed/error notices from the Zoho print-agent mailbox into print confirmation status.
+            This is separate from live Epson Connect status (no longer blocks the hub refresh).
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <button
@@ -526,7 +620,7 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
             ) : !data.connected ? (
               <Card>
                 <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-                  Not connected to Epson Connect yet.{" "}
+                  Not linked to Epson Connect yet.{" "}
                   <a href="/api/epson/connect" style={{ color: "var(--accent-primary)", fontWeight: 600 }}>
                     Connect Epson Connect
                   </a>{" "}
@@ -536,10 +630,11 @@ export default function PrinterPage({ userLabel }: PrinterPageProps) {
             ) : (
               <>
                 <Card title="Printer Identity">
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-                    <Badge tone={data.device?.connected ? "success" : "navy"}>
-                      {data.device?.connected ? "● Online" : "● Offline"}
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+                    <Badge tone={data.deviceOnline || data.device?.connected ? "success" : "navy"}>
+                      {data.deviceOnline || data.device?.connected ? "● Online" : "● Offline / sleeping"}
                     </Badge>
+                    <Badge tone="teal">Linked</Badge>
                     <div style={{ fontWeight: 700 }}>{data.device?.productName ?? "Unknown printer"}</div>
                   </div>
                   {data.device?.serialNumber && (

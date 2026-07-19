@@ -1412,20 +1412,87 @@ table.data-table tr:last-child td {
   gap: 6px;
   padding: 4px 14px;
   border-radius: 40px;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 13px;
   background: #ECFDF5;
-  color: #10B981;
+  color: #059669;
 }
-.printer-hub-status-dot.offline {
+.printer-hub-status-dot.offline,
+.printer-hub-status-dot.tone-red {
   background: #FEF2F2;
-  color: #EF4444;
+  color: #DC2626;
+}
+.printer-hub-status-dot.tone-amber {
+  background: #FFFBEB;
+  color: #D97706;
+}
+.printer-hub-status-dot.tone-green {
+  background: #ECFDF5;
+  color: #059669;
 }
 .printer-hub-status-dot .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: currentColor;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
+}
+.printer-hub-status-dot.tone-red .dot {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+.printer-hub-status-dot.tone-amber .dot {
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+}
+
+/* Connection strip — Linked vs Online made explicit */
+.epson-conn-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px 18px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow-sm);
+}
+.epson-conn-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 100px;
+}
+.epson-conn-item.grow {
+  flex: 1 1 180px;
+  min-width: 160px;
+}
+.epson-conn-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.epson-conn-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy-900);
+}
+.epson-conn-value.ok { color: #059669; }
+.epson-conn-value.bad { color: #DC2626; }
+.epson-conn-value.muted { font-weight: 500; color: var(--text-secondary); font-size: 13px; }
+.epson-conn-value.mono {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+.epson-conn-value.tone-green { color: #059669; }
+.epson-conn-value.tone-amber { color: #D97706; }
+.epson-conn-value.tone-red { color: #DC2626; }
+.epson-conn-cta {
+  align-self: center;
+  font-size: 13px !important;
 }
 .printer-hub-updated {
   font-size: 12px;
@@ -1491,6 +1558,7 @@ table.data-table tr:last-child td {
 .printer-hub-badge.green { background: #ECFDF5; color: #10B981; }
 .printer-hub-badge.red { background: #FEF2F2; color: #EF4444; }
 .printer-hub-badge.yellow { background: #FEF3C7; color: #D97706; }
+.printer-hub-badge.teal { background: #CCFBF1; color: #0F766E; }
 
 .printer-hub-wide {
   background: #fff;

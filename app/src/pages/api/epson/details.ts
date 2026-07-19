@@ -8,11 +8,13 @@ import {
   getPrintCapability,
   getNotificationSettings,
   getValidDeviceSession,
+  isDeviceOnline,
   EPSON_ACCESS_COOKIE,
   EPSON_REFRESH_COOKIE,
 } from "@/lib/epson";
 
 // Snapshot of everything Epson reports about the linked printer.
+// `authorized` = OAuth tokens present; `deviceOnline` = printer network online.
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -31,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
 
   if (!session?.accessToken) {
-    return res.status(200).json({ connected: false });
+    return res.status(200).json({ connected: false, authorized: false, deviceOnline: false });
   }
 
   try {
@@ -41,12 +43,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       getDefaultPrintSettings(accessToken),
       getPrintCapability(accessToken, "document"),
       getPrintCapability(accessToken, "photo"),
-      // Notification settings use app token (client_credentials), not device.
       getNotificationSettings().catch(() => null),
     ]);
 
+    const deviceOnline = isDeviceOnline(device);
+
     return res.status(200).json({
+      // authorized + device payload loaded successfully
       connected: true,
+      authorized: true,
+      deviceOnline,
       device,
       defaults,
       capability: { document: documentCapability, photo: photoCapability },
@@ -61,6 +67,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
     return res.status(axios.isAxiosError(err) ? 502 : 500).json({
       error: "Could not load printer details from Epson Connect",
+      authorized: true,
+      connected: false,
+      deviceOnline: false,
     });
   }
 }
