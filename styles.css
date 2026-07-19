@@ -654,26 +654,6 @@ footer.site-footer .copyright {
 }
 
 
-.site-footer .footer-payments {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.site-footer .footer-pay-label {
-  font-weight: 500;
-  opacity: 0.75;
-}
-.site-footer .footer-pay-name {
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 0.02em;
-}
-.site-footer .footer-pay-sep {
-  opacity: 0.4;
-}
 
 @media (max-width: 860px) {
   .hero-grid, .pathways-grid, .coverage-grid { grid-template-columns: 1fr; }
