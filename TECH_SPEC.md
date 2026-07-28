@@ -161,6 +161,8 @@ Staff chrome: sidebar nav + **⚙ settings** opens **SyncException** drawer (ope
 | `/api/documents/[id]/cancel-payment-request` | Staff: abandon a manual entry's payment request, with justification | STAFF/ADMIN |
 | `/api/documents/[id]/waive-payment` | Staff: process a manual entry at no cost, with justification + loss amount | STAFF/ADMIN |
 | `/api/documents/[id]/share` | Send the tracking link to someone else; optional subscribe to status updates | owner or staff |
+| `/api/documents/[id]/data-export` | POPIA right of access - downloadable JSON of personal data for this document | owner or staff |
+| `/api/documents/[id]/erase-personal-data` | POPIA right to erasure - redacts recipient/address, keeps payment+audit history | STAFF/ADMIN |
 | `/api/documents/[id]/live-tracking` | Live Bob Go checkpoints | owner or staff |
 | `/api/finance/zoho` | GET config; POST push/pull Zoho Books | STAFF/ADMIN |
 | `/api/finance/exceptions` | GET/POST SyncException list + resolve | STAFF/ADMIN |
@@ -289,6 +291,36 @@ On the tracking page's "Share this booking" card (below the Print log):
   webhooks, returns) fans out to subscribers automatically, with no
   per-site changes needed.
 - `POST /api/documents/[id]/share` — `{ destination, subscribe? }`, owner or staff.
+
+#### 6.2.2c POPIA data subject rights (export + erasure)
+
+Scoped per document, not account-wide - this app organizes everything
+(audit trail, payments, print jobs) around `Document`, and a customer with
+several documents would need this run once per document. Full account
+closure (removing login credentials across every document they own) is a
+larger, separate operation not attempted here.
+
+- `src/lib/popia.ts` — `exportDocumentPersonalData(documentId)` returns
+  recipient details, delivery address, payments (amount/status/method, not
+  raw gateway payloads), subscribers, and the full audit trail as one JSON
+  object. `eraseDocumentPersonalData({documentId, reason, actorId, ip})`
+  redacts recipient name/phone/email and the delivery address to
+  `[REDACTED]`, deletes `DocumentSubscriber` rows for the document, and logs
+  the erasure itself as an audit event (`personal_data_erased`, metadata is
+  just the reason - never the values being removed).
+- **Deliberately keeps Payment and AuditEvent history** — POPIA allows
+  retaining data despite an erasure request under a legitimate legal
+  obligation (tax/financial record retention, and the tamper-evident
+  chain-of-custody trail this product exists to provide). This is the
+  compliant middle ground between deleting everything and deleting nothing,
+  not a loophole.
+- `GET /api/documents/[id]/data-export` — owner or staff, downloads the
+  export as a JSON file.
+- `POST /api/documents/[id]/erase-personal-data` — **staff-only, not
+  self-service**. Honoring erasure correctly means weighing it against the
+  retention exceptions above, which needs a person's judgment, not a
+  customer-facing button. Requires a `reason` string, shown behind a confirm
+  `Modal` on `/tracking/[id]`'s new "Your data" card.
 
 #### 6.2.3 Bob Pay (legacy)
 
@@ -775,7 +807,9 @@ integrations, or simply not tried yet):
    in Vercel and to register the webhook URL + verify token in the Meta App
    dashboard. Conversational reply logic remains operator-owned.
 5. **Bob Go API token** — may need account/plan unlock for live booking.
-6. **POPIA data subject rights** — export/deletion endpoints not built.
+6. **POPIA data subject rights** — done per-document (export self-service,
+   erasure staff-reviewed); account-wide export/erasure across a customer's
+   multiple documents is a possible follow-up, not built.
 7. **Upload hardening** — no virus scanning or rate limiting yet.
 8. **Epson Connect** — Basic auth token fix shipped; re-verify live connect/
    print after env hygiene.

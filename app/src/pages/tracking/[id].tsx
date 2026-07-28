@@ -335,6 +335,10 @@ export default function Tracking({
   const [shareConfirming, setShareConfirming] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareResult, setShareResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [eraseModalOpen, setEraseModalOpen] = useState(false);
+  const [eraseReason, setEraseReason] = useState("");
+  const [eraseBusy, setEraseBusy] = useState(false);
+  const [eraseResult, setEraseResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -403,6 +407,27 @@ export default function Tracking({
       setShareResult({ ok: false, message: (err as Error).message });
     } finally {
       setShareBusy(false);
+    }
+  }
+
+  async function runErase() {
+    setEraseBusy(true);
+    setEraseResult(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}/erase-personal-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: eraseReason.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to erase");
+      setEraseModalOpen(false);
+      setEraseReason("");
+      setEraseResult({ ok: true, message: "Personal data erased. Payment and audit history are retained for legal/financial records." });
+    } catch (err) {
+      setEraseResult({ ok: false, message: (err as Error).message });
+    } finally {
+      setEraseBusy(false);
     }
   }
 
@@ -917,6 +942,27 @@ export default function Tracking({
                   <Badge tone="navy">Zero-Touch</Badge>
                 </div>
               </Card>
+              <Card title="Your data">
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
+                  Under POPIA you can request a copy of the personal information held about this
+                  document, or ask for it to be erased.
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <a href={`/api/documents/${documentId}/data-export`} className="btn btn-secondary" download>
+                    Export my data
+                  </a>
+                  {isStaff && (
+                    <button type="button" className="btn btn-secondary" onClick={() => setEraseModalOpen(true)}>
+                      Erase personal data
+                    </button>
+                  )}
+                </div>
+                {eraseResult && (
+                  <div style={{ marginTop: 10, fontSize: 13, color: eraseResult.ok ? "var(--success, #1f9e6d)" : "var(--danger, #c0392b)" }}>
+                    {eraseResult.message}
+                  </div>
+                )}
+              </Card>
             </div>
           </div>
         </div>
@@ -940,6 +986,35 @@ export default function Tracking({
             </button>
             <button type="button" className="btn btn-primary" onClick={() => void runShare()}>
               Yes, subscribe them
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {eraseModalOpen && (
+        <Modal title="Erase personal data?" onClose={() => setEraseModalOpen(false)}>
+          <div style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.55, marginBottom: 16 }}>
+            <p style={{ margin: "0 0 10px" }}>
+              This redacts the recipient's name, phone, email, and delivery address on this document, and
+              removes anyone subscribed to its updates. Payment and audit history are kept for legal/financial
+              retention — this can't be undone.
+            </p>
+          </div>
+          <div className="field">
+            <label htmlFor="erase-reason">Reason for this erasure request</label>
+            <textarea id="erase-reason" rows={3} value={eraseReason} onChange={(e) => setEraseReason(e.target.value)} />
+          </div>
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 16 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setEraseModalOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={eraseBusy || !eraseReason.trim()}
+              onClick={() => void runErase()}
+            >
+              {eraseBusy ? "Erasing…" : "Erase personal data"}
             </button>
           </div>
         </Modal>
