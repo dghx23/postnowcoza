@@ -95,6 +95,13 @@ async function main() {
       comment:
         "New front-end offering alongside E2: book a door/locker/business pickup entirely over WhatsApp and pay via PayShap Request-to-Pay, with tracking updates to both sender and recipient. Conversation state machine in src/lib/whatsappBookingBot.ts (CourierBooking + WhatsAppSession models), wired into the existing /api/whatsapp/webhook. Quotes reuse the Bob Go rate-card data (src/lib/rateCards.ts). Blocked: src/lib/payshap.ts is a stub — no PSP (Ozow/Netcash/Electrum) account chosen yet, so bookings stay AWAITING_PAYMENT and /api/payshap/webhook 501s until PAYSHAP_PSP + credentials are set in Vercel. Not yet done: photo/video parcel-size estimation (weight is picked from fixed brackets for now), forwarded-message/screenshot address parsing, zone-aware rate lookup (currently hardcoded to the 'main' zone).",
     },
+    {
+      name: "GlobeMe: US product import + landed-cost calculator",
+      priority: "HIGH",
+      status: "IN_PROGRESS",
+      comment:
+        "Third front-end product: US→SA personal shopping via WhatsApp. Paste product URL, specify weight & delivery address, see landed-cost breakdown (item + duty + VAT + shipping), pay via PayFast. ShoppingOrder model tracks order state (DRAFT → QUOTED → AWAITING_PAYMENT → PAID → SHIPPED → DELIVERED), wired into same WhatsApp session state machine (src/lib/whatsappBookingBot.ts). src/lib/globeme.ts calculates landed costs (HS-code lookup + SARS duty rate + VAT). /api/payfast/webhook.ts handles payment confirmation & notifications. Blocked: PAYFAST_PASSPHRASE + webhook HMAC verification. Product extraction APIs (Amazon/Walmart/eBay) stubbed. Not yet done: HS-code classifier (Zonos or SARS dataset), live FX rates, photo/video weight estimation, address validation.",
+    },
   ];
 
   for (const item of roadmapItems) {

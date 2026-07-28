@@ -413,8 +413,90 @@ model CourierBooking {
 // option). One row per WhatsApp sender.
 model WhatsAppSession {
   phone     String   @id // wa_id, digits only
-  mode      String   @default("idle") // idle | booking | tracking | quoting
+  mode      String   @default("idle") // idle | booking | tracking | quoting | shopping
   step      String   @default("start")
   data      Json     @default("{}")
   updatedAt DateTime @updatedAt
 }
+
+enum ShoppingOrderStatus {
+  DRAFT
+  QUOTED
+  AWAITING_PAYMENT
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum ShipMethod {
+  EXPRESS
+  STANDARD
+  ECONOMY
+}
+
+// US product shopping order: customer pastes URL, we calculate landed cost
+// (item + duty + VAT + shipping), customer pays via PayFast, we import and deliver.
+// Once payment cleared, links to BobgoShipment for real courier leg.
+model ShoppingOrder {
+  id                    String              @id @default(cuid())
+  orderRef              String              @unique // e.g., GM-2026-1234
+  status                ShoppingOrderStatus @default(DRAFT)
+
+  // Customer info
+  customerEmail         String
+  customerPhone         String?
+  recipientName         String
+  recipientPhone        String
+  recipientStreet       String
+  recipientCity         String
+  recipientProvince     String
+  recipientPostalCode   String
+  recipientCountry      String @default("ZA")
+
+  // Product info
+  productUrl            String
+  productName           String?
+  productPrice          Float? // USD
+  productWeight         Float? // kg (estimated or customer-entered)
+
+  // Shipping choice
+  shipMethod            ShipMethod @default(STANDARD)
+  extraWeightSurcharge  Float      @default(0) // per 0.5kg above 1kg
+
+  // Service choices
+  personalShopperFee    Float      @default(0) // optional concierge charge
+  markupPercent         Float      @default(15) // customer-chosen markup on landed cost
+
+  // Landed-cost breakdown
+  itemPriceCents        Int? // stored as cents to avoid float precision
+  shippingCostCents     Int? // USD base, before extra weight
+  shopperFeeCents       Int?
+  hsCode                String? // HS classification of product
+  dutyRate              Float? // SARS duty % (e.g., 0.20 for 20%)
+  dutyCents             Int? // calculated: (item + insurance + freight) * dutyRate
+  vatCents              Int? // calculated: (duty + total cost) * 0.15
+  landedCostCents       Int? // item + shipping + shopper fee + duty + VAT, in cents
+  finalQuoteCents       Int? // landed cost + markup
+  finalQuoteZar         Float? // landed cost * FX rate (cached at quote time)
+
+  // Payment
+  payFastPaymentId      String?
+  payFastUuid           String?
+  payFastUrl            String?
+  paidAt                DateTime?
+
+  // Link to courier once paid
+  bobgoShipmentId       String?
+
+  // FX rate snapshot (avoid stale rates across quote → payment)
+  fxRateUsdzarSnapshot  Float? // e.g., 18.5
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([customerEmail])
+  @@index([status])
+}
+

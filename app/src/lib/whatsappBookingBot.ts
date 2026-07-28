@@ -27,9 +27,19 @@ interface SessionData {
   recipientName?: string;
   recipientPhone?: string;
   recipientAddress?: string;
+  recipientCity?: string;
+  recipientProvince?: string;
+  recipientPostalCode?: string;
   parcels?: Array<{ weightKg: number; description: string }>;
   quote?: { courier: string; code: string; price: number };
   bookingId?: string;
+  // GlobeMe shopping fields
+  customerEmail?: string;
+  customerPhone?: string;
+  productUrl?: string;
+  productWeight?: number;
+  shipMethod?: "EXPRESS" | "STANDARD" | "ECONOMY";
+  orderId?: string;
 }
 
 interface Session {
@@ -68,10 +78,11 @@ function buttonMenu(): string {
   return [
     "What would you like to do?",
     "",
-    "1️⃣ Book a courier",
+    "1️⃣ Book a courier (PostNow Express)",
     "2️⃣ Track a parcel",
     "3️⃣ Get a quote",
-    "4️⃣ Help",
+    "4️⃣ Shop from US (GlobeMe)",
+    "5️⃣ Help",
     "",
     "Reply with a number.",
   ].join("\n");
@@ -124,6 +135,11 @@ export async function handleInboundMessage(msg: InboundWhatsAppMessage): Promise
     return;
   }
 
+  if (session.mode === "shopping") {
+    await handleShoppingStep(session, msg, phone);
+    return;
+  }
+
   // Fallback: reset to menu.
   session.mode = "idle";
   await saveSession(session);
@@ -160,10 +176,21 @@ async function handleMainMenu(session: Session, lower: string, phone: string) {
     );
     return;
   }
-  if (lower === "4" || lower.includes("help")) {
+  if (lower === "4" || lower.includes("shop") || lower.includes("globeme")) {
+    session.mode = "shopping";
+    session.step = "await_product_url";
+    session.data = { customerPhone: phone };
+    await saveSession(session);
     await reply(
       phone,
-      "📖 PostNow can:\n• Book a courier (door, locker or business pickup)\n• Track a parcel\n• Give an instant quote\n\nType \"menu\" any time to start over. Support: support@postnow.co.za",
+      "🌍 Welcome to GlobeMe! Buy from the US and we'll deliver to SA.\n\nPaste a product link (Amazon, Walmart, eBay, etc.) and we'll calculate the landed cost.",
+    );
+    return;
+  }
+  if (lower === "5" || lower.includes("help")) {
+    await reply(
+      phone,
+      "📖 PostNow services:\n• Book a courier (express door, locker, or business pickup)\n• Track a parcel\n• Get an instant quote\n• Shop from US via GlobeMe\n\nType \"menu\" any time to start over.\nSupport: support@postnow.co.za",
     );
     return;
   }
@@ -391,4 +418,216 @@ async function handleQuotingStep(session: Session, lower: string, phone: string)
         .join("\n") +
       "\n\nType \"menu\" to book one of these.",
   );
+}
+
+async function handleShoppingStep(
+  session: Session,
+  msg: InboundWhatsAppMessage,
+  phone: string,
+) {
+  const text = (msg.text ?? "").trim();
+  const lower = text.toLowerCase();
+
+  if (session.step === "await_product_url") {
+    // Validate that text looks like a URL.
+    if (!text.startsWith("http") && !text.includes("amazon") && !text.includes("walmart")) {
+      await reply(phone, "Please paste a product link (e.g. https://amazon.com/...) or the ASIN.");
+      return;
+    }
+
+    // Store URL and move to weight step.
+    session.data.productUrl = text;
+    session.step = "await_weight_shopping";
+    await saveSession(session);
+
+    await reply(
+      phone,
+      "📦 What's the estimated weight?\n" +
+        "1️⃣ ≤ 1 kg\n" +
+        "2️⃣ 1–2 kg\n" +
+        "3️⃣ 2–5 kg\n" +
+        "4️⃣ 5+ kg\n" +
+        "Or reply with kg (e.g. 1.5)",
+    );
+    return;
+  }
+
+  if (session.step === "await_weight_shopping") {
+    let weight = 1;
+    if (lower === "1") weight = 0.5;
+    else if (lower === "2") weight = 1.5;
+    else if (lower === "3") weight = 3;
+    else if (lower === "4") weight = 7;
+    else if (/^\d+(\.\d+)?$/.test(text)) weight = parseFloat(text);
+
+    session.data.productWeight = weight;
+    session.step = "await_ship_method";
+    await saveSession(session);
+
+    await reply(
+      phone,
+      "🚚 Shipping method?\n" +
+        "1️⃣ Express ($32)\n" +
+        "2️⃣ Standard ($22)\n" +
+        "3️⃣ Economy ($14)",
+    );
+    return;
+  }
+
+  if (session.step === "await_ship_method") {
+    let shipMethod: "EXPRESS" | "STANDARD" | "ECONOMY" = "STANDARD";
+    if (lower === "1") shipMethod = "EXPRESS";
+    else if (lower === "3") shipMethod = "ECONOMY";
+
+    session.data.shipMethod = shipMethod;
+    session.step = "await_recipient_name";
+    await saveSession(session);
+
+    await reply(phone, "👤 Recipient's full name?");
+    return;
+  }
+
+  if (session.step === "await_recipient_name") {
+    session.data.recipientName = text;
+    session.step = "await_recipient_email";
+    await saveSession(session);
+
+    await reply(phone, "📧 Recipient's email?");
+    return;
+  }
+
+  if (session.step === "await_recipient_email") {
+    session.data.customerEmail = text;
+    session.step = "await_street_address";
+    await saveSession(session);
+
+    await reply(phone, "🏠 Street address? (e.g. 123 Main St)");
+    return;
+  }
+
+  if (session.step === "await_street_address") {
+    session.data.recipientAddress = text;
+    session.step = "await_city";
+    await saveSession(session);
+
+    await reply(phone, "🏙️ City?");
+    return;
+  }
+
+  if (session.step === "await_city") {
+    session.data.recipientCity = text;
+    session.step = "await_province";
+    await saveSession(session);
+
+    await reply(
+      phone,
+      "🗺️ Province?\n" +
+        "1️⃣ Western Cape\n" +
+        "2️⃣ Gauteng\n" +
+        "3️⃣ KwaZulu-Natal\n" +
+        "4️⃣ Other",
+    );
+    return;
+  }
+
+  if (session.step === "await_province") {
+    let province = "Other";
+    if (lower === "1") province = "Western Cape";
+    else if (lower === "2") province = "Gauteng";
+    else if (lower === "3") province = "KwaZulu-Natal";
+
+    session.data.recipientProvince = province;
+    session.step = "await_postal_code";
+    await saveSession(session);
+
+    await reply(phone, "📮 Postal code?");
+    return;
+  }
+
+  if (session.step === "await_postal_code") {
+    session.data.recipientPostalCode = text;
+    session.step = "review_and_pay";
+    await saveSession(session);
+
+    // Create ShoppingOrder and calculate landed cost.
+    const { calculateLandedCost } = await import("./globeme");
+    const breakdown = await calculateLandedCost({
+      itemPriceUsd: 150, // TODO: extract from product URL
+      weightKg: session.data.productWeight || 1,
+      shipMethod: session.data.shipMethod as "EXPRESS" | "STANDARD" | "ECONOMY" || "STANDARD",
+      personalShopperFeeUsd: 0, // TODO: offer optional shopper fee
+      markupPercent: 15,
+    });
+
+    // Create order in database.
+    const orderRef = `GM-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const order = await prisma.shoppingOrder.create({
+      data: {
+        orderRef,
+        status: "QUOTED",
+        customerEmail: session.data.customerEmail || "unknown@example.com",
+        customerPhone: phone,
+        recipientName: session.data.recipientName || "Unknown",
+        recipientPhone: phone,
+        recipientStreet: session.data.recipientAddress || "Unknown",
+        recipientCity: session.data.recipientCity || "Unknown",
+        recipientProvince: session.data.recipientProvince || "Other",
+        recipientPostalCode: session.data.recipientPostalCode || "0000",
+        productUrl: session.data.productUrl || "",
+        productWeight: session.data.productWeight,
+        shipMethod: session.data.shipMethod as "EXPRESS" | "STANDARD" | "ECONOMY",
+        itemPriceCents: breakdown.itemPriceCents,
+        shippingCostCents: breakdown.shippingCostCents,
+        landedCostCents: breakdown.landedCostCents,
+        finalQuoteCents: breakdown.finalQuoteCents,
+        finalQuoteZar: breakdown.finalQuoteZar,
+        fxRateUsdzarSnapshot: breakdown.fxRateUsdZar,
+      },
+    });
+
+    // Show breakdown.
+    await reply(
+      phone,
+      `💰 Your GlobeMe quote (${orderRef}):\n` +
+        `• Item: $${breakdown.itemPriceUsd.toFixed(2)}\n` +
+        `• Shipping: $${breakdown.shippingUsd.toFixed(2)}\n` +
+        `• Duty (${(breakdown.dutyRatePercent * 100).toFixed(0)}%): $${breakdown.dutyUsd.toFixed(2)}\n` +
+        `• VAT (15%): $${breakdown.vatUsd.toFixed(2)}\n` +
+        `• Total (landed): $${breakdown.landedCostUsd.toFixed(2)}\n` +
+        `• With margin: $${breakdown.finalQuoteUsd.toFixed(2)} ≈ R${breakdown.finalQuoteZar.toFixed(2)}\n\n` +
+        `Ready to check out? Reply "yes" or "menu" to cancel.`,
+    );
+
+    session.data.orderId = order.id;
+    await saveSession(session);
+    return;
+  }
+
+  if (session.step === "review_and_pay") {
+    if (lower === "yes" || lower === "y" || lower === "confirm") {
+      // TODO: create PayFast request and send link
+      await reply(
+        phone,
+        `✅ Order confirmed! PayFast payment link would be sent here (stub until PAYFAST_MERCHANT_ID is set). Order ref: ${session.data.orderId}`,
+      );
+
+      // Reset.
+      session.mode = "idle";
+      session.step = "start";
+      session.data = {};
+      await saveSession(session);
+      return;
+    }
+
+    if (lower === "menu" || lower === "cancel") {
+      session.mode = "idle";
+      session.step = "start";
+      session.data = {};
+      await saveSession(session);
+      await reply(phone, buttonMenu());
+      return;
+    }
+
+    await reply(phone, "Reply \"yes\" to proceed or \"menu\" to cancel.");
+  }
 }

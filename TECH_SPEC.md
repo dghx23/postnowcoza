@@ -751,6 +751,38 @@ payment-request messages (§6.2.2).
   from fixed brackets), forwarded-message/screenshot address extraction,
   locker-network (Pudo) integration, zone-aware rate lookup.
 
+### 6.10 GlobeMe — US product import + landed-cost calculator (new product)
+
+A third product surface launched via WhatsApp menu option "Shop from US": paste
+a product URL (Amazon, Walmart, eBay), specify weight and delivery address, see
+a landed-cost breakdown (item + shipping + duty + VAT), and pay via PayFast.
+Orders are tracked like E2 documents and PostNow Express bookings: one
+`BobgoShipment` per order, tracked end-to-end.
+
+- `ShoppingOrder` (Prisma model) — one row per order: customer/recipient details,
+  product URL/name/price, weight, chosen ship method, detailed cost breakdown
+  (itemPrice, shipping, shopper fee, duty, VAT), status (`DRAFT → QUOTED →
+  AWAITING_PAYMENT → PAID → PROCESSING → SHIPPED → DELIVERED`), link to
+  `BobgoShipment` for the import leg.
+- `src/lib/globeme.ts` — `calculateLandedCost()`: takes item price (USD),
+  weight (kg), ship method (Express $32 / Standard $22 / Economy $14), shopper
+  fee (optional), margin %; calculates duty (HS-code lookup → SARS rate),
+  VAT (15%), and final quote in ZAR (with FX snapshot for invoice locking).
+  All costs stored as integers (cents) to avoid float precision. **HS-code
+  lookup is stubbed** — returns default "20% duty"; real implementation queries
+  Zonos Classify or internal SARS dataset.
+- WhatsApp flow (in `whatsappBookingBot.ts`, mode `shopping`): Paste URL → weight
+  → ship method → delivery address (name/email/street/city/province/postal code)
+  → review quote → confirm.
+- `src/pages/api/payfast/webhook.ts` — ITN receiver for PayFast payments. On
+  COMPLETE: marks order PAID, sends WhatsApp notification to recipient
+  (estimated delivery) and customer (order confirmed). Verifies signature;
+  **stub until `PAYFAST_PASSPHRASE` is set** — no fabricated success path.
+- **Not yet built:** product extraction (Amazon Advertising API, Walmart/eBay
+  web scrape, Keepa historical pricing), photo/video weight estimation (Rekognition
+  or crowdsourced DB), real HS-code lookup (Zonos or SARS classifier), live FX
+  rates (Open Exchange Rates, exchangerate.host, with 2–3% buffer).
+
 ## 7. Environment variables
 
 Full reference: `app/.env.example`. Major groups:
@@ -767,6 +799,7 @@ Full reference: `app/.env.example`. Major groups:
 | SMTP / IMAP | `SMTP_*`, `Zoho_PrintAgent_User`, IMAP/POP for print notifications |
 | WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION`, `WHATSAPP_VERIFY_TOKEN` |
 | PayShap | `PAYSHAP_PSP`, `PAYSHAP_API_KEY`, `PAYSHAP_API_SECRET`, `PAYSHAP_MERCHANT_ID`, `PAYSHAP_WEBHOOK_SECRET` — unset until a PSP is chosen (§6.9) |
+| PayFast | `Merchant_ID_Payfast` / `Merchant_Key_Payfast` (or `PAYFAST_MERCHANT_ID`), `PAYFAST_PASSPHRASE` — unset until webhook HMAC verification is wired up (§6.10) |
 | Voice | `XAI_API_KEY`, optional `XAI_VOICE_MODEL` |
 | Ops | `SEED_STAFF_*`, `CRON_SECRET`, `COURIER_GUY_API` |
 
