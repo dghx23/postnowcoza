@@ -678,6 +678,38 @@ and successes.
   - Reconfigure SMTP to `info@postnow.co.za` — MEDIUM
   - WhatsApp permanent token + prod webhook — HIGH
   - Customer portal (parked), Grok Voice Agent, courier label maker (parked)
+  - Uber Direct same-day metro rush tier — **LOW**, backburner (see 6.1a)
+
+### 6.1a Uber Direct (considered, not scoped for build)
+
+Evaluated as a possible premium **same-day** delivery option for urgent metro
+jobs, alongside Bob Go rather than replacing it (Bob Go is a multi-carrier
+aggregator with national next-day-ish coverage; Uber Direct is on-demand,
+single-city dispatch off Uber's Eats-adjacent courier fleet — a different
+shape of service, not a substitute).
+
+- **Verified from Uber's own SDK/docs** (not guessed): OAuth
+  `client_credentials` at `https://auth.uber.com/oauth/v2/token`, scope
+  `eats.deliveries`, plus a separate `customer_id` from the **Direct
+  Dashboard**. Flow: `createQuote(pickupAddress, dropoffAddress)` →
+  `createDelivery(...)` (pickup/dropoff name+address+phone, `manifest_items`,
+  `requires_dropoff_signature`, `requires_id`) → response has `id`/`status`/
+  `tracking_url`.
+- `requires_dropoff_signature` + `requires_id` line up well with the wet-ink/
+  chain-of-custody story. Would plug in the same shape as Bob Go —
+  `BobgoShipment`'s `providerSlug`/`direction` design already has room for a
+  second provider.
+- **Coverage caveat**: Direct's real footprint tracks Uber Eats driver
+  density, not Uber's much broader 40+-city SA ride-hailing footprint —
+  reliable only in the major metros until confirmed in the Direct Dashboard.
+- Uber's general "Create Application" API-suite picker (Freight Carrier,
+  Lending, Uber Pay, Insurance Carrier, etc.) is **not** how Direct is
+  provisioned — that needs the separate Direct Dashboard, a different signup
+  path entirely.
+- Also evaluated against two other repos for relevance: `globeme` (an
+  international import-cost calculator) categorically doesn't fit — same-city
+  dispatch is irrelevant to cross-border parcels clearing customs; `midl` was
+  an empty repo at evaluation time, nothing to assess.
 
 ### 6.8 Grok Voice Agent (xAI Realtime)
 

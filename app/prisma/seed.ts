@@ -88,6 +88,13 @@ async function main() {
       comment:
         "Workspace on /finance#payment-structure (BillingItem codes/rates). Next: auto-apply active DISPATCH (or selected) line to new payments, map zohoItemId into createInvoice line items, surface billing line on every ledger row. Keep SyncException for structure/Zoho mismatches.",
     },
+    {
+      name: "Uber Direct — same-day metro rush tier (considered, parked)",
+      priority: "LOW",
+      status: "NOT_STARTED",
+      comment:
+        "BACKBURNER, not scoped for build. Idea: a premium same-day delivery option for urgent metro jobs (Cape Town/Johannesburg/Durban/Pretoria, wherever Uber's courier fleet has real density), alongside Bob Go rather than replacing it. Verified API shape (Uber's own SDK + docs): OAuth client_credentials at https://auth.uber.com/oauth/v2/token (scope eats.deliveries) + a separate customer_id from the Direct Dashboard; flow is createQuote(pickupAddress, dropoffAddress) -> createDelivery(pickup/dropoff name+address+phone, manifest_items, requires_dropoff_signature, requires_id) -> response has id/status/tracking_url. requires_dropoff_signature + requires_id map well onto the wet-ink/chain-of-custody story. Would plug in the same shape as Bob Go (BobgoShipment's providerSlug/direction design already has room for a second provider). Real constraint: Uber Direct's coverage tracks Uber Eats driver density, not Uber's much broader 40+-city ride-hailing footprint - confirmed reliable only in the major metros until checked in the Direct Dashboard. Note: Uber's general 'Create Application' API-suite picker (Freight Carrier, Lending, Uber Pay, Insurance Carrier, etc.) is NOT how Direct is provisioned - that needs the separate Direct Dashboard. Evaluated against two other projects (globeme: cross-border import-cost calculator, categorically doesn't fit - same-city dispatch is irrelevant to international parcels clearing customs; midl: repo was empty at evaluation time, nothing to assess).",
+    },
   ];
 
   for (const item of roadmapItems) {
