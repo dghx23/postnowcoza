@@ -78,16 +78,33 @@ enum PrintProvider {
   EPSON_DIRECT
 }
 
-model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  role          Role      @default(CUSTOMER)
-  consentedAt   DateTime?
-  createdAt     DateTime  @default(now())
+enum CourierBookingStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  PAID
+  COURIER_ASSIGNED
+  COLLECTED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
 
-  documents     Document[]
-  auditEvents   AuditEvent[]
+enum CourierBookingPickupType {
+  DOOR
+  LOCKER
+  BUSINESS
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(CUSTOMER)
+  consentedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  documents   Document[]
+  auditEvents AuditEvent[]
 }
 
 model Document {
@@ -104,15 +121,15 @@ model Document {
   // Delivery address for this document. One address per document keeps this
   // simple; a customer with multiple documents can have different addresses
   // on each rather than needing a shared address book.
-  recipientName    String
-  recipientPhone   String
-  recipientEmail   String
-  streetAddress    String
-  localArea        String
-  city             String
-  zone             String
-  postalCode       String
-  country          String         @default("ZA")
+  recipientName  String
+  recipientPhone String
+  recipientEmail String
+  streetAddress  String
+  localArea      String
+  city           String
+  zone           String
+  postalCode     String
+  country        String @default("ZA")
 
   // Option A (Direct) vs Option B (Fully Managed) from the return pathway
   // the customer chose at submission time.
@@ -121,24 +138,24 @@ model Document {
   // Print preferences chosen by the customer at dispatch (honoured by
   // Epson Connect Print EpsonAPI; staff can override in the print dialog).
   // colorMode: mono | color. copies: 1–10.
-  printColorMode   String         @default("mono")
-  printCopies      Int            @default(1)
+  printColorMode String @default("mono")
+  printCopies    Int    @default(1)
 
   // Who created the job: staff manual entry vs customer/portal self-serve.
   // staffCreatorEmail is set when createdVia is STAFF (for tracking badge).
-  createdVia         String         @default("CUSTOMER") // STAFF | CUSTOMER | PORTAL
-  staffCreatorEmail  String?
+  createdVia        String  @default("CUSTOMER") // STAFF | CUSTOMER | PORTAL
+  staffCreatorEmail String?
 
   // Courier rate charged for the outbound dispatch, set once a shipment is
   // booked (src/lib/dispatch.ts). The dispatch fee payment is created from
   // this amount, not recomputed at payment time.
-  dispatchFee      Float?
+  dispatchFee Float?
 
-  auditEvents      AuditEvent[]
-  bobgoShipments   BobgoShipment[]
-  payments         Payment[]
-  epsonPrintJobs   EpsonPrintJob[]
-  subscribers      DocumentSubscriber[]
+  auditEvents    AuditEvent[]
+  bobgoShipments BobgoShipment[]
+  payments       Payment[]
+  epsonPrintJobs EpsonPrintJob[]
+  subscribers    DocumentSubscriber[]
 }
 
 // Someone (besides the owner) who was sent this booking and opted in to
@@ -149,7 +166,7 @@ model DocumentSubscriber {
   id          String   @id @default(cuid())
   documentId  String
   document    Document @relation(fields: [documentId], references: [id])
-  channel     String   // "email" | "whatsapp"
+  channel     String // "email" | "whatsapp"
   destination String
   createdAt   DateTime @default(now())
 
@@ -159,17 +176,17 @@ model DocumentSubscriber {
 // Append-only chain-of-custody log. Rows are never updated or deleted from
 // application code; `prevHash`/`hash` form a tamper-evident chain.
 model AuditEvent {
-  id          String   @id @default(cuid())
-  documentId  String
-  document    Document @relation(fields: [documentId], references: [id])
-  actorId     String?
-  actor       User?    @relation(fields: [actorId], references: [id])
-  action      String
-  metadata    Json?
-  ip          String?
-  prevHash    String?
-  hash        String
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  metadata   Json?
+  ip         String?
+  prevHash   String?
+  hash       String
+  createdAt  DateTime @default(now())
 
   @@index([documentId])
 }
@@ -269,43 +286,43 @@ model PrintSettings {
 
 // A Bob Pay payment intent for a document's dispatch fee.
 model Payment {
-  id              String        @id @default(cuid())
-  documentId      String
-  document        Document      @relation(fields: [documentId], references: [id])
-  customPaymentId String        @unique
-  bobpayUuid      String?
-  amount          Float
-  status          PaymentStatus @default(UNPAID)
-  paymentMethod   String?
-  paymentUrl      String?
-  rawPayload      Json?
+  id                     String        @id @default(cuid())
+  documentId             String
+  document               Document      @relation(fields: [documentId], references: [id])
+  customPaymentId        String        @unique
+  bobpayUuid             String?
+  amount                 Float
+  status                 PaymentStatus @default(UNPAID)
+  paymentMethod          String?
+  paymentUrl             String?
+  rawPayload             Json?
   // Zoho Books mapping (invoice + contact + customer payment)
-  zohoBooksInvoiceId  String?
-  zohoBooksContactId  String?
-  zohoBooksPaymentId  String?
-  zohoBooksSyncedAt   DateTime?
-  zohoBooksSyncError  String?
+  zohoBooksInvoiceId     String?
+  zohoBooksContactId     String?
+  zohoBooksPaymentId     String?
+  zohoBooksSyncedAt      DateTime?
+  zohoBooksSyncError     String?
   /// Last known Zoho invoice status from pull (paid | sent | overdue | …)
   zohoBooksInvoiceStatus String?
   /// Outstanding balance on the Zoho invoice (if any)
   zohoBooksBalance       Float?
   zohoBooksLastPullAt    DateTime?
   /// Optional link to a BillingItem used for this fee line
-  billingItemId   String?
-  billingItem     BillingItem?  @relation(fields: [billingItemId], references: [id])
+  billingItemId          String?
+  billingItem            BillingItem?  @relation(fields: [billingItemId], references: [id])
 
   // Manual-entry accountability (staff-created documents only, captured on
   // the "Request payment of dispatch fee" screen before send/cancel/waive).
   manualEntryJustification String?
-  isTestEntry              Boolean  @default(false)
+  isTestEntry              Boolean @default(false)
   cancelledJustification   String?
   /// Set when staff processes this job at no cost - the exact loss amount,
   /// entered and confirmed on that screen, for the finance review queue.
   waivedAmount             Float?
   waivedJustification      String?
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([documentId])
   @@index([billingItemId])
@@ -314,36 +331,90 @@ model Payment {
 // Staff-editable payment structure / rate lines that feed dispatch fees
 // and eventually Zoho Books line items. Workspace on /finance.
 model BillingItem {
-  id              String   @id @default(cuid())
-  code            String   @unique
-  name            String
-  description     String?
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  description String?
   /// Default ZAR amount for this billing line
-  amount          Float
+  amount      Float
   /// Optional Zoho Books item_id when mapped
-  zohoItemId      String?
-  active          Boolean  @default(true)
-  sortOrder       Int      @default(0)
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  payments        Payment[]
+  zohoItemId  String?
+  active      Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  payments    Payment[]
 }
 
 // Two-way Zoho ↔ PostNow (and payment-structure) exception log
 model SyncException {
-  id          String   @id @default(cuid())
-  source      String   // zoho_push | zoho_pull | payment_structure | other
-  severity    String   @default("error") // error | warn | info
-  title       String
-  detail      String?
-  paymentId   String?
-  documentId  String?
-  metadata    Json?
-  resolved    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  resolvedAt  DateTime?
+  id         String    @id @default(cuid())
+  source     String // zoho_push | zoho_pull | payment_structure | other
+  severity   String    @default("error") // error | warn | info
+  title      String
+  detail     String?
+  paymentId  String?
+  documentId String?
+  metadata   Json?
+  resolved   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
 
   @@index([resolved, createdAt])
   @@index([source])
+}
+
+// A courier booking made through the WhatsApp bot (distinct from the E2
+// document-dispatch product): sender books a pickup, pays instantly via
+// PayShap Request-to-Pay, and both sender + recipient get WhatsApp
+// tracking updates. See src/lib/whatsappBookingBot.ts for the conversation
+// state machine and src/lib/payshap.ts for the payment integration.
+model CourierBooking {
+  id         String               @id @default(cuid())
+  bookingRef String               @unique // e.g. PN-2026-1234
+  status     CourierBookingStatus @default(DRAFT)
+
+  senderPhone   String // WhatsApp wa_id of the person booking (E.164 digits, no +)
+  pickupType    CourierBookingPickupType @default(DOOR)
+  pickupAddress String?
+  pickupLat     Float?
+  pickupLng     Float?
+
+  recipientName    String?
+  recipientPhone   String? // WhatsApp wa_id, notified on payment + status changes
+  recipientAddress String?
+
+  // Parcel list captured during the chat, e.g.
+  // [{ "weightKg": 2, "description": "1-5kg" }]
+  parcels Json
+
+  serviceLevel  String? // rate card service code chosen (see src/lib/rateCards.ts)
+  courier       String?
+  price         Float?
+  insurance     Boolean @default(false)
+  scheduledDate String?
+  instructions  String?
+
+  payShapRequestId String? // reference from the PSP once Request-to-Pay is sent
+  paidAt           DateTime?
+
+  bobgoShipmentId String? // link to BobgoShipment once a real waybill is booked
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([senderPhone])
+  @@index([status])
+}
+
+// Persists the WhatsApp conversation's current step between webhook
+// deliveries (serverless functions are stateless — there's no in-memory
+// option). One row per WhatsApp sender.
+model WhatsAppSession {
+  phone     String   @id // wa_id, digits only
+  mode      String   @default("idle") // idle | booking | tracking | quoting
+  step      String   @default("start")
+  data      Json     @default("{}")
+  updatedAt DateTime @updatedAt
 }

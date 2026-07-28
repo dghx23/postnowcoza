@@ -18,6 +18,11 @@ audit trail at every step.
 hub, financial ledger, payment request by email/WhatsApp, tracking). Customer
 self-serve portal routes are reserved but not the primary nav.
 
+**New front-end offering (in progress):** a WhatsApp-native courier-booking
+flow — separate from the E2 document product — where anyone can book a
+door/locker/business pickup entirely inside a WhatsApp chat and pay instantly
+via PayShap Request-to-Pay. See §6.9.
+
 ## 2. Domains & hosting split
 
 | Domain | Purpose | Hosting |
@@ -709,6 +714,43 @@ Key files:
 Requires `XAI_API_KEY` in Vercel. Optional `XAI_VOICE_MODEL` (defaults to
 `grok-voice-latest`).
 
+### 6.9 WhatsApp courier booking + PayShap (new front-end offering)
+
+A second, independent product surface reachable entirely through WhatsApp —
+book a courier pickup (door, locker, or business) and pay instantly, without
+ever opening the app. Built on the WhatsApp integration already used for E2
+payment-request messages (§6.2.2).
+
+- `src/lib/whatsappBookingBot.ts` — the conversation state machine. Each
+  inbound Cloud API message is handled by a stateless Vercel function, so
+  the current step is persisted in `WhatsAppSession` (keyed by phone) between
+  webhook deliveries. Flow: main menu → pickup type → pickup address →
+  recipient name/phone/address → parcel weight bracket → instant quote →
+  booking confirmation → (once PayShap is wired up) payment.
+- `CourierBooking` (Prisma model) — one row per booking: sender/recipient
+  details, parcel list, chosen service/courier/price, status
+  (`DRAFT → AWAITING_PAYMENT → PAID → …`), PayShap request id, and a link to
+  a `BobgoShipment` once a real waybill exists.
+- Quotes reuse the existing Bob Go rate-card data (`src/lib/rateCards.ts`,
+  `getRatesForWeight`) rather than a new pricing model — currently hardcoded
+  to the `main` zone until pickup/recipient addresses are geocoded into a
+  zone.
+- `src/pages/api/whatsapp/webhook.ts` now dispatches every inbound message to
+  `handleInboundMessage()` (previously logged only).
+- `src/lib/payshap.ts` — **stub.** There is no single public PayShap API;
+  Request-to-Pay is only reachable through a bank/PSP with PayShap enabled
+  (Ozow, Netcash, Electrum). `isPayShapConfigured()` / `createPayShapRequest()`
+  define the shape the rest of the app depends on, but `createPayShapRequest`
+  throws until a PSP is chosen and credentialed — bookings stay
+  `AWAITING_PAYMENT` for now, no fabricated success path.
+- `src/pages/api/payshap/webhook.ts` — payment-confirmation receiver. 501s
+  until `verifyPayShapWebhookSignature()` can actually verify a payload (same
+  reasoning as above). Once wired up: marks the booking `PAID` and WhatsApps
+  both the sender and the recipient.
+- **Not yet built:** photo/video parcel-size estimation (weight is picked
+  from fixed brackets), forwarded-message/screenshot address extraction,
+  locker-network (Pudo) integration, zone-aware rate lookup.
+
 ## 7. Environment variables
 
 Full reference: `app/.env.example`. Major groups:
@@ -724,6 +766,7 @@ Full reference: `app/.env.example`. Major groups:
 | Epson | `EPSON_*` OAuth + API key |
 | SMTP / IMAP | `SMTP_*`, `Zoho_PrintAgent_User`, IMAP/POP for print notifications |
 | WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION`, `WHATSAPP_VERIFY_TOKEN` |
+| PayShap | `PAYSHAP_PSP`, `PAYSHAP_API_KEY`, `PAYSHAP_API_SECRET`, `PAYSHAP_MERCHANT_ID`, `PAYSHAP_WEBHOOK_SECRET` — unset until a PSP is chosen (§6.9) |
 | Voice | `XAI_API_KEY`, optional `XAI_VOICE_MODEL` |
 | Ops | `SEED_STAFF_*`, `CRON_SECRET`, `COURIER_GUY_API` |
 
@@ -805,7 +848,8 @@ integrations, or simply not tried yet):
 4. **WhatsApp prod token** — Cloud API send + inbound webhook route both
    exist now (see 6.2.2); still need a permanent (non-expiring) access token
    in Vercel and to register the webhook URL + verify token in the Meta App
-   dashboard. Conversational reply logic remains operator-owned.
+   dashboard. The webhook now drives a real conversational booking flow
+   (§6.9), not just logging.
 5. **Bob Go API token** — may need account/plan unlock for live booking.
 6. **POPIA data subject rights** — done per-document (export self-service,
    erasure staff-reviewed); account-wide export/erasure across a customer's
@@ -820,6 +864,11 @@ integrations, or simply not tried yet):
 12. **Deliberately not built** — home-grown courier label agent with file-based
     Epson tokens / fabricated tracking numbers (see prior analysis: serverless
     + courier integrity). Prefer Bob Go waybills when token available.
+13. **PayShap PSP selection** — `src/lib/payshap.ts` is a stub; pick a bank/PSP
+    with Request-to-Pay enabled (Ozow, Netcash, or Electrum), get credentials,
+    set `PAYSHAP_*` in Vercel, then implement the real RTP call and webhook
+    signature verification (§6.9). Until then WhatsApp bookings stop at
+    `AWAITING_PAYMENT`.
 
 ### Done since earlier drafts (do not re-open as missing)
 

@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { handleInboundMessage, type InboundWhatsAppMessage } from "@/lib/whatsappBookingBot";
 
 /**
  * WhatsApp Cloud API webhook.
@@ -9,9 +10,9 @@ import type { NextApiRequest, NextApiResponse } from "next";
  *        echoed back if the token matches.
  * POST - Inbound events (messages, delivery/read statuses). Meta requires a
  *        fast 200 ack regardless of content or it will retry and eventually
- *        disable the subscription, so this always acks after logging -
- *        actual conversational reply logic is operator-owned and not
- *        implemented here (see TECH_SPEC 6.7 roadmap item).
+ *        disable the subscription, so this acks immediately and drives the
+ *        courier-booking conversation (src/lib/whatsappBookingBot.ts)
+ *        fire-and-forget after logging.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === "GET") {
@@ -37,6 +38,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               type: message.type,
               text: message.text?.body,
               timestamp: message.timestamp,
+            });
+
+            const inbound: InboundWhatsAppMessage = {
+              from: message.from,
+              type:
+                message.type === "text" ||
+                message.type === "interactive" ||
+                message.type === "location" ||
+                message.type === "image" ||
+                message.type === "video"
+                  ? message.type
+                  : "unknown",
+              text:
+                message.text?.body ??
+                message.interactive?.button_reply?.title ??
+                message.interactive?.list_reply?.title,
+              location: message.location
+                ? { latitude: message.location.latitude, longitude: message.location.longitude }
+                : undefined,
+            };
+
+            // Fire-and-forget: Meta needs a fast ack, and any reply this
+            // sends goes out over a separate outbound Graph API call, not
+            // this response body.
+            handleInboundMessage(inbound).catch((err) => {
+              console.error("WhatsApp booking bot error:", err);
             });
           }
           for (const status of value.statuses ?? []) {
