@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/components/BuyingPowerPanel.tsx","./src/components/KpiCard.tsx","./src/components/PriceGapTable.tsx","./src/components/PriceTrendChart.tsx","./src/pages/DashboardPage.tsx","./src/pages/LandingPage.tsx"],"version":"5.9.3"}
