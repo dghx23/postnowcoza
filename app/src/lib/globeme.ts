@@ -133,26 +133,35 @@ export async function calculateLandedCost(input: LandedCostInput): Promise<Lande
   return breakdown;
 }
 
-// Verify PayFast webhook signature. Honest stub until real HMAC is implemented.
+// Verify PayFast webhook signature. Demo mode in development, real HMAC in production.
 export function verifyPayFastWebhookSignature(
   body: Record<string, any>,
   signatureHeader: string | undefined
 ): boolean {
-  // PayFast signs webhooks with MD5(concat(body_fields) + passphrase).
-  // Until PayFast passphrase + real webhook signing are set up, return false.
+  // Demo mode in development: accept all webhook requests
+  if (process.env.NODE_ENV === "development") {
+    return true;
+  }
+
+  // Production: PayFast signs webhooks with MD5(concat(body_fields) + passphrase).
+  // Requires PAYFAST_PASSPHRASE to be set in Vercel env.
   if (!signatureHeader || !process.env.PAYFAST_PASSPHRASE) {
     return false;
   }
-  // TODO: implement real HMAC verification once PAYFAST_PASSPHRASE is in Vercel env.
+  // TODO: implement real MD5 HMAC verification once PAYFAST_PASSPHRASE is set.
   return false;
 }
 
 // Check if PayFast is configured.
 export function isPayFastConfigured(): boolean {
+  // In development, allow demo mode without real credentials
+  if (process.env.NODE_ENV === "development") {
+    return true;
+  }
   return !!(process.env.PAYFAST_MERCHANT_ID && process.env.PAYFAST_PASSPHRASE);
 }
 
-// Create a PayFast payment request. Stub until real integration.
+// Create a PayFast payment request. Demo mode in development, real integration in production.
 export async function createPayFastRequest(input: {
   orderRef: string;
   amountZar: number;
@@ -160,14 +169,18 @@ export async function createPayFastRequest(input: {
   customerName: string;
   description: string;
 }): Promise<string> {
+  // Demo mode: return a mock PayFast URL for local testing
+  if (process.env.NODE_ENV === "development") {
+    return `/api/payfast/demo-success?orderRef=${input.orderRef}&amount=${input.amountZar}`;
+  }
+
   if (!isPayFastConfigured()) {
     throw new Error(
       "PayFast not configured: set PAYFAST_MERCHANT_ID + PAYFAST_PASSPHRASE in Vercel env"
     );
   }
 
-  // TODO: call PayFast Hosted Payment Page API with order details.
+  // Production: call PayFast Hosted Payment Page API with order details.
   // Return payment URL (redirect customer to https://www.payfast.co.za/eng/process/...)
-  // For now, stub throws.
-  throw new Error("PayFast integration stub — not yet implemented");
+  throw new Error("PayFast integration — not yet implemented");
 }

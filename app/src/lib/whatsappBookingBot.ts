@@ -40,6 +40,8 @@ interface SessionData {
   productWeight?: number;
   shipMethod?: "EXPRESS" | "STANDARD" | "ECONOMY";
   orderId?: string;
+  orderRef?: string;
+  finalQuoteZar?: number;
 }
 
 interface Session {
@@ -599,19 +601,45 @@ async function handleShoppingStep(
     );
 
     session.data.orderId = order.id;
+    session.data.orderRef = orderRef;
+    session.data.finalQuoteZar = breakdown.finalQuoteZar;
     await saveSession(session);
     return;
   }
 
   if (session.step === "review_and_pay") {
     if (lower === "yes" || lower === "y" || lower === "confirm") {
-      // TODO: create PayFast request and send link
-      await reply(
-        phone,
-        `✅ Order confirmed! PayFast payment link would be sent here (stub until PAYFAST_MERCHANT_ID is set). Order ref: ${session.data.orderId}`,
-      );
+      // Create PayFast payment request
+      const { createPayFastRequest } = await import("./globeme");
+      try {
+        const paymentUrl = await createPayFastRequest({
+          orderRef: session.data.orderRef || "unknown",
+          amountZar: session.data.finalQuoteZar || 0,
+          customerEmail: session.data.customerEmail || "unknown@example.com",
+          customerName: session.data.recipientName || "Customer",
+          description: `GlobeMe order ${session.data.orderRef}`,
+        });
 
-      // Reset.
+        // Send payment link via WhatsApp
+        await reply(
+          phone,
+          `💳 Payment link ready!\n\n${paymentUrl}\n\nComplete payment and you'll get tracking updates immediately.`,
+        );
+
+        // Update order status to AWAITING_PAYMENT
+        await prisma.shoppingOrder.update({
+          where: { id: session.data.orderId },
+          data: { status: "AWAITING_PAYMENT" },
+        });
+      } catch (err) {
+        console.error("PayFast request error:", err);
+        await reply(
+          phone,
+          `❌ Error creating payment link. Please try again or contact support@postnow.co.za`,
+        );
+      }
+
+      // Reset session
       session.mode = "idle";
       session.step = "start";
       session.data = {};

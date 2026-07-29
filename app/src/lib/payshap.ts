@@ -18,6 +18,10 @@
  */
 
 export function isPayShapConfigured(): boolean {
+  // In development, allow demo mode without real credentials
+  if (process.env.NODE_ENV === "development") {
+    return true;
+  }
   return Boolean(
     process.env.PAYSHAP_PSP &&
       process.env.PAYSHAP_API_KEY &&
@@ -43,13 +47,22 @@ export interface PayShapRequestToPayResult {
 /**
  * Sends a Request-to-Pay for the given amount to the payer's ShapID.
  *
- * TODO: this throws until a PSP is chosen and credentialed — no fabricated
- * success path. Once wired up, this should call that PSP's RTP endpoint
- * and map its response onto PayShapRequestToPayResult.
+ * In development mode, returns a mock successful request. In production,
+ * requires real PSP credentials (Ozow/Netcash/Electrum).
  */
 export async function createPayShapRequest(
   input: PayShapRequestToPayInput,
 ): Promise<PayShapRequestToPayResult> {
+  // Demo mode for development/preview
+  if (process.env.NODE_ENV === "development") {
+    const requestId = `DEMO-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    return {
+      requestId,
+      status: "SENT",
+      raw: { demo: true, input },
+    };
+  }
+
   if (!isPayShapConfigured()) {
     throw new Error(
       "PayShap is not configured — set PAYSHAP_PSP, PAYSHAP_API_KEY and PAYSHAP_MERCHANT_ID once a PSP (Ozow/Netcash/Electrum) account exists",
@@ -63,12 +76,19 @@ export async function createPayShapRequest(
 
 /**
  * Verifies an inbound payment-confirmation webhook from the PSP.
- * TODO: replace with the PSP's actual signature scheme (usually HMAC over
- * the raw body using PAYSHAP_WEBHOOK_SECRET) once chosen.
+ * In development mode, accepts all requests. In production, requires
+ * real HMAC signature verification with PAYSHAP_WEBHOOK_SECRET.
  */
 export function verifyPayShapWebhookSignature(
   _rawBody: string,
   _signatureHeader: string | undefined,
 ): boolean {
+  // Demo mode: accept all webhook requests in development
+  if (process.env.NODE_ENV === "development") {
+    return true;
+  }
+
+  // Production: TODO replace with the PSP's actual signature scheme
+  // (usually HMAC over the raw body using PAYSHAP_WEBHOOK_SECRET)
   return false;
 }
