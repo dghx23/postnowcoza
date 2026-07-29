@@ -910,3 +910,19 @@ integrations, or simply not tried yet):
 - `/finance` ledger, Zoho push/pull, SyncException ⚙ panel, BillingItem workspace
 - Epson Direct email print, IMAP confirmation pipeline, print job detail log
 - PayFast ITN → Zoho push hook
+
+## 9. Future integration opportunities
+
+### Mapbox Location Agent (Conversational Maps)
+
+**Status**: Research phase  
+**Reference**: https://www.mapbox.com/blog/maps-turn-conversational  
+**MCP Server**: https://github.com/mapbox/mcp-server
+
+Mapbox's Location Agent enables **conversational maps** — where users ask natural-language questions about locations/routes and get visual, actionable answers on an interactive map. Could enhance PostNow, GlobeMe, and PostNow Express:
+
+- **PostNow Express**: Zone-aware rate lookup ("Find a locker drop-off near [location]"), delivery visualization (sender/recipient on map with ETA), route optimization
+- **GlobeMe**: Shipping route visualization (US warehouse → port → customs → delivery), delivery ETA on map, neighborhood logistics accessibility
+- **E2**: Facility optimization ("Where to place print facilities for fastest delivery?"), route comparison for returns, isochrone-based zone mapping
+
+**Next step**: Proof-of-concept for PostNow Express zone-aware rate lookup + visual pickup selection. See `INTEGRATION_OPPORTUNITIES.md` for full analysis.
