@@ -711,6 +711,28 @@ shape of service, not a substitute).
   dispatch is irrelevant to cross-border parcels clearing customs; `midl` was
   an empty repo at evaluation time, nothing to assess.
 
+### 6.1b Cinematic route animation on tracking (considered, not scoped for build)
+
+Technique from [Mapbox's own blog](https://www.mapbox.com/blog/building-cinematic-route-animations-with-mapboxgl):
+reveal a GeoJSON route incrementally via the `line-gradient` paint property
+driven by `requestAnimationFrame`, follow the leading edge with Mapbox GL
+JS's FreeCamera API (camera position computed from pitch/bearing/altitude via
+trigonometry), smooth the camera with linear interpolation (lerp), export
+canvas frames to video.
+
+- **Idea**: replace or augment the checkpoint table on the tracking page's
+  "Live Courier Tracking" card (6.3.1) with an animated facility-to-delivery
+  route reveal — we already have both endpoints' addresses plus Bob Go's
+  checkpoint history.
+- **Not free**: needs a Mapbox account/token (nothing in this app uses Mapbox
+  today) and real geocoding of both addresses — Nominatim autocomplete (6.5)
+  captures `lat`/`lng` in some flows, not all. A genuine UI investment, not a
+  quick add.
+- Also logged in `globeme` (plausible fit — an animated package-journey clip
+  suits its cross-border premise) and `marketscope`
+  (`docs/considered-ideas.md` — no clear fit, that product has no geography
+  concept today); `midl` was empty at evaluation time.
+
 ### 6.8 Grok Voice Agent (xAI Realtime)
 
 In-app speech-to-speech agent at `/voice`, powered by the Grok Voice Agent
