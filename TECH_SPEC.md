@@ -919,7 +919,7 @@ integrations, or simply not tried yet):
 **Reference**: https://www.mapbox.com/blog/maps-turn-conversational  
 **MCP Server**: https://github.com/mapbox/mcp-server
 
-Mapbox's Location Agent enables **conversational maps** — where users ask natural-language questions about locations/routes and get visual, actionable answers on an interactive map. Could enhance PostNow, GlobeMe, and PostNow Express:
+Mapbox's Location Agent enables **conversational maps** — where users ask natural-language questions about locations/routes and get visual, actionable answers on an interactive map. Could enhance PostNow products:
 
 - **PostNow Express**: Zone-aware rate lookup ("Find a locker drop-off near [location]"), delivery visualization (sender/recipient on map with ETA), route optimization
 - **GlobeMe**: Shipping route visualization (US warehouse → port → customs → delivery), delivery ETA on map, neighborhood logistics accessibility

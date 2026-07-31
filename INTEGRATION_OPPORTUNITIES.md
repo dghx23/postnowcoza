@@ -42,10 +42,6 @@ Mapbox Location Agent: location-aware conversational AI built on LLM + Mapbox MC
 - **Route planning**: Staff can ask "Best courier for this delivery?" → visual route comparison on map
 - **Return pathway**: "Show me the fastest return route from recipient to facility" → mapped route
 
-#### RiskAtlas (Geographic Risk Analysis)
-- **Risk queries**: "Which areas in [country] have high flood risk + supply chain disruption?" → overlay risk layers on map
-- **Exposure analysis**: "What's my portfolio's geospatial risk?" → visualize on map
-- **Scenario planning**: "If this area floods, what's the business impact?" → map-based scenario
 
 ### Implementation Path
 
