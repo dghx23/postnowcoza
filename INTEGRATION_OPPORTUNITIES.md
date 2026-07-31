@@ -67,4 +67,3 @@ Mapbox Location Agent: location-aware conversational AI built on LLM + Mapbox MC
 ### Next Steps
 - Schedule proof-of-concept for PostNow Express (zone-aware rate lookup + visual pickup selection)
 - Evaluate GlobeMe route visualization (US→SA shipping transparency)
-- Consider RiskAtlas as primary candidate (geospatial analysis is core value prop)
