@@ -103,8 +103,16 @@ export default function LoginPage() {
 
         {isMidl ? (
           <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-            Midl (escrow + courier for peer-to-peer trade) shares PostNow&apos;s infrastructure but isn&apos;t
-            live yet — its admin login will appear here once that integration ships.
+            Midl (escrow + courier for peer-to-peer trade) shares PostNow&apos;s infrastructure.
+            <br /><br />
+            <a
+              href="https://claude.ai/code/artifact/452fa1cb-807a-4c47-9956-f4056413d720"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "var(--teal-600)", fontWeight: 600, textDecoration: "none" }}
+            >
+              View Midl Platform Prototype ↗
+            </a>
           </div>
         ) : (
           <>
