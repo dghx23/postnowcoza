@@ -13,6 +13,16 @@ enum Role {
   ADMIN
 }
 
+// Gates Deal payout, not Deal creation — a user can be added to a deal as
+// seller immediately, but the RELEASED transition additionally requires
+// kycStatus == VERIFIED. See BACKEND_DESIGN.md §6.
+enum KycStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 enum DocumentStatus {
   UPLOADED
   QUEUED_FOR_PRINT
@@ -101,10 +111,15 @@ model User {
   passwordHash String
   role         Role      @default(CUSTOMER)
   consentedAt  DateTime?
+  /// Required before a Deal can move to RELEASED and pay this user out as a
+  /// seller. Deal creation itself doesn't require it — only payout does.
+  kycStatus    KycStatus @default(UNVERIFIED)
   createdAt    DateTime  @default(now())
 
-  documents   Document[]
-  auditEvents AuditEvent[]
+  documents     Document[]
+  auditEvents   AuditEvent[]
+  dealsAsBuyer  Deal[]       @relation("DealBuyer")
+  dealsAsSeller Deal[]       @relation("DealSeller")
 }
 
 model Document {
@@ -175,29 +190,42 @@ model DocumentSubscriber {
 
 // Append-only chain-of-custody log. Rows are never updated or deleted from
 // application code; `prevHash`/`hash` form a tamper-evident chain.
+//
+// Originally Document-only (E2). documentId/dealId are both optional so a
+// row belongs to exactly one owner — enforced by the CHECK constraint added
+// in migration 20260131000000_midl_deal_model, not by Prisma itself (Prisma
+// has no native polymorphic-relation support, so this is two nullable FKs
+// rather than a single entityType/entityId pair).
 model AuditEvent {
-  id         String   @id @default(cuid())
-  documentId String
-  document   Document @relation(fields: [documentId], references: [id])
+  id         String    @id @default(cuid())
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id])
+  dealId     String?
+  deal       Deal?     @relation(fields: [dealId], references: [id])
   actorId    String?
-  actor      User?    @relation(fields: [actorId], references: [id])
+  actor      User?     @relation(fields: [actorId], references: [id])
   action     String
   metadata   Json?
   ip         String?
   prevHash   String?
   hash       String
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([documentId])
+  @@index([dealId])
 }
 
-// One row per courier shipment attempt on a document — an OUTBOUND dispatch
-// and, later, a RETURN each get their own row so both legs of the
-// chain-of-custody are independently trackable.
+// One row per courier shipment attempt — an OUTBOUND dispatch and, later, a
+// RETURN each get their own row so both legs of the chain-of-custody are
+// independently trackable. Same optional-dual-FK note as AuditEvent above:
+// exactly one of documentId/dealId is set per row (E2 vs. Midl), enforced
+// by a DB CHECK constraint, not by Prisma.
 model BobgoShipment {
   id                String            @id @default(cuid())
-  documentId        String
-  document          Document          @relation(fields: [documentId], references: [id])
+  documentId        String?
+  document          Document?         @relation(fields: [documentId], references: [id])
+  dealId            String?
+  deal              Deal?             @relation(fields: [dealId], references: [id])
   direction         ShipmentDirection
   bobgoOrderId      Int?
   providerSlug      String?
@@ -213,6 +241,7 @@ model BobgoShipment {
   updatedAt         DateTime          @updatedAt
 
   @@index([documentId])
+  @@index([dealId])
 }
 
 // Internal staff-only feature/roadmap tracker - not part of the customer-
@@ -440,63 +469,217 @@ enum ShipMethod {
 // (item + duty + VAT + shipping), customer pays via PayFast, we import and deliver.
 // Once payment cleared, links to BobgoShipment for real courier leg.
 model ShoppingOrder {
-  id                    String              @id @default(cuid())
-  orderRef              String              @unique // e.g., GM-2026-1234
-  status                ShoppingOrderStatus @default(DRAFT)
+  id       String              @id @default(cuid())
+  orderRef String              @unique // e.g., GM-2026-1234
+  status   ShoppingOrderStatus @default(DRAFT)
 
   // Customer info
-  customerEmail         String
-  customerPhone         String?
-  recipientName         String
-  recipientPhone        String
-  recipientStreet       String
-  recipientCity         String
-  recipientProvince     String
-  recipientPostalCode   String
-  recipientCountry      String @default("ZA")
+  customerEmail       String
+  customerPhone       String?
+  recipientName       String
+  recipientPhone      String
+  recipientStreet     String
+  recipientCity       String
+  recipientProvince   String
+  recipientPostalCode String
+  recipientCountry    String  @default("ZA")
 
   // Product info
-  productUrl            String
-  productName           String?
-  productPrice          Float? // USD
-  productWeight         Float? // kg (estimated or customer-entered)
+  productUrl    String
+  productName   String?
+  productPrice  Float? // USD
+  productWeight Float? // kg (estimated or customer-entered)
 
   // Shipping choice
-  shipMethod            ShipMethod @default(STANDARD)
-  extraWeightSurcharge  Float      @default(0) // per 0.5kg above 1kg
+  shipMethod           ShipMethod @default(STANDARD)
+  extraWeightSurcharge Float      @default(0) // per 0.5kg above 1kg
 
   // Service choices
-  personalShopperFee    Float      @default(0) // optional concierge charge
-  markupPercent         Float      @default(15) // customer-chosen markup on landed cost
+  personalShopperFee Float @default(0) // optional concierge charge
+  markupPercent      Float @default(15) // customer-chosen markup on landed cost
 
   // Landed-cost breakdown
-  itemPriceCents        Int? // stored as cents to avoid float precision
-  shippingCostCents     Int? // USD base, before extra weight
-  shopperFeeCents       Int?
-  hsCode                String? // HS classification of product
-  dutyRate              Float? // SARS duty % (e.g., 0.20 for 20%)
-  dutyCents             Int? // calculated: (item + insurance + freight) * dutyRate
-  vatCents              Int? // calculated: (duty + total cost) * 0.15
-  landedCostCents       Int? // item + shipping + shopper fee + duty + VAT, in cents
-  finalQuoteCents       Int? // landed cost + markup
-  finalQuoteZar         Float? // landed cost * FX rate (cached at quote time)
+  itemPriceCents    Int? // stored as cents to avoid float precision
+  shippingCostCents Int? // USD base, before extra weight
+  shopperFeeCents   Int?
+  hsCode            String? // HS classification of product
+  dutyRate          Float? // SARS duty % (e.g., 0.20 for 20%)
+  dutyCents         Int? // calculated: (item + insurance + freight) * dutyRate
+  vatCents          Int? // calculated: (duty + total cost) * 0.15
+  landedCostCents   Int? // item + shipping + shopper fee + duty + VAT, in cents
+  finalQuoteCents   Int? // landed cost + markup
+  finalQuoteZar     Float? // landed cost * FX rate (cached at quote time)
 
   // Payment
-  payFastPaymentId      String?
-  payFastUuid           String?
-  payFastUrl            String?
-  paidAt                DateTime?
+  payFastPaymentId String?
+  payFastUuid      String?
+  payFastUrl       String?
+  paidAt           DateTime?
 
   // Link to courier once paid
-  bobgoShipmentId       String?
+  bobgoShipmentId String?
 
   // FX rate snapshot (avoid stale rates across quote → payment)
-  fxRateUsdzarSnapshot  Float? // e.g., 18.5
+  fxRateUsdzarSnapshot Float? // e.g., 18.5
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([customerEmail])
   @@index([status])
 }
 
+// ---------------------------------------------------------------------------
+// Midl: escrow + courier for peer-to-peer trade. See
+// /docs/BACKEND_DESIGN.md and /docs/POSTNOW_INFRA_REUSE.md in the `midl`
+// repo for the full design writeup this schema implements.
+// ---------------------------------------------------------------------------
+
+enum DealPlan {
+  ESSENTIALS
+  STANDARD
+  VERIFIED_DELIVERY
+  PREMIUM_VAULT
+}
+
+// Mirrors ShoppingOrderStatus's shape (draft → funded → moving → settled)
+// but as its own enum, since Midl's gates (report/dispute) don't apply to
+// GlobeMe and vice versa.
+enum DealState {
+  DRAFT
+  FUNDED
+  REPORT_PENDING // item received by Midl, report being written (verified_delivery/premium_vault only)
+  REPORT_ISSUED // report sent to buyer + seller, awaiting buyer response
+  DISPATCHED
+  DELIVERED
+  RELEASED
+  REFUND_PENDING
+  REFUNDED
+  DISPUTED
+  CANCELLED
+}
+
+enum CourierPayer {
+  BUYER
+  SELLER
+  INCLUDED // bundled into the plan fee (standard/verified_delivery/premium_vault)
+}
+
+enum LedgerEntryType {
+  HOLD
+  RELEASE
+  REFUND
+  FEE_CAPTURE
+  COURIER_CHARGE
+}
+
+enum ConditionReportStage {
+  INTAKE
+  PRE_DISPATCH
+}
+
+enum BuyerResponse {
+  PENDING
+  ACCEPTED
+  FLAGGED
+}
+
+// One row per escrow deal. `plan` selects which DealState gates apply —
+// see BACKEND_DESIGN.md §4 for the full transition table.
+model Deal {
+  id        String    @id @default(cuid())
+  reference String    @unique // e.g. MIDL-7842
+  plan      DealPlan
+  state     DealState @default(DRAFT)
+
+  buyerId  String
+  buyer    User   @relation("DealBuyer", fields: [buyerId], references: [id])
+  sellerId String
+  seller   User   @relation("DealSeller", fields: [sellerId], references: [id])
+
+  itemName       String
+  itemValueCents Int
+  itemCategory   String?
+
+  // Essentials plan only; all other plans bundle courier into the fee.
+  courierPayer CourierPayer @default(INCLUDED)
+
+  feeCents       Int @default(0)
+  courierCents   Int @default(0)
+  insuranceCents Int @default(0)
+  // Denormalized cache of SUM(LedgerEntry) for this deal — never written to
+  // directly by application code; a reconciliation job derives it from
+  // ledgerEntries and this column is only for cheap reads.
+  totalHeldCents Int @default(0)
+
+  pickupStreet     String?
+  pickupCity       String?
+  pickupProvince   String?
+  pickupPostal     String?
+  deliveryStreet   String
+  deliveryCity     String
+  deliveryProvince String
+  deliveryPostal   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ledgerEntries    LedgerEntry[]
+  conditionReports ConditionReport[]
+  bobgoShipments   BobgoShipment[]
+  auditEvents      AuditEvent[]
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([state])
+}
+
+// Append-only. Never updated or deleted; Deal.totalHeldCents is a cache
+// derived from summing these, not the other way around. See
+// BACKEND_DESIGN.md §3/§6 for why this has to be the source of truth.
+model LedgerEntry {
+  id          String          @id @default(cuid())
+  dealId      String
+  deal        Deal            @relation(fields: [dealId], references: [id])
+  type        LedgerEntryType
+  amountCents Int
+  /// Reference id from the payment/trust provider (PayFast payment id in
+  /// the MVP; a licensed trust-account provider's hold/release id later —
+  /// see POSTNOW_INFRA_REUSE.md for why PayFast is a placeholder here, not
+  /// a permanent trust account).
+  providerRef String?
+  createdAt   DateTime        @default(now())
+
+  @@index([dealId])
+}
+
+// Only created for verified_delivery / premium_vault plans. The
+// intake/pre_dispatch pair plus the two issuedTo timestamps are the actual
+// enforcement of "buyer and seller both receive the identical report" —
+// not just a UI convention.
+model ConditionReport {
+  id     String               @id @default(cuid())
+  dealId String
+  deal   Deal                 @relation(fields: [dealId], references: [id])
+  stage  ConditionReportStage
+
+  photoKeys      Json // S3 object keys
+  videoUrl       String? // premium_vault only
+  notes          String?
+  serialNumber   String?
+  functionalPass Boolean?
+
+  issuedToBuyerAt  DateTime?
+  issuedToSellerAt DateTime?
+  /// Both issuedTo* timestamps must be set and the payload must match
+  /// before this report can gate a DealState transition — checked at the
+  /// application layer, not enforced in SQL.
+  payloadHash      String?
+
+  buyerResponse    BuyerResponse @default(PENDING)
+  buyerRespondedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([dealId])
+}
