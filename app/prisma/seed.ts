@@ -102,6 +102,20 @@ async function main() {
       comment:
         "Third front-end product: US→SA personal shopping via WhatsApp. Paste product URL, specify weight & delivery address, see landed-cost breakdown (item + duty + VAT + shipping), pay via PayFast. ShoppingOrder model tracks order state (DRAFT → QUOTED → AWAITING_PAYMENT → PAID → SHIPPED → DELIVERED), wired into same WhatsApp session state machine (src/lib/whatsappBookingBot.ts). src/lib/globeme.ts calculates landed costs (HS-code lookup + SARS duty rate + VAT). /api/payfast/webhook.ts handles payment confirmation & notifications. Blocked: PAYFAST_PASSPHRASE + webhook HMAC verification. Product extraction APIs (Amazon/Walmart/eBay) stubbed. Not yet done: HS-code classifier (Zonos or SARS dataset), live FX rates, photo/video weight estimation, address validation.",
     },
+    {
+      name: "Uber Direct — same-day metro rush tier (considered, parked)",
+      priority: "LOW",
+      status: "NOT_STARTED",
+      comment:
+        "BACKBURNER, not scoped for build. Idea: a premium same-day delivery option for urgent metro jobs (Cape Town/Johannesburg/Durban/Pretoria, wherever Uber's courier fleet has real density), alongside Bob Go rather than replacing it. Verified API shape (Uber's own SDK + docs): OAuth client_credentials at https://auth.uber.com/oauth/v2/token (scope eats.deliveries) + a separate customer_id from the Direct Dashboard; flow is createQuote(pickupAddress, dropoffAddress) -> createDelivery(pickup/dropoff name+address+phone, manifest_items, requires_dropoff_signature, requires_id) -> response has id/status/tracking_url. requires_dropoff_signature + requires_id map well onto the wet-ink/chain-of-custody story. Would plug in the same shape as Bob Go (BobgoShipment's providerSlug/direction design already has room for a second provider). Real constraint: Uber Direct's coverage tracks Uber Eats driver density, not Uber's much broader 40+-city ride-hailing footprint - confirmed reliable only in the major metros until checked in the Direct Dashboard. Note: Uber's general 'Create Application' API-suite picker (Freight Carrier, Lending, Uber Pay, Insurance Carrier, etc.) is NOT how Direct is provisioned - that needs the separate Direct Dashboard. Evaluated against two other projects (globeme: cross-border import-cost calculator, categorically doesn't fit - same-city dispatch is irrelevant to international parcels clearing customs; midl: repo was empty at evaluation time, nothing to assess).",
+    },
+    {
+      name: "Cinematic route animation on Live Courier Tracking (considered, parked)",
+      priority: "LOW",
+      status: "NOT_STARTED",
+      comment:
+        "BACKBURNER, not scoped for build. Technique from Mapbox's own blog (https://www.mapbox.com/blog/building-cinematic-route-animations-with-mapboxgl): reveal a GeoJSON route incrementally via the line-gradient paint property driven by requestAnimationFrame, follow the leading edge with Mapbox GL JS's FreeCamera API (position computed from pitch/bearing/altitude), smooth camera movement with lerp, export canvas frames to video. Idea: replace or augment the current checkpoint table on the tracking page's 'Live Courier Tracking' card with an animated facility-to-delivery-address route reveal - we already have both endpoints' addresses and Bob Go's checkpoint history. Would need a Mapbox account/token (not currently used anywhere in this app) and real geocoding of both addresses (Nominatim autocomplete already captures lat/lng in some flows, not all). A genuine UI investment, not a quick add. Also logged in globeme (plausible fit - animated package-journey clip for its cross-border premise) and marketscope (docs/considered-ideas.md - no clear fit, no geography concept in that product today); midl was empty at evaluation time.",
+    },
   ];
 
   for (const item of roadmapItems) {

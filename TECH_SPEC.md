@@ -683,6 +683,60 @@ and successes.
   - Reconfigure SMTP to `info@postnow.co.za` — MEDIUM
   - WhatsApp permanent token + prod webhook — HIGH
   - Customer portal (parked), Grok Voice Agent, courier label maker (parked)
+  - Uber Direct same-day metro rush tier — **LOW**, backburner (see 6.1a)
+
+### 6.1a Uber Direct (considered, not scoped for build)
+
+Evaluated as a possible premium **same-day** delivery option for urgent metro
+jobs, alongside Bob Go rather than replacing it (Bob Go is a multi-carrier
+aggregator with national next-day-ish coverage; Uber Direct is on-demand,
+single-city dispatch off Uber's Eats-adjacent courier fleet — a different
+shape of service, not a substitute).
+
+- **Verified from Uber's own SDK/docs** (not guessed): OAuth
+  `client_credentials` at `https://auth.uber.com/oauth/v2/token`, scope
+  `eats.deliveries`, plus a separate `customer_id` from the **Direct
+  Dashboard**. Flow: `createQuote(pickupAddress, dropoffAddress)` →
+  `createDelivery(...)` (pickup/dropoff name+address+phone, `manifest_items`,
+  `requires_dropoff_signature`, `requires_id`) → response has `id`/`status`/
+  `tracking_url`.
+- `requires_dropoff_signature` + `requires_id` line up well with the wet-ink/
+  chain-of-custody story. Would plug in the same shape as Bob Go —
+  `BobgoShipment`'s `providerSlug`/`direction` design already has room for a
+  second provider.
+- **Coverage caveat**: Direct's real footprint tracks Uber Eats driver
+  density, not Uber's much broader 40+-city SA ride-hailing footprint —
+  reliable only in the major metros until confirmed in the Direct Dashboard.
+- Uber's general "Create Application" API-suite picker (Freight Carrier,
+  Lending, Uber Pay, Insurance Carrier, etc.) is **not** how Direct is
+  provisioned — that needs the separate Direct Dashboard, a different signup
+  path entirely.
+- Also evaluated against two other repos for relevance: `globeme` (an
+  international import-cost calculator) categorically doesn't fit — same-city
+  dispatch is irrelevant to cross-border parcels clearing customs; `midl` was
+  an empty repo at evaluation time, nothing to assess.
+
+### 6.1b Cinematic route animation on tracking (considered, not scoped for build)
+
+Technique from [Mapbox's own blog](https://www.mapbox.com/blog/building-cinematic-route-animations-with-mapboxgl):
+reveal a GeoJSON route incrementally via the `line-gradient` paint property
+driven by `requestAnimationFrame`, follow the leading edge with Mapbox GL
+JS's FreeCamera API (camera position computed from pitch/bearing/altitude via
+trigonometry), smooth the camera with linear interpolation (lerp), export
+canvas frames to video.
+
+- **Idea**: replace or augment the checkpoint table on the tracking page's
+  "Live Courier Tracking" card (6.3.1) with an animated facility-to-delivery
+  route reveal — we already have both endpoints' addresses plus Bob Go's
+  checkpoint history.
+- **Not free**: needs a Mapbox account/token (nothing in this app uses Mapbox
+  today) and real geocoding of both addresses — Nominatim autocomplete (6.5)
+  captures `lat`/`lng` in some flows, not all. A genuine UI investment, not a
+  quick add.
+- Also logged in `globeme` (plausible fit — an animated package-journey clip
+  suits its cross-border premise) and `marketscope`
+  (`docs/considered-ideas.md` — no clear fit, that product has no geography
+  concept today); `midl` was empty at evaluation time.
 
 ### 6.8 Grok Voice Agent (xAI Realtime)
 
