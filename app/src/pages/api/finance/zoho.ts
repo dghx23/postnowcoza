@@ -4,17 +4,22 @@ import { getZohoBooksPublicConfig, zohoBooksConfigured } from "@/lib/zohoBooks";
 import {
   pullLinkedPaymentsFromZohoBooks,
   pullPaymentFromZohoBooks,
+  syncCourierBookingToZohoBooks,
   syncPaymentToZohoBooks,
+  syncShoppingOrderToZohoBooks,
 } from "@/lib/zohoBooksSync";
 import { prisma } from "@/lib/db";
 
 /**
  * GET  — Zoho Books config status + app URL for finance UI links
  * POST — push / pull:
- *   { paymentId }              push one
- *   { allUnsynced: true }      push recent PAID without full Books mapping
- *   { pull: true, paymentId }  pull one linked invoice
- *   { pullAll: true }          pull all linked (capped)
+ *   { paymentId }              push one E2 payment
+ *   { allUnsynced: true }      push recent PAID without full Books mapping —
+ *                              across all three products (E2 Payment,
+ *                              Express CourierBooking, GlobeMe ShoppingOrder)
+ *   { pull: true, paymentId }  pull one linked invoice (E2 only — Express/
+ *                              GlobeMe don't have a pull path yet)
+ *   { pullAll: true }          pull all linked E2 invoices (capped)
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const user = await getSessionUser(req, res);
@@ -57,18 +62,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (body.allUnsynced) {
-      const unpaidSync = await prisma.payment.findMany({
-        where: {
-          status: "PAID",
-          OR: [{ zohoBooksInvoiceId: null }, { zohoBooksPaymentId: null }],
-        },
-        orderBy: { updatedAt: "desc" },
-        take: 25,
-      });
-      const results = [];
-      for (const p of unpaidSync) {
-        results.push({ paymentId: p.id, ...(await syncPaymentToZohoBooks(p.id)) });
+      const zohoUnsynced = { OR: [{ zohoBooksInvoiceId: null }, { zohoBooksPaymentId: null }] };
+
+      const [unpaidPayments, unpaidBookings, unpaidOrders] = await Promise.all([
+        prisma.payment.findMany({
+          where: { status: "PAID", ...zohoUnsynced },
+          orderBy: { updatedAt: "desc" },
+          take: 25,
+        }),
+        prisma.courierBooking.findMany({
+          where: { status: "PAID", ...zohoUnsynced },
+          orderBy: { updatedAt: "desc" },
+          take: 25,
+        }),
+        prisma.shoppingOrder.findMany({
+          where: { status: "PAID", ...zohoUnsynced },
+          orderBy: { updatedAt: "desc" },
+          take: 25,
+        }),
+      ]);
+
+      const results: Array<{ product: "E2" | "EXPRESS" | "GLOBEME"; ref: string } & Awaited<ReturnType<typeof syncPaymentToZohoBooks>>> = [];
+      for (const p of unpaidPayments) {
+        results.push({ product: "E2", ref: p.id, ...(await syncPaymentToZohoBooks(p.id)) });
       }
+      for (const b of unpaidBookings) {
+        results.push({ product: "EXPRESS", ref: b.bookingRef, ...(await syncCourierBookingToZohoBooks(b.id)) });
+      }
+      for (const o of unpaidOrders) {
+        results.push({ product: "GLOBEME", ref: o.orderRef, ...(await syncShoppingOrderToZohoBooks(o.id)) });
+      }
+
       return res.status(200).json({
         ok: true,
         count: results.length,

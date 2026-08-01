@@ -432,6 +432,15 @@ model CourierBooking {
 
   bobgoShipmentId String? // link to BobgoShipment once a real waybill is booked
 
+  // Zoho Books mapping — same shape as Payment's, pushed by
+  // src/lib/zohoBooksSync.ts via the shared pushToZohoBooks() core.
+  zohoBooksContactId     String?
+  zohoBooksInvoiceId     String?
+  zohoBooksPaymentId     String?
+  zohoBooksSyncedAt      DateTime?
+  zohoBooksSyncError     String?
+  zohoBooksInvoiceStatus String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -523,6 +532,15 @@ model ShoppingOrder {
 
   // FX rate snapshot (avoid stale rates across quote → payment)
   fxRateUsdzarSnapshot Float? // e.g., 18.5
+
+  // Zoho Books mapping — same shape as Payment's, pushed by
+  // src/lib/zohoBooksSync.ts via the shared pushToZohoBooks() core.
+  zohoBooksContactId     String?
+  zohoBooksInvoiceId     String?
+  zohoBooksPaymentId     String?
+  zohoBooksSyncedAt      DateTime?
+  zohoBooksSyncError     String?
+  zohoBooksInvoiceStatus String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

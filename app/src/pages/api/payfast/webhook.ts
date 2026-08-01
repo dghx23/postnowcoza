@@ -51,6 +51,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     });
 
+    try {
+      const { syncShoppingOrderToZohoBooks } = await import("@/lib/zohoBooksSync");
+      await syncShoppingOrderToZohoBooks(order.id);
+    } catch (err) {
+      console.error("Zoho sync failed for ShoppingOrder", { orderId: order.id, error: (err as Error).message });
+    }
+
     // Notify customer via email (basic template for now).
     console.log(`GlobeMe order ${orderRef} paid. Email notification would go to ${order.customerEmail}`);
     // TODO: send real email via SMTP

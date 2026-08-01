@@ -10,12 +10,7 @@ import {
   zohoBooksConfigured,
 } from "@/lib/zohoBooks";
 
-/**
- * Push a PostNow Payment into Zoho Books:
- * contact (customer) → invoice → customer payment (if PAID).
- * Idempotent when zohoBooksInvoiceId already set.
- */
-export async function syncPaymentToZohoBooks(paymentId: string): Promise<{
+export interface ZohoSyncResult {
   ok: boolean;
   skipped?: boolean;
   reason?: string;
@@ -24,7 +19,75 @@ export async function syncPaymentToZohoBooks(paymentId: string): Promise<{
   paymentId?: string;
   invoiceUrl?: string;
   error?: string;
-}> {
+}
+
+interface ZohoSyncEntity {
+  contact: { name: string; email: string; phone?: string };
+  amount: number;
+  reference: string;
+  description: string;
+  isPaid: boolean;
+  paymentMethod?: string | null;
+  existing: {
+    zohoBooksContactId: string | null;
+    zohoBooksInvoiceId: string | null;
+    zohoBooksPaymentId: string | null;
+  };
+}
+
+/**
+ * Shared PostNow Group → Zoho Books core: contact → invoice → customer
+ * payment (if paid). One Zoho Books org ("PostNow ZA") serves every product
+ * — this function doesn't know or care which product's row it's syncing,
+ * it just needs a contact + amount + reference + description and the
+ * caller's existing Zoho IDs (for idempotency). Product-specific wrappers
+ * below (syncPaymentToZohoBooks, syncCourierBookingToZohoBooks,
+ * syncShoppingOrderToZohoBooks) adapt each product's own model into this
+ * shape and persist the result back onto their own row.
+ */
+async function pushToZohoBooks(entity: ZohoSyncEntity): Promise<ZohoSyncResult & { newState?: { contactId: string; invoiceId: string; paymentId?: string } }> {
+  const contact = entity.existing.zohoBooksContactId
+    ? { contact_id: entity.existing.zohoBooksContactId }
+    : await findOrCreateContact({ name: entity.contact.name, email: entity.contact.email, phone: entity.contact.phone });
+
+  let invoiceId = entity.existing.zohoBooksInvoiceId;
+  if (!invoiceId) {
+    const invoice = await createInvoice({
+      contactId: contact.contact_id,
+      amount: entity.amount,
+      reference: entity.reference,
+      description: entity.description,
+    });
+    invoiceId = invoice.invoice_id;
+  }
+
+  let booksPaymentId = entity.existing.zohoBooksPaymentId ?? undefined;
+  if (entity.isPaid && !booksPaymentId) {
+    const pay = await markInvoicePaid({
+      invoiceId,
+      contactId: contact.contact_id,
+      amount: entity.amount,
+      paymentMode: entity.paymentMethod || "PostNow",
+      reference: entity.reference,
+    });
+    booksPaymentId = pay.payment_id;
+  }
+
+  return {
+    ok: true,
+    contactId: contact.contact_id,
+    invoiceId,
+    paymentId: booksPaymentId,
+    invoiceUrl: zohoBooksAppUrl(invoiceId),
+    newState: { contactId: contact.contact_id, invoiceId, paymentId: booksPaymentId },
+  };
+}
+
+/**
+ * Push a PostNow E2 Payment into Zoho Books.
+ * Idempotent when zohoBooksInvoiceId already set.
+ */
+export async function syncPaymentToZohoBooks(paymentId: string): Promise<ZohoSyncResult> {
   if (!zohoBooksConfigured()) {
     return { ok: false, skipped: true, reason: "not_configured" };
   }
@@ -62,56 +125,35 @@ export async function syncPaymentToZohoBooks(paymentId: string): Promise<{
   }
 
   try {
-    const contact =
-      payment.zohoBooksContactId
-        ? { contact_id: payment.zohoBooksContactId }
-        : await findOrCreateContact({
-            name: payment.document.recipientName,
-            email: payment.document.recipientEmail,
-            phone: payment.document.recipientPhone,
-          });
+    const ref = payment.documentId.slice(0, 10).toUpperCase();
+    const description = payment.billingItem?.name
+      ? `${payment.billingItem.name} · #${ref}`
+      : `PostNow dispatch fee · #${ref} · ${payment.document.recipientName} · ${payment.document.city}`;
 
-    let invoiceId = payment.zohoBooksInvoiceId;
-    if (!invoiceId) {
-      const ref = payment.documentId.slice(0, 10).toUpperCase();
-      const lineLabel = payment.billingItem?.name
-        ? `${payment.billingItem.name} · #${ref}`
-        : `PostNow dispatch fee · #${ref} · ${payment.document.recipientName} · ${payment.document.city}`;
-      const invoice = await createInvoice({
-        contactId: contact.contact_id,
-        amount: payment.amount,
-        reference: `PN-${ref}`,
-        description: lineLabel,
-      });
-      invoiceId = invoice.invoice_id;
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          zohoBooksContactId: contact.contact_id,
-          zohoBooksInvoiceId: invoiceId,
-          zohoBooksSyncError: null,
-        },
-      });
-    }
-
-    let booksPaymentId = payment.zohoBooksPaymentId ?? undefined;
-    if (payment.status === "PAID" && !booksPaymentId) {
-      const pay = await markInvoicePaid({
-        invoiceId,
-        contactId: contact.contact_id,
-        amount: payment.amount,
-        paymentMode: payment.paymentMethod || "PayFast",
-        reference: payment.customPaymentId,
-      });
-      booksPaymentId = pay.payment_id;
-    }
+    const result = await pushToZohoBooks({
+      contact: {
+        name: payment.document.recipientName,
+        email: payment.document.recipientEmail,
+        phone: payment.document.recipientPhone,
+      },
+      amount: payment.amount,
+      reference: `PN-${ref}`,
+      description,
+      isPaid: payment.status === "PAID",
+      paymentMethod: payment.paymentMethod || "PayFast",
+      existing: {
+        zohoBooksContactId: payment.zohoBooksContactId,
+        zohoBooksInvoiceId: payment.zohoBooksInvoiceId,
+        zohoBooksPaymentId: payment.zohoBooksPaymentId,
+      },
+    });
 
     await prisma.payment.update({
       where: { id: payment.id },
       data: {
-        zohoBooksContactId: contact.contact_id,
-        zohoBooksInvoiceId: invoiceId,
-        zohoBooksPaymentId: booksPaymentId ?? null,
+        zohoBooksContactId: result.newState!.contactId,
+        zohoBooksInvoiceId: result.newState!.invoiceId,
+        zohoBooksPaymentId: result.newState!.paymentId ?? null,
         zohoBooksSyncedAt: new Date(),
         zohoBooksSyncError: null,
         zohoBooksInvoiceStatus: payment.status === "PAID" ? "paid" : "sent",
@@ -123,21 +165,15 @@ export async function syncPaymentToZohoBooks(paymentId: string): Promise<{
       action: "zoho_books_synced",
       metadata: {
         paymentId: payment.id,
-        contactId: contact.contact_id,
-        invoiceId,
-        booksPaymentId: booksPaymentId ?? null,
+        contactId: result.contactId,
+        invoiceId: result.invoiceId,
+        booksPaymentId: result.paymentId ?? null,
         status: payment.status,
-        invoiceUrl: zohoBooksAppUrl(invoiceId),
+        invoiceUrl: result.invoiceUrl,
       },
     });
 
-    return {
-      ok: true,
-      contactId: contact.contact_id,
-      invoiceId,
-      paymentId: booksPaymentId,
-      invoiceUrl: zohoBooksAppUrl(invoiceId),
-    };
+    return result;
   } catch (err) {
     const message = (err as Error).message?.slice(0, 500) ?? "Zoho sync failed";
     await prisma.payment.update({
@@ -157,6 +193,160 @@ export async function syncPaymentToZohoBooks(paymentId: string): Promise<{
       documentId: payment.documentId,
     });
     console.error("Zoho Books sync failed", { paymentId, message });
+    return { ok: false, error: message };
+  }
+}
+
+/**
+ * Push a PostNow Express CourierBooking into Zoho Books, tagged product=EXPRESS
+ * via the "PN Express" reference prefix (Books has no first-class product
+ * field, so this keeps products distinguishable in the ledger by reference/
+ * description alone). Idempotent when zohoBooksInvoiceId already set.
+ */
+export async function syncCourierBookingToZohoBooks(bookingId: string): Promise<ZohoSyncResult> {
+  if (!zohoBooksConfigured()) {
+    return { ok: false, skipped: true, reason: "not_configured" };
+  }
+
+  const booking = await prisma.courierBooking.findUnique({ where: { id: bookingId } });
+  if (!booking) return { ok: false, reason: "booking_not_found" };
+  if (!booking.price) return { ok: false, reason: "no_price_set" };
+
+  if (booking.zohoBooksInvoiceId && booking.status === "PAID" && booking.zohoBooksPaymentId) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "already_synced",
+      contactId: booking.zohoBooksContactId ?? undefined,
+      invoiceId: booking.zohoBooksInvoiceId,
+      paymentId: booking.zohoBooksPaymentId,
+      invoiceUrl: zohoBooksAppUrl(booking.zohoBooksInvoiceId),
+    };
+  }
+
+  try {
+    const ref = booking.bookingRef;
+    const result = await pushToZohoBooks({
+      contact: {
+        name: booking.recipientName || `WhatsApp ${booking.senderPhone}`,
+        // Express bookings come from WhatsApp — no email captured today, so
+        // Zoho gets a synthetic placeholder tied to the sender's number.
+        email: `${booking.senderPhone}@express.postnow.co.za`,
+        phone: booking.senderPhone,
+      },
+      amount: booking.price,
+      reference: ref,
+      description: `PostNow Express courier · ${ref} · ${booking.recipientName ?? booking.senderPhone}`,
+      isPaid: booking.status === "PAID",
+      paymentMethod: "PayShap",
+      existing: {
+        zohoBooksContactId: booking.zohoBooksContactId,
+        zohoBooksInvoiceId: booking.zohoBooksInvoiceId,
+        zohoBooksPaymentId: booking.zohoBooksPaymentId,
+      },
+    });
+
+    await prisma.courierBooking.update({
+      where: { id: booking.id },
+      data: {
+        zohoBooksContactId: result.newState!.contactId,
+        zohoBooksInvoiceId: result.newState!.invoiceId,
+        zohoBooksPaymentId: result.newState!.paymentId ?? null,
+        zohoBooksSyncedAt: new Date(),
+        zohoBooksSyncError: null,
+        zohoBooksInvoiceStatus: booking.status === "PAID" ? "paid" : "sent",
+      },
+    });
+
+    return result;
+  } catch (err) {
+    const message = (err as Error).message?.slice(0, 500) ?? "Zoho sync failed";
+    await prisma.courierBooking.update({
+      where: { id: booking.id },
+      data: { zohoBooksSyncError: message },
+    });
+    await logSyncException({
+      source: "zoho_push",
+      title: `Zoho push failed · Express booking ${booking.bookingRef}`,
+      detail: message,
+      metadata: { product: "EXPRESS", bookingId: booking.id, bookingRef: booking.bookingRef },
+    });
+    console.error("Zoho Books sync failed (CourierBooking)", { bookingId, message });
+    return { ok: false, error: message };
+  }
+}
+
+/**
+ * Push a GlobeMe ShoppingOrder into Zoho Books. Idempotent when
+ * zohoBooksInvoiceId already set.
+ */
+export async function syncShoppingOrderToZohoBooks(orderId: string): Promise<ZohoSyncResult> {
+  if (!zohoBooksConfigured()) {
+    return { ok: false, skipped: true, reason: "not_configured" };
+  }
+
+  const order = await prisma.shoppingOrder.findUnique({ where: { id: orderId } });
+  if (!order) return { ok: false, reason: "order_not_found" };
+  if (order.finalQuoteZar == null) return { ok: false, reason: "no_price_set" };
+
+  if (order.zohoBooksInvoiceId && order.status === "PAID" && order.zohoBooksPaymentId) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "already_synced",
+      contactId: order.zohoBooksContactId ?? undefined,
+      invoiceId: order.zohoBooksInvoiceId,
+      paymentId: order.zohoBooksPaymentId,
+      invoiceUrl: zohoBooksAppUrl(order.zohoBooksInvoiceId),
+    };
+  }
+
+  try {
+    const ref = order.orderRef;
+    const result = await pushToZohoBooks({
+      contact: {
+        name: order.recipientName,
+        email: order.customerEmail,
+        phone: order.customerPhone ?? order.recipientPhone,
+      },
+      amount: order.finalQuoteZar,
+      reference: ref,
+      description: `GlobeMe import · ${ref} · ${order.productName ?? order.productUrl}`,
+      isPaid: order.status === "PAID",
+      paymentMethod: "PayFast",
+      existing: {
+        zohoBooksContactId: order.zohoBooksContactId,
+        zohoBooksInvoiceId: order.zohoBooksInvoiceId,
+        zohoBooksPaymentId: order.zohoBooksPaymentId,
+      },
+    });
+
+    await prisma.shoppingOrder.update({
+      where: { id: order.id },
+      data: {
+        zohoBooksContactId: result.newState!.contactId,
+        zohoBooksInvoiceId: result.newState!.invoiceId,
+        zohoBooksPaymentId: result.newState!.paymentId ?? null,
+        zohoBooksSyncedAt: new Date(),
+        zohoBooksSyncError: null,
+        zohoBooksInvoiceStatus: order.status === "PAID" ? "paid" : "sent",
+      },
+    });
+
+    return result;
+  } catch (err) {
+    const message = (err as Error).message?.slice(0, 500) ?? "Zoho sync failed";
+    await prisma.shoppingOrder.update({
+      where: { id: order.id },
+      data: { zohoBooksSyncError: message },
+    });
+    await logSyncException({
+      source: "zoho_push",
+      title: `Zoho push failed · GlobeMe order ${order.orderRef}`,
+      detail: message,
+      metadata: { product: "GLOBEME", orderId: order.id, orderRef: order.orderRef },
+    });
+    console.error("Zoho Books sync failed (ShoppingOrder)", { orderId, message });
     return { ok: false, error: message };
   }
 }

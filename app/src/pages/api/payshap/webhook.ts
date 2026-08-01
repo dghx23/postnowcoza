@@ -44,6 +44,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     data: { status: "PAID", paidAt: new Date() },
   });
 
+  try {
+    const { syncCourierBookingToZohoBooks } = await import("@/lib/zohoBooksSync");
+    await syncCourierBookingToZohoBooks(booking.id);
+  } catch (err) {
+    console.error("Zoho sync failed for CourierBooking", { bookingId: booking.id, error: (err as Error).message });
+  }
+
   await sendWhatsAppText({
     to: booking.senderPhone,
     message: `✅ Payment received for ${booking.bookingRef}. Your courier is being arranged — we'll keep you posted here.`,
