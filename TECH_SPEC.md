@@ -885,6 +885,43 @@ blank before assuming a code bug.
   real secrets exist anywhere in the repo's history (all credentials have
   only ever lived in Vercel's env var UI, never committed).
 
+## 8.5 PostNow Group multi-product architecture
+
+PostNow Group runs four products (E2, Express, GlobeMe, Midl) as **independent
+apps with independent databases**, not one monolith. E2 and Express live in
+this repo (`postnowcoza/app`) sharing one Postgres instance because they're
+genuinely the same codebase; GlobeMe and Midl are separate repos/deployments
+(`dghx23/globeme`, `dghx23/midl`) with their own DBs, on purpose — a breaking
+migration in one product's schema shouldn't be able to touch another's.
+
+Two mechanisms let products share infrastructure without sharing tables:
+
+**Per-product staff access** (`Product` enum + `UserProductAccess` model,
+`prisma/schema.prisma`): a join table on top of the existing `User.role`
+(CUSTOMER/STAFF/ADMIN), so a staff member's access can differ per product —
+e.g. ADMIN on Midl, no access on E2 — without forking the auth model per
+product. Additive only; doesn't touch `Payment`, `Document`, or any existing
+table.
+
+**Internal service-to-service API** (`src/pages/api/internal/*`, guarded by
+`src/lib/internalAuth.ts` checking `X-Internal-Secret` against
+`INTERNAL_API_SECRET`): lets sibling products call into this app's paid
+integrations without their own account or any DB coupling. First two:
+`POST /api/internal/courier/rates` and `POST /api/internal/courier/book`,
+stateless proxies to `src/lib/bobgo.ts`. Deliberately **do not** write a
+`BobgoShipment` row — that table is scoped to this app's own Document
+chain-of-custody flow — the caller (Midl) persists whatever it needs
+(tracking reference, waybill URL) on its own side. This is the template for
+future shared infra: proxy the credential, let the caller own the data.
+
+**Not yet built**: an equivalent internal endpoint for audit-log entries
+(`AuditEvent` is still hard-coupled to `Document`, so Midl can't write into
+the existing hash-chained audit trail without a schema change there — an
+open decision, not done) and a Zoho payment-recording endpoint (there's one
+Zoho Books org, "PostNow ZA", org_id `931939283` — Midl posting a payment
+tagged `product=MIDL` through the existing `BillingItem`/Zoho pipeline
+would avoid it needing its own Zoho integration, but isn't wired up yet).
+
 ## 9. Verified working (as of writing)
 
 **Confirmed live against the real production deployment** (not just

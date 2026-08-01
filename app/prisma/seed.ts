@@ -103,6 +103,13 @@ async function main() {
         "Third front-end product: US→SA personal shopping via WhatsApp. Paste product URL, specify weight & delivery address, see landed-cost breakdown (item + duty + VAT + shipping), pay via PayFast. ShoppingOrder model tracks order state (DRAFT → QUOTED → AWAITING_PAYMENT → PAID → SHIPPED → DELIVERED), wired into same WhatsApp session state machine (src/lib/whatsappBookingBot.ts). src/lib/globeme.ts calculates landed costs (HS-code lookup + SARS duty rate + VAT). /api/payfast/webhook.ts handles payment confirmation & notifications. Blocked: PAYFAST_PASSPHRASE + webhook HMAC verification. Product extraction APIs (Amazon/Walmart/eBay) stubbed. Not yet done: HS-code classifier (Zonos or SARS dataset), live FX rates, photo/video weight estimation, address validation.",
     },
     {
+      name: "Internal API for sibling products (Midl) to reuse Bob Go courier",
+      priority: "MEDIUM",
+      status: "IN_PROGRESS",
+      comment:
+        "PostNow Group products keep independent databases (Midl has its own repo/DB, GlobeMe likewise as a standalone Vercel app) but reuse this app's Bob Go courier credentials via a small service-to-service API instead of sharing tables. New: /api/internal/courier/rates and /api/internal/courier/book (src/lib/internalAuth.ts checks X-Internal-Secret against INTERNAL_API_SECRET), both stateless proxies to src/lib/bobgo.ts — no BobgoShipment row is created, the caller persists the tracking reference on its own side. Also added Product enum + UserProductAccess join table so staff can get per-product roles (e.g. ADMIN on Midl, none on E2) without forking User.role; purely additive, no existing table touched. Not yet done: an equivalent internal endpoint for audit-log entries (AuditEvent is still hard-coupled to Document, would need its own non-Document-scoped ledger model — a real schema decision, not done here) and the Zoho payment-recording endpoint mentioned in the architecture discussion (Midl POSTing a payment to be tagged product=MIDL and pushed through the existing BillingItem/Zoho pipeline).",
+    },
+    {
       name: "Uber Direct — same-day metro rush tier (considered, parked)",
       priority: "LOW",
       status: "NOT_STARTED",
