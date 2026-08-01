@@ -13,7 +13,8 @@ type NavKey =
   | "printer"
   | "finance"
   | "express"
-  | "globeme";
+  | "globeme"
+  | "midl";
 
 export function AppHeader({
   active,
@@ -24,6 +25,7 @@ export function AppHeader({
   showSettings = false,
   showExpress,
   showGlobeme,
+  showMidl,
 }: {
   active: NavKey;
   userLabel: string;
@@ -37,10 +39,13 @@ export function AppHeader({
   showExpress?: boolean;
   /** Staff-only GlobeMe orders link. Defaults to showPrintQueue (staff chrome). */
   showGlobeme?: boolean;
+  /** Staff-only Midl escrow deals link. Defaults to showPrintQueue (staff chrome). */
+  showMidl?: boolean;
 }) {
   const financeNav = showFinance ?? showPrintQueue;
   const expressNav = showExpress ?? showPrintQueue;
   const globemeNav = showGlobeme ?? showPrintQueue;
+  const midlNav = showMidl ?? showPrintQueue;
   const settingsOn = showSettings || Boolean(showPrintQueue);
   // Voice agent is parked on the staff Roadmap (seeded as "Grok Voice Agent")
   // until that feature is ready to ship — intentionally not linked here.
@@ -53,6 +58,7 @@ export function AppHeader({
     ...(financeNav ? [{ key: "finance" as const, label: "Financial", href: "/finance" }] : []),
     ...(expressNav ? [{ key: "express" as const, label: "Express Bookings", href: "/dashboard/express" }] : []),
     ...(globemeNav ? [{ key: "globeme" as const, label: "GlobeMe Orders", href: "/dashboard/globeme" }] : []),
+    ...(midlNav ? [{ key: "midl" as const, label: "Midl Deals", href: "/dashboard/midl" }] : []),
     ...(showRoadmap ? [{ key: "roadmap" as const, label: "Roadmap", href: "/roadmap" }] : []),
   ];
 
@@ -279,6 +285,15 @@ export function StatusPill({ status }: { status: string }) {
     RETURN_REQUESTED: "Return requested",
     RETURN_IN_TRANSIT: "Return in transit",
     RETURNED: "Returned",
+    // Midl Deal states
+    DRAFT: "Draft",
+    FUNDED: "Funded",
+    REPORT_PENDING: "Report pending",
+    REPORT_ISSUED: "Report issued",
+    RELEASED: "Released",
+    REFUND_PENDING: "Refund pending",
+    REFUNDED: "Refunded",
+    DISPUTED: "Disputed",
   };
   const label =
     FRIENDLY[status] ??

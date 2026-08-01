@@ -62,6 +62,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ received: true, unmatched: true });
   }
 
+  if (!shipment.documentId) {
+    // Deal-owned (Midl) shipment. Raw payload is still recorded so nothing
+    // is silently dropped, but interpreting it into a Deal state transition
+    // isn't built yet — see docs/POSTNOW_INFRA_REUSE.md in the midl repo.
+    await prisma.bobgoShipment.update({
+      where: { id: shipment.id },
+      data: { rawPayload: payload },
+    });
+    return res.status(200).json({ received: true, dealShipmentUnhandled: true });
+  }
+
   // Raw payload is recorded before any interpretation, so the audit trail
   // survives bugs in the mapping logic below.
   await appendAuditEvent({

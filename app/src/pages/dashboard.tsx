@@ -173,12 +173,15 @@ export const getServerSideProps: GetServerSideProps<DashboardProps> = async (con
 
   const feed: FeedItem[] = recentEvents.map((e) => {
     const meta = feedIcon(e.action);
+    // AuditEvent is now dual-owned by Document or Deal, but the `where:
+    // { document: where }` relation filter above only ever matches
+    // Document-owned rows, so document/documentId are guaranteed here.
     return {
       time: e.createdAt.toISOString().slice(11, 16),
       icon: meta.icon,
-      documentId: e.documentId,
-      shortId: e.documentId.slice(0, 8).toUpperCase(),
-      message: feedMessage(e.action, e.document.recipientName, e.document.city),
+      documentId: e.documentId!,
+      shortId: e.documentId!.slice(0, 8).toUpperCase(),
+      message: feedMessage(e.action, e.document!.recipientName, e.document!.city),
       highlight: meta.highlight,
       danger: meta.danger,
     };

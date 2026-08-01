@@ -21,7 +21,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const events = await prisma.auditEvent.findMany({
-    where: { action: { in: ZOHO_SYNC_ACTIONS } },
+    // Zoho sync only ever runs against Document payments today — filtering
+    // documentId non-null here is what guarantees e.document below (AuditEvent
+    // is now dual-owned by Document or Deal; this route is Document-only).
+    where: { action: { in: ZOHO_SYNC_ACTIONS }, documentId: { not: null } },
     orderBy: { createdAt: "desc" },
     take: 50,
     include: { document: { select: { id: true, recipientName: true } } },
@@ -33,7 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       action: e.action,
       createdAt: e.createdAt.toISOString(),
       documentId: e.documentId,
-      recipientName: e.document.recipientName,
+      recipientName: e.document!.recipientName,
       metadata: e.metadata,
     })),
   });
