@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
+    <title>Midl · Full App Screens</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            background: #f4f9fe;
+            color: #0b1b33;
+            padding: 20px;
+        }
+
+        .app-container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* ----- Screen Switcher ----- */
+        .screen-nav {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            background: white;
+            padding: 12px 16px;
+            border-radius: 60px;
+            border: 2px solid #f0e9d8;
+            justify-content: center;
+        }
+        .screen-nav button {
+            padding: 10px 24px;
+            border-radius: 40px;
+            border: none;
+            background: transparent;
+            font-weight: 600;
+            font-size: 14px;
+            color: #5f748b;
+            cursor: pointer;
+            transition: 0.25s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .screen-nav button:hover {
+            background: #eef3f9;
+        }
+        .screen-nav button.active {
+            background: #1a5a8c;
+            color: white;
+            box-shadow: 0 4px 12px rgba(26, 90, 140, 0.2);
+        }
+        .screen-nav button .badge-dot {
+            background: #e67e22;
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 8px;
+            border-radius: 20px;
+        }
+        .screen-nav button.active .badge-dot {
+            background: white;
+            color: #1a5a8c;
+        }
+
+        /* ----- Screen Container ----- */
+        .screen {
+            display: none;
+            animation: fadeUp 0.4s ease-out;
+        }
+        .screen.active {
+            display: block;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ----- Screen 1: Dashboard ----- */
+        .dash-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 768px) {
+            .dash-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: white;
+            border-radius: 28px;
+            padding: 24px 24px 28px;
+            border: 2px solid #f0e9d8;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+        }
+        .card .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .card .card-header h3 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .card .card-header a {
+            font-size: 13px;
+            color: #1a5a8c;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .balance-display {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            margin-bottom: 4px;
+        }
+        .balance-display .amount {
+            font-size: 40px;
+            font-weight: 700;
+            color: #0b1b33;
+        }
+        .balance-display .currency {
+            font-size: 20px;
+            color: #5f748b;
+        }
+        .balance-display .change {
+            font-size: 14px;
+            font-weight: 600;
+            color: #27ae60;
+            background: #e8f8ee;
+            padding: 2px 12px;
+            border-radius: 40px;
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .quick-actions .qa-btn {
+            background: #f8faff;
+            border: 2px solid #eef3f9;
+            border-radius: 16px;
+            padding: 16px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .quick-actions .qa-btn:hover {
+            border-color: #1a5a8c;
+            transform: translateY(-2px);
+        }
+        .quick-actions .qa-btn i {
+            font-size: 24px;
+            color: #1a5a8c;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .quick-actions .qa-btn .label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #2f4863;
+        }
+
+        .recent-tx {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .tx-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 14px;
+            background: #f8faff;
+            border-radius: 16px;
+            border: 1px solid #eef3f9;
+            transition: 0.15s;
+            cursor: default;
+        }
+        .tx-item:hover {
+            border-color: #b6c8db;
+        }
+        .tx-item .tx-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .tx-item .tx-icon.in {
+            background: #e8f8ee;
+            color: #27ae60;
+        }
+        .tx-item .tx-icon.out {
+            background: #fef5e7;
+            color: #e67e22;
+        }
+        .tx-item .tx-icon.pending {
+            background: #e8f0fe;
+            color: #1a5a8c;
+        }
+        .tx-item .tx-info {
+            flex: 1;
+        }
+        .tx-item .tx-info .tx-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .tx-item .tx-info .tx-meta {
+            font-size: 12px;
+            color: #5f748b;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .tx-item .tx-amount {
+            font-weight: 700;
+            font-size: 16px;
+            text-align: right;
+        }
+        .tx-item .tx-amount.positive {
+            color: #27ae60;
+        }
+        .tx-item .tx-amount.negative {
+            color: #e67e22;
+        }
+        .tx-item .tx-status {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 20px;
+            text-transform: uppercase;
+        }
+        .tx-status.completed {
+            background: #e8f8ee;
+            color: #27ae60;
+        }
+        .tx-status.transit {
+            background: #e8f0fe;
+            color: #1a5a8c;
+        }
+        .tx-status.pending {
+            background: #fef5e7;
+            color: #e67e22;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .stat-box {
+            background: #f8faff;
+            border-radius: 16px;
+            padding: 14px 16px;
+            border: 1px solid #eef3f9;
+            text-align: center;
+        }
+        .stat-box .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #0b1b33;
+        }
+        .stat-box .stat-label {
+            font-size: 12px;
+            color: #5f748b;
+        }
+
+        /* ----- Screen 2: New Transaction ----- */
+        .form-section {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            font-weight: 600;
+            font-size: 14px;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .form-group label .required {
+            color: #e67e22;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #dce5f0;
+            border-radius: 16px;
+            font-size: 15px;
+            transition: 0.2s;
+            outline: none;
+            background: white;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            border-color: #1a5a8c;
+        }
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 480px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .plan-selector {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+        .plan-radio {
+            background: white;
+            border: 2px solid #dce5f0;
+            border-radius: 16px;
+            padding: 14px 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .plan-radio:hover {
+            border-color: #b6c8db;
+        }
+        .plan-radio.selected {
+            border-color: #1a5a8c;
+            background: #e8f0fe;
+        }
+        .plan-radio .plan-name {
+            font-weight: 700;
+            font-size: 14px;
+        }
+        .plan-radio .plan-rate {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1a5a8c;
+        }
+        .plan-radio .plan-rate small {
+            font-size: 12px;
+            font-weight: 400;
+            color: #5f748b;
+        }
+        .plan-radio .plan-desc {
+            font-size: 11px;
+            color: #5f748b;
+        }
+
+        .cost-breakdown {
+            background: #f8faff;
+            border-radius: 16px;
+            padding: 16px 20px;
+            border: 2px solid #eef3f9;
+            margin-top: 8px;
+        }
+        .cost-breakdown .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 14px;
+        }
+        .cost-breakdown .row.total {
+            font-weight: 700;
+            font-size: 18px;
+            border-top: 2px solid #dce5f0;
+            margin-top: 6px;
+            padding-top: 10px;
+        }
+        .cost-breakdown .row .label {
+            color: #5f748b;
+        }
+        .cost-breakdown .row .value {
+            color: #0b1b33;
+        }
+        .cost-breakdown .row .value.orange {
+            color: #e67e22;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 16px;
+            background: #e67e22;
+            color: white;
+            border: none;
+            border-radius: 60px;
+            font-weight: 700;
+            font-size: 18px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(230, 126, 34, 0.3);
+            transition: 0.2s;
+            margin-top: 8px;
+        }
+        .btn-submit:hover {
+            transform: scale(1.01);
+        }
+
+        /* ----- Screen 3: Live Tracking ----- */
+        .tracking-grid {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 768px) {
+            .tracking-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .map-placeholder {
+            background: #e8edf5;
+            border-radius: 24px;
+            height: 320px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #5f748b;
+            border: 2px solid #dce5f0;
+            position: relative;
+            overflow: hidden;
+        }
+        .map-placeholder .map-dot {
+            width: 20px;
+            height: 20px;
+            background: #1a5a8c;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+            border: 4px solid rgba(26, 90, 140, 0.2);
+        }
+        .map-placeholder .map-dot.orange {
+            background: #e67e22;
+            border-color: rgba(230, 126, 34, 0.2);
+        }
+        @keyframes pulse {
+            0%,
+            100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.3);
+            }
+        }
+        .map-placeholder .map-label {
+            margin-top: 12px;
+            font-weight: 600;
+        }
+        .map-placeholder .map-sub {
+            font-size: 13px;
+            color: #8a9bb0;
+        }
+        .map-placeholder .path-line {
+            position: absolute;
+            top: 40%;
+            left: 20%;
+            right: 30%;
+            height: 2px;
+            background: #1a5a8c;
+            opacity: 0.2;
+        }
+
+        .tracking-details .detail-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 0;
+            border-bottom: 1px solid #eef3f9;
+        }
+        .tracking-details .detail-item:last-child {
+            border-bottom: none;
+        }
+        .tracking-details .detail-item .d-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #eef3f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #1a5a8c;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        .tracking-details .detail-item .d-icon.done {
+            background: #e8f8ee;
+            color: #27ae60;
+        }
+        .tracking-details .detail-item .d-icon.active {
+            background: #1a5a8c;
+            color: white;
+        }
+        .tracking-details .detail-item .d-info {
+            flex: 1;
+        }
+        .tracking-details .detail-item .d-info .d-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .tracking-details .detail-item .d-info .d-meta {
+            font-size: 12px;
+            color: #5f748b;
+        }
+        .tracking-details .detail-item .d-time {
+            font-size: 12px;
+            color: #8a9bb0;
+            text-align: right;
+        }
+
+        /* ----- Screen 4: Account ----- */
+        .account-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 24px;
+        }
+        @media (max-width: 768px) {
+            .account-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .profile-card {
+            text-align: center;
+        }
+        .profile-card .avatar-big {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: #1a5a8c;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: white;
+            margin: 0 auto 12px;
+        }
+        .profile-card .profile-name {
+            font-size: 22px;
+            font-weight: 700;
+        }
+        .profile-card .profile-email {
+            color: #5f748b;
+            font-size: 14px;
+        }
+        .profile-card .profile-badge {
+            display: inline-block;
+            margin-top: 8px;
+            background: #e8f8ee;
+            color: #27ae60;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 16px;
+            border-radius: 40px;
+        }
+
+        .settings-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 0;
+            border-bottom: 1px solid #eef3f9;
+        }
+        .settings-item:last-child {
+            border-bottom: none;
+        }
+        .settings-item .s-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .settings-item .s-left i {
+            width: 28px;
+            color: #1a5a8c;
+            font-size: 18px;
+        }
+        .settings-item .s-left .s-label {
+            font-weight: 500;
+            font-size: 14px;
+        }
+        .settings-item .s-right {
+            color: #5f748b;
+            font-size: 13px;
+        }
+        .settings-item .s-right .toggle {
+            width: 44px;
+            height: 24px;
+            background: #dce5f0;
+            border-radius: 30px;
+            display: inline-block;
+            position: relative;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .settings-item .s-right .toggle.on {
+            background: #27ae60;
+        }
+        .settings-item .s-right .toggle .knob {
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            transition: 0.3s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .settings-item .s-right .toggle.on .knob {
+            left: 23px;
+        }
+
+        /* ----- Footer note ----- */
+        .footer-note {
+            text-align: center;
+            margin-top: 32px;
+            font-size: 12px;
+            color: #8a9bb0;
+            border-top: 1px solid #eef3f9;
+            padding-top: 20px;
+        }
+
+        /* ----- Responsive tweaks ----- */
+        @media (max-width: 480px) {
+            .screen-nav button {
+                font-size: 12px;
+                padding: 8px 14px;
+            }
+            .quick-actions {
+                grid-template-columns: 1fr 1fr 1fr;
+                gap: 8px;
+            }
+            .quick-actions .qa-btn {
+                padding: 12px 4px;
+            }
+            .quick-actions .qa-btn i {
+                font-size: 20px;
+            }
+            .balance-display .amount {
+                font-size: 30px;
+            }
+            .plan-selector {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Screen Navigation -->
+        <div class="screen-nav">
+            <button class="active" data-screen="dashboard"><i class="fas fa-home"></i> Dashboard</button>
+            <button data-screen="newtx"><i class="fas fa-plus-circle"></i> New Transaction</button>
+            <button data-screen="tracking"><i class="fas fa-truck"></i> Live Tracking</button>
+            <button data-screen="account"><i class="fas fa-user"></i> Account</button>
+        </div>
+
+        <!-- ===== SCREEN 1: DASHBOARD ===== -->
+        <div class="screen active" id="screen-dashboard">
+            <div class="dash-grid">
+                <!-- Left: Balance + Quick Actions -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Your Wallet</h3>
+                        <a href="#">View all</a>
+                    </div>
+                    <div class="balance-display">
+                        <span class="currency">R</span>
+                        <span class="amount">24,850</span>
+                        <span class="change"><i class="fas fa-arrow-up"></i> +12%</span>
+                    </div>
+                    <div style="font-size:14px; color:#5f748b; margin-bottom:16px;">Available balance · <span style="color:#27ae60;">R 4,200 in escrow</span></div>
+                    <div class="quick-actions">
+                        <div class="qa-btn" onclick="switchScreen('newtx')">
+                            <i class="fas fa-plus-circle"></i>
+                            <span class="label">New Escrow</span>
+                        </div>
+                        <div class="qa-btn">
+                            <i class="fas fa-credit-card"></i>
+                            <span class="label">Deposit</span>
+                        </div>
+                        <div class="qa-btn">
+                            <i class="fas fa-history"></i>
+                            <span class="label">History</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Stats -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Activity</h3>
+                        <a href="#">See all</a>
+                    </div>
+                    <div class="stats-row">
+                        <div class="stat-box">
+                            <div class="stat-value">6</div>
+                            <div class="stat-label">Active Escrows</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">R 18,500</div>
+                            <div class="stat-label">Largest Transaction</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">98%</div>
+                            <div class="stat-label">Trust Score</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">12</div>
+                            <div class="stat-label">Total Transactions</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Transactions (full width) -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="card-header">
+                        <h3>Recent Transactions</h3>
+                        <a href="#">View all</a>
+                    </div>
+                    <div class="recent-tx">
+                        <div class="tx-item">
+                            <div class="tx-icon in"><i class="fas fa-check"></i></div>
+                            <div class="tx-info">
+                                <div class="tx-name">iPhone 15 Pro Max</div>
+                                <div class="tx-meta"><span>#MIDL-7842</span><span>27 Jul 2026</span></div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div class="tx-amount positive">+R 17,000</div>
+                                <span class="tx-status completed">Completed</span>
+                            </div>
+                        </div>
+                        <div class="tx-item">
+                            <div class="tx-icon transit"><i class="fas fa-truck"></i></div>
+                            <div class="tx-info">
+                                <div class="tx-name">Nike SB Dunk Low</div>
+                                <div class="tx-meta"><span>#MIDL-7801</span><span>25 Jul 2026</span></div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div class="tx-amount positive">+R 4,200</div>
+                                <span class="tx-status transit">In Transit</span>
+                            </div>
+                        </div>
+                        <div class="tx-item">
+                            <div class="tx-icon out"><i class="fas fa-arrow-up"></i></div>
+                            <div class="tx-info">
+                                <div class="tx-name">MacBook Air M2</div>
+                                <div class="tx-meta"><span>#MIDL-7690</span><span>20 Jul 2026</span></div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div class="tx-amount negative">-R 15,200</div>
+                                <span class="tx-status pending">Pending</span>
+                            </div>
+                        </div>
+                        <div class="tx-item">
+                            <div class="tx-icon in"><i class="fas fa-check"></i></div>
+                            <div class="tx-info">
+                                <div class="tx-name">PS5 Digital Edition</div>
+                                <div class="tx-meta"><span>#MIDL-7734</span><span>22 Jul 2026</span></div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div class="tx-amount positive">+R 8,000</div>
+                                <span class="tx-status completed">Completed</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== SCREEN 2: NEW TRANSACTION ===== -->
+        <div class="screen" id="screen-newtx">
+            <div class="card" style="max-width:680px; margin:0 auto;">
+                <h2 style="margin-bottom:4px; font-size:28px;">Create Escrow Transaction</h2>
+                <p style="color:#5f748b; margin-bottom:24px;">Secure your trade — funds are held until delivery is confirmed.</p>
+
+                <div class="form-section">
+                    <!-- Item Details -->
+                    <div class="form-group">
+                        <label>Item Name <span class="required">*</span></label>
+                        <input type="text" placeholder="e.g. iPhone 15 Pro Max 256GB" value="iPhone 15 Pro Max 256GB" />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Item Value (R) <span class="required">*</span></label>
+                            <input type="number" placeholder="0" value="18500" />
+                        </div>
+                        <div class="form-group">
+                            <label>Condition</label>
+                            <select>
+                                <option>Brand New</option>
+                                <option selected>Like New</option>
+                                <option>Good</option>
+                                <option>Fair</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Protection Plan -->
+                    <div class="form-group">
+                        <label>Protection Plan <span class="required">*</span></label>
+                        <div class="plan-selector" id="planSelector">
+                            <div class="plan-radio" data-plan="essentials">
+                                <div class="plan-name">Essentials</div>
+                                <div class="plan-rate">3<small>%</small></div>
+                                <div class="plan-desc">+ courier</div>
+                            </div>
+                            <div class="plan-radio selected" data-plan="standard">
+                                <div class="plan-name">Standard</div>
+                                <div class="plan-rate">8<small>%</small></div>
+                                <div class="plan-desc">all‑inclusive</div>
+                            </div>
+                            <div class="plan-radio" data-plan="verified">
+                                <div class="plan-name">Verified</div>
+                                <div class="plan-rate">10<small>%</small></div>
+                                <div class="plan-desc">+ condition report</div>
+                            </div>
+                            <div class="plan-radio" data-plan="premium">
+                                <div class="plan-name">Premium</div>
+                                <div class="plan-rate">12<small>%</small></div>
+                                <div class="plan-desc">+ 4K unboxing</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Delivery -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Pickup Address <span class="required">*</span></label>
+                            <input type="text" placeholder="123 Main St, Sandton" value="123 Main St, Sandton" />
+                        </div>
+                        <div class="form-group">
+                            <label>Delivery Address <span class="required">*</span></label>
+                            <input type="text" placeholder="456 Long St, Cape Town" value="456 Long St, Cape Town" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Pickup Province</label>
+                            <select>
+                                <option selected>Gauteng</option>
+                                <option>Western Cape</option>
+                                <option>KwaZulu-Natal</option>
+                                <option>Eastern Cape</option>
+                                <option>Free State</option>
+                                <option>Limpopo</option>
+                                <option>Mpumalanga</option>
+                                <option>North West</option>
+                                <option>Northern Cape</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Delivery Speed</label>
+                            <select>
+                                <option>Overnight (R95)</option>
+                                <option>Same-Day (R85+)</option>
+                                <option>Express (R250)</option>
+                                <option>Urgent (R450)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Cost Breakdown -->
+                    <div class="cost-breakdown">
+                        <div class="row"><span class="label">Item Value</span><span class="value">R 18,500</span></div>
+                        <div class="row"><span class="label">Escrow Fee (8%)</span><span class="value">R 1,480</span></div>
+                        <div class="row"><span class="label">Delivery (Overnight)</span><span class="value">R 95</span></div>
+                        <div class="row total"><span class="label">Total Payable</span><span class="value orange">R 20,075</span></div>
+                    </div>
+
+                    <button class="btn-submit"><i class="fas fa-lock"></i> Lock Funds & Start Transaction</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== SCREEN 3: LIVE TRACKING ===== -->
+        <div class="screen" id="screen-tracking">
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-truck" style="color:#e67e22;"></i> Live Tracking — #MIDL-7842</h3>
+                    <span style="font-size:13px; color:#27ae60; font-weight:600;"><i class="fas fa-circle"></i> In Transit</span>
+                </div>
+
+                <div class="tracking-grid">
+                    <!-- Map placeholder -->
+                    <div class="map-placeholder">
+                        <div class="path-line"></div>
+                        <div style="display:flex; gap:60px; align-items:center; position:relative; z-index:1;">
+                            <div style="text-align:center;">
+                                <div class="map-dot" style="background:#27ae60; border-color:rgba(39,174,96,0.2);"></div>
+                                <div style="font-size:12px; font-weight:600; margin-top:4px;">Sandton</div>
+                                <div style="font-size:10px; color:#8a9bb0;">Pickup</div>
+                            </div>
+                            <div style="flex:1; height:2px; background:#27ae60; min-width:40px;"></div>
+                            <div style="text-align:center;">
+                                <div class="map-dot orange"></div>
+                                <div style="font-size:12px; font-weight:600; margin-top:4px;">JHB Hub</div>
+                                <div style="font-size:10px; color:#8a9bb0;">Inspection</div>
+                            </div>
+                            <div style="flex:1; height:2px; background:#dce5f0; min-width:40px;"></div>
+                            <div style="text-align:center;">
+                                <div class="map-dot" style="background:#dce5f0; border-color:rgba(0,0,0,0.05);"></div>
+                                <div style="font-size:12px; font-weight:600; margin-top:4px;">Cape Town</div>
+                                <div style="font-size:10px; color:#8a9bb0;">Delivery</div>
+                            </div>
+                        </div>
+                        <div style="margin-top:16px;">
+                            <span style="font-weight:600;">Live GPS Active</span>
+                            <span style="display:block; font-size:13px; color:#5f748b;">Last updated: 2 min ago · ETA: 2:30 PM</span>
+                        </div>
+                    </div>
+
+                    <!-- Tracking timeline -->
+                    <div class="tracking-details">
+                        <div class="detail-item">
+                            <div class="d-icon done"><i class="fas fa-check"></i></div>
+                            <div class="d-info">
+                                <div class="d-title">Payment Locked</div>
+                                <div class="d-meta">Funds secured in trust account</div>
+                            </div>
+                            <div class="d-time">09:30</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="d-icon done"><i class="fas fa-camera"></i></div>
+                            <div class="d-info">
+                                <div class="d-title">Pickup + Photo</div>
+                                <div class="d-meta">Driver collected from 123 Main St, Sandton</div>
+                            </div>
+                            <div class="d-time">10:15</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="d-icon active"><i class="fas fa-truck"></i></div>
+                            <div class="d-info">
+                                <div class="d-title">In Transit to Hub</div>
+                                <div class="d-meta">En route to JHB inspection facility</div>
+                            </div>
+                            <div class="d-time">~2h left</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="d-icon"><i class="fas fa-clipboard-list"></i></div>
+                            <div class="d-info">
+                                <div class="d-title">Inspection Pending</div>
+                                <div class="d-meta">Awaiting arrival at hub</div>
+                            </div>
+                            <div class="d-time">—</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="d-icon"><i class="fas fa-check-circle"></i></div>
+                            <div class="d-info">
+                                <div class="d-title">Delivery</div>
+                                <div class="d-meta">POD + payment release</div>
+                            </div>
+                            <div class="d-time">Est. Tomorrow</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top:16px; padding:12px 16px; background:#fef5e7; border-radius:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                    <i class="fas fa-info-circle" style="color:#e67e22; font-size:18px;"></i>
+                    <span style="font-size:14px; color:#2f4863; flex:1;">For Verified & Premium plans: item goes through inspection hub. Buyer receives condition report before delivery.</span>
+                    <span style="font-size:12px; font-weight:600; color:#e67e22; background:white; padding:4px 14px; border-radius:40px;">Inspection enabled</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== SCREEN 4: ACCOUNT ===== -->
+        <div class="screen" id="screen-account">
+            <div class="account-grid">
+                <!-- Profile -->
+                <div class="card profile-card">
+                    <div class="avatar-big"><i class="fas fa-user"></i></div>
+                    <div class="profile-name">Sarah Johnson</div>
+                    <div class="profile-email">sarah@email.com</div>
+                    <div class="profile-badge"><i class="fas fa-check-circle"></i> Verified Seller</div>
+                    <div style="margin-top:16px; padding-top:16px; border-top:1px solid #eef3f9;">
+                        <div style="font-size:13px; color:#5f748b;">Member since</div>
+                        <div style="font-weight:600;">January 2026</div>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <div style="font-size:13px; color:#5f748b;">Trust Score</div>
+                        <div style="font-weight:700; font-size:20px; color:#27ae60;">98% <span style="font-size:14px; font-weight:400; color:#5f748b;">(12 transactions)</span></div>
+                    </div>
+                </div>
+
+                <!-- Settings -->
+                <div class="card">
+                    <h3 style="margin-bottom:16px;">Settings</h3>
+                    <div class="settings-item">
+                        <div class="s-left"><i class="fas fa-user-shield"></i><span class="s-label">Two-Factor Authentication</span></div>
+                        <div class="s-right"><span class="toggle on"><span class="knob"></span></span></div>
+                    </div>
+                    <div class="settings-item">
+                        <div class="s-left"><i class="fas fa-bell"></i><span class="s-label">Transaction Notifications</span></div>
+                        <div class="s-right"><span class="toggle on"><span class="knob"></span></span></div>
+                    </div>
+                    <div class="settings-item">
+                        <div class="s-left"><i class="fas fa-credit-card"></i><span class="s-label">Payment Methods</span></div>
+                        <div class="s-right">Visa · PayPal</div>
+                    </div>
+                    <div class="settings-item">
+                        <div class="s-left"><i class="fas fa-map-pin"></i><span class="s-label">Default Pickup Address</span></div>
+                        <div class="s-right">123 Main St, Sandton</div>
+                    </div>
+                    <div class="settings-item">
+                        <div class="s-left"><i class="fas fa-file-contract"></i><span class="s-label">Protection Plan Default</span></div>
+                        <div class="s-right">Standard (8%)</div>
+                    </div>
+                    <div class="settings-item" style="border-bottom:none;">
+                        <div class="s-left"><i class="fas fa-sign-out-alt" style="color:#e67e22;"></i><span class="s-label" style="color:#e67e22;">Sign Out</span></div>
+                        <div class="s-right"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-note">
+            <i class="fas fa-shield-alt" style="color:#1a5a8c;"></i> Regulated trust account · End‑to‑end protection · 9 provinces covered
+        </div>
+    </div>
+
+    <script>
+        // ---- Screen switching ----
+        const navButtons = document.querySelectorAll('.screen-nav button');
+        const screens = {
+            dashboard: document.getElementById('screen-dashboard'),
+            newtx: document.getElementById('screen-newtx'),
+            tracking: document.getElementById('screen-tracking'),
+            account: document.getElementById('screen-account')
+        };
+
+        function switchScreen(screenId) {
+            // Update nav buttons
+            navButtons.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.screen === screenId);
+            });
+            // Update screens
+            Object.keys(screens).forEach(key => {
+                screens[key].classList.toggle('active', key === screenId);
+            });
+        }
+
+        navButtons.forEach(btn => {
+            btn.addEventListener('click', function() {
+                switchScreen(this.dataset.screen);
+            });
+        });
+
+        // Expose for inline onclick
+        window.switchScreen = switchScreen;
+
+        // ---- Plan selector ----
+        const planRadios = document.querySelectorAll('.plan-radio');
+        planRadios.forEach(el => {
+            el.addEventListener('click', function() {
+                planRadios.forEach(p => p.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+
+        // ---- Toggle switches (visual only) ----
+        document.querySelectorAll('.toggle').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                this.classList.toggle('on');
+            });
+        });
+    </script>
+</body>
+</html>
