@@ -11,7 +11,9 @@ type NavKey =
   | "print-queue"
   | "roadmap"
   | "printer"
-  | "finance";
+  | "finance"
+  | "express"
+  | "globeme";
 
 export function AppHeader({
   active,
@@ -20,6 +22,8 @@ export function AppHeader({
   showRoadmap,
   showFinance,
   showSettings = false,
+  showExpress,
+  showGlobeme,
 }: {
   active: NavKey;
   userLabel: string;
@@ -29,8 +33,14 @@ export function AppHeader({
   showFinance?: boolean;
   /** Show gear next to user label (sync exception log). Staff chrome. */
   showSettings?: boolean;
+  /** Staff-only PostNow Express bookings link. Defaults to showPrintQueue (staff chrome). */
+  showExpress?: boolean;
+  /** Staff-only GlobeMe orders link. Defaults to showPrintQueue (staff chrome). */
+  showGlobeme?: boolean;
 }) {
   const financeNav = showFinance ?? showPrintQueue;
+  const expressNav = showExpress ?? showPrintQueue;
+  const globemeNav = showGlobeme ?? showPrintQueue;
   const settingsOn = showSettings || Boolean(showPrintQueue);
   // Voice agent is parked on the staff Roadmap (seeded as "Grok Voice Agent")
   // until that feature is ready to ship — intentionally not linked here.
@@ -41,6 +51,8 @@ export function AppHeader({
     ...(showPrintQueue ? [{ key: "print-queue" as const, label: "Print Queue", href: "/print-queue" }] : []),
     ...(showPrintQueue ? [{ key: "printer" as const, label: "Printer", href: "/printer" }] : []),
     ...(financeNav ? [{ key: "finance" as const, label: "Financial", href: "/finance" }] : []),
+    ...(expressNav ? [{ key: "express" as const, label: "Express Bookings", href: "/dashboard/express" }] : []),
+    ...(globemeNav ? [{ key: "globeme" as const, label: "GlobeMe Orders", href: "/dashboard/globeme" }] : []),
     ...(showRoadmap ? [{ key: "roadmap" as const, label: "Roadmap", href: "/roadmap" }] : []),
   ];
 
