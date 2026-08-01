@@ -13,6 +13,36 @@ enum Role {
   ADMIN
 }
 
+// The four PostNow Group offerings. Currently only used to scope per-product
+// staff access (UserProductAccess) — not a tenant/database boundary. Midl
+// keeps its own database (see TECH_SPEC.md); this enum exists here so E2
+// staff tooling can record "this person also has Midl admin access" without
+// needing to know anything about Midl's schema.
+enum Product {
+  E2
+  EXPRESS
+  GLOBEME
+  MIDL
+}
+
+// Per-product staff/admin grants, layered on top of User.role.
+// User.role stays the coarse global default (CUSTOMER/STAFF/ADMIN, e.g. "can
+// this person log into staff tooling at all"); UserProductAccess answers the
+// finer question "which product's staff dashboards can they see, and as
+// what". A user with no rows here but role=STAFF still only sees E2 (the
+// flagship) — that's the login screen's existing default behavior.
+model UserProductAccess {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product
+  role      Role     @default(STAFF)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, product])
+  @@index([userId])
+}
+
 enum DocumentStatus {
   UPLOADED
   QUEUED_FOR_PRINT
@@ -103,8 +133,9 @@ model User {
   consentedAt  DateTime?
   createdAt    DateTime  @default(now())
 
-  documents   Document[]
-  auditEvents AuditEvent[]
+  documents     Document[]
+  auditEvents   AuditEvent[]
+  productAccess UserProductAccess[]
 }
 
 model Document {
@@ -440,63 +471,62 @@ enum ShipMethod {
 // (item + duty + VAT + shipping), customer pays via PayFast, we import and deliver.
 // Once payment cleared, links to BobgoShipment for real courier leg.
 model ShoppingOrder {
-  id                    String              @id @default(cuid())
-  orderRef              String              @unique // e.g., GM-2026-1234
-  status                ShoppingOrderStatus @default(DRAFT)
+  id       String              @id @default(cuid())
+  orderRef String              @unique // e.g., GM-2026-1234
+  status   ShoppingOrderStatus @default(DRAFT)
 
   // Customer info
-  customerEmail         String
-  customerPhone         String?
-  recipientName         String
-  recipientPhone        String
-  recipientStreet       String
-  recipientCity         String
-  recipientProvince     String
-  recipientPostalCode   String
-  recipientCountry      String @default("ZA")
+  customerEmail       String
+  customerPhone       String?
+  recipientName       String
+  recipientPhone      String
+  recipientStreet     String
+  recipientCity       String
+  recipientProvince   String
+  recipientPostalCode String
+  recipientCountry    String  @default("ZA")
 
   // Product info
-  productUrl            String
-  productName           String?
-  productPrice          Float? // USD
-  productWeight         Float? // kg (estimated or customer-entered)
+  productUrl    String
+  productName   String?
+  productPrice  Float? // USD
+  productWeight Float? // kg (estimated or customer-entered)
 
   // Shipping choice
-  shipMethod            ShipMethod @default(STANDARD)
-  extraWeightSurcharge  Float      @default(0) // per 0.5kg above 1kg
+  shipMethod           ShipMethod @default(STANDARD)
+  extraWeightSurcharge Float      @default(0) // per 0.5kg above 1kg
 
   // Service choices
-  personalShopperFee    Float      @default(0) // optional concierge charge
-  markupPercent         Float      @default(15) // customer-chosen markup on landed cost
+  personalShopperFee Float @default(0) // optional concierge charge
+  markupPercent      Float @default(15) // customer-chosen markup on landed cost
 
   // Landed-cost breakdown
-  itemPriceCents        Int? // stored as cents to avoid float precision
-  shippingCostCents     Int? // USD base, before extra weight
-  shopperFeeCents       Int?
-  hsCode                String? // HS classification of product
-  dutyRate              Float? // SARS duty % (e.g., 0.20 for 20%)
-  dutyCents             Int? // calculated: (item + insurance + freight) * dutyRate
-  vatCents              Int? // calculated: (duty + total cost) * 0.15
-  landedCostCents       Int? // item + shipping + shopper fee + duty + VAT, in cents
-  finalQuoteCents       Int? // landed cost + markup
-  finalQuoteZar         Float? // landed cost * FX rate (cached at quote time)
+  itemPriceCents    Int? // stored as cents to avoid float precision
+  shippingCostCents Int? // USD base, before extra weight
+  shopperFeeCents   Int?
+  hsCode            String? // HS classification of product
+  dutyRate          Float? // SARS duty % (e.g., 0.20 for 20%)
+  dutyCents         Int? // calculated: (item + insurance + freight) * dutyRate
+  vatCents          Int? // calculated: (duty + total cost) * 0.15
+  landedCostCents   Int? // item + shipping + shopper fee + duty + VAT, in cents
+  finalQuoteCents   Int? // landed cost + markup
+  finalQuoteZar     Float? // landed cost * FX rate (cached at quote time)
 
   // Payment
-  payFastPaymentId      String?
-  payFastUuid           String?
-  payFastUrl            String?
-  paidAt                DateTime?
+  payFastPaymentId String?
+  payFastUuid      String?
+  payFastUrl       String?
+  paidAt           DateTime?
 
   // Link to courier once paid
-  bobgoShipmentId       String?
+  bobgoShipmentId String?
 
   // FX rate snapshot (avoid stale rates across quote → payment)
-  fxRateUsdzarSnapshot  Float? // e.g., 18.5
+  fxRateUsdzarSnapshot Float? // e.g., 18.5
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([customerEmail])
   @@index([status])
 }
-
