@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostNow Group Admin Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0f;
+            color: #e8e8ed;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Navigation */
+        .navbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            margin-bottom: 32px;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav-badge {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 6px 14px;
+            border-radius: 100px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        /* Header */
+        .page-header {
+            margin-bottom: 48px;
+        }
+
+        .page-header h1 {
+            font-size: 36px;
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        .page-header .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .page-header .breadcrumb a {
+            color: #a78bfa;
+            text-decoration: none;
+        }
+
+        .page-header .breadcrumb a:hover {
+            color: #d8b4fe;
+        }
+
+        /* Services Grid */
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 48px;
+        }
+
+        .service-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 16px;
+            padding: 28px;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .service-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .service-card a {
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .service-card .title {
+            font-size: 18px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .service-card .icon {
+            font-size: 24px;
+        }
+
+        .service-card .description {
+            font-size: 14px;
+            color: #9ca3af;
+            line-height: 1.5;
+            flex: 1;
+        }
+
+        .service-card .meta {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            font-size: 12px;
+            color: #6b7280;
+            flex-wrap: wrap;
+        }
+
+        .service-card .meta-tag {
+            background: rgba(255, 255, 255, 0.04);
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
+        .service-card .arrow {
+            font-size: 18px;
+            color: #a78bfa;
+            margin-top: 8px;
+        }
+
+        /* Special styling for Midl */
+        .service-card.midl {
+            border: 1px solid rgba(167, 139, 250, 0.3);
+            background: linear-gradient(135deg, rgba(167, 139, 250, 0.08), rgba(124, 58, 237, 0.04));
+        }
+
+        .service-card.midl:hover {
+            border-color: rgba(167, 139, 250, 0.5);
+            background: linear-gradient(135deg, rgba(167, 139, 250, 0.12), rgba(124, 58, 237, 0.08));
+        }
+
+        .service-card.midl .title {
+            color: #d8b4fe;
+        }
+
+        /* Footer */
+        .admin-footer {
+            padding: 32px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            margin-top: 48px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            font-size: 13px;
+            color: #6b7280;
+        }
+
+        .admin-footer a {
+            color: #a78bfa;
+            text-decoration: none;
+        }
+
+        .admin-footer a:hover {
+            color: #d8b4fe;
+        }
+
+        @media (max-width: 600px) {
+            .page-header h1 {
+                font-size: 24px;
+            }
+            .services-grid {
+                grid-template-columns: 1fr;
+            }
+            .navbar {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="logo">PostNow Group</div>
+            <div class="nav-badge">Admin Dashboard</div>
+        </nav>
+
+        <!-- Header -->
+        <div class="page-header">
+            <h1>Platform Admin</h1>
+            <div class="breadcrumb">
+                <span>← Back to site</span>
+            </div>
+        </div>
+
+        <!-- Services Grid -->
+        <div class="services-grid">
+
+            <!-- Administrator -->
+            <div class="service-card">
+                <a href="#admin">
+                    <div class="title">
+                        <span class="icon">👤</span>
+                        Administrator
+                    </div>
+                    <div class="description">Manage users, permissions, and system settings.</div>
+                    <div class="meta">
+                        <span class="meta-tag">Restricted Access</span>
+                    </div>
+                    <div class="arrow">→</div>
+                </a>
+            </div>
+
+            <!-- Customer Portal -->
+            <div class="service-card">
+                <a href="#customer">
+                    <div class="title">
+                        <span class="icon">💼</span>
+                        Customer
+                    </div>
+                    <div class="description">Customer account management and service access.</div>
+                    <div class="meta">
+                        <span class="meta-tag">Active</span>
+                    </div>
+                    <div class="arrow">→</div>
+                </a>
+            </div>
+
+            <!-- PostNow E2 -->
+            <div class="service-card">
+                <a href="#e2">
+                    <div class="title">
+                        <span class="icon">📦</span>
+                        PostNow E2
+                    </div>
+                    <div class="description">Enterprise ecommerce logistics platform.</div>
+                    <div class="meta">
+                        <span class="meta-tag">Production</span>
+                    </div>
+                    <div class="arrow">→</div>
+                </a>
+            </div>
+
+            <!-- PostNow Express -->
+            <div class="service-card">
+                <a href="#express">
+                    <div class="title">
+                        <span class="icon">⚡</span>
+                        PostNow Express
+                    </div>
+                    <div class="description">High-speed same-day courier service.</div>
+                    <div class="meta">
+                        <span class="meta-tag">Active</span>
+                    </div>
+                    <div class="arrow">→</div>
+                </a>
+            </div>
+
+            <!-- GlobeMe -->
+            <div class="service-card">
+                <a href="#globeme">
+                    <div class="title">
+                        <span class="icon">🌍</span>
+                        GlobeMe
+                    </div>
+                    <div class="description">International cross-border shipping solution.</div>
+                    <div class="meta">
+                        <span class="meta-tag">Active</span>
+                    </div>
+                    <div class="arrow">→</div>
+                </a>
+            </div>
+
+            <!-- Midl (Featured) -->
+            <div class="service-card midl">
+                <a href="https://midl-postnow.vercel.app/" target="_blank">
+                    <div class="title">
+                        <span class="icon">🔒</span>
+                        Midl
+                    </div>
+                    <div class="description">Escrow + courier for peer-to-peer trade. Both buyer and seller get identical condition reports with photo evidence before item dispatch.</div>
+                    <div class="meta">
+                        <span class="meta-tag">New</span>
+                        <span class="meta-tag">FSCA Regulated</span>
+                        <span class="meta-tag">Trust Account</span>
+                    </div>
+                    <div class="arrow">→</div>
+                </a>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="admin-footer">
+            <div>
+                <strong>PostNow Infrastructure:</strong> POPIA-first · Access-controlled · Audited
+            </div>
+            <div style="display: flex; gap: 24px;">
+                <a href="#">Policies</a>
+                <a href="#">Security</a>
+                <a href="#">Support</a>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+</html>
