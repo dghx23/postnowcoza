@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Midl — Buy with confidence. Sell with certainty.</title>
+    <meta name="description" content="Escrow + courier for South African peer-to-peer trade. Midl holds the payment, arranges the courier, and only releases funds once delivery is confirmed. Part of the PostNow Group.">
+    <link rel="canonical" href="https://midl-postnow.vercel.app/">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/favicon.svg">
+    <meta name="theme-color" content="#0a0f1e">
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://midl-postnow.vercel.app/">
+    <meta property="og:site_name" content="Midl">
+    <meta property="og:title" content="Midl — Buy with confidence. Sell with certainty.">
+    <meta property="og:description" content="Escrow + courier for South African peer-to-peer trade. We hold the money until delivery is proven. Part of the PostNow Group.">
+    <meta property="og:image" content="https://midl-postnow.vercel.app/og-image.svg">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Midl — Buy with confidence. Sell with certainty.">
+    <meta name="twitter:description" content="Escrow + courier for South African peer-to-peer trade. Part of the PostNow Group.">
+    <meta name="twitter:image" content="https://midl-postnow.vercel.app/og-image.svg">
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* ===== GLOBAL RESET & BASE ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        :root {
+            --primary: #f59e0b;
+            --primary-dark: #d97706;
+            --navy: #0a0f1e;
+            --navy-light: #1e293b;
+            --gray-50: #f8fafc;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-500: #64748b;
+            --gray-700: #334155;
+            --white: #ffffff;
+            --shadow-sm: 0 4px 20px rgba(0, 0, 0, 0.04);
+            --shadow-md: 0 12px 40px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.12);
+            --radius-xl: 24px;
+            --radius-2xl: 32px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        html {
+            scroll-behavior: smooth;
+        }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--gray-50);
+            color: var(--navy);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ===== BUTTONS ===== */
+        .btn-primary {
+            background: var(--primary);
+            color: var(--navy);
+            font-weight: 700;
+            padding: 14px 36px;
+            border: none;
+            border-radius: 60px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            box-shadow: 0 8px 24px rgba(245, 158, 11, 0.3);
+            letter-spacing: 0.3px;
+        }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-4px);
+            box-shadow: 0 16px 40px rgba(245, 158, 11, 0.45);
+        }
+        .btn-outline {
+            background: transparent;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            padding: 12px 28px;
+            border-radius: 60px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-outline:hover {
+            background: var(--primary);
+            color: var(--navy);
+        }
+        .btn-dark {
+            background: var(--navy);
+            color: white;
+            font-weight: 600;
+            padding: 12px 28px;
+            border: none;
+            border-radius: 60px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .btn-dark:hover {
+            background: var(--navy-light);
+            transform: translateY(-2px);
+        }
+        .btn-sm {
+            padding: 6px 16px;
+            font-size: 0.8rem;
+            border-radius: 40px;
+            border: 1.5px solid var(--gray-200);
+            background: white;
+            cursor: pointer;
+            transition: var(--transition);
+            font-weight: 600;
+        }
+        .btn-sm:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* ===== TOP NAVIGATION ===== */
+        .topnav {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+            padding: 14px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topnav .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .topnav .logo {
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: var(--navy);
+        }
+        .topnav .logo span {
+            color: var(--primary);
+        }
+        .topnav .nav-links {
+            display: flex;
+            gap: 28px;
+            align-items: center;
+            list-style: none;
+            font-weight: 500;
+        }
+        .topnav .nav-links a {
+            text-decoration: none;
+            color: var(--gray-500);
+            transition: var(--transition);
+            font-size: 0.95rem;
+        }
+        .topnav .nav-links a:hover {
+            color: var(--primary);
+        }
+        .topnav .auth-group {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .topnav .avatar {
+            width: 38px;
+            height: 38px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: var(--navy);
+            cursor: pointer;
+        }
+
+        /* ===== HERO ===== */
+        .hero-section {
+            padding: 50px 0 80px 0;
+            background: linear-gradient(180deg, #ffffff 0%, var(--gray-50) 100%);
+        }
+        .hero-grid {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 50px;
+        }
+        .hero-content {
+            flex: 1 1 100%;
+        }
+        .hero-content .badge {
+            background: #fef3c7;
+            color: #92400e;
+            padding: 6px 18px;
+            border-radius: 40px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: inline-block;
+            margin-bottom: 16px;
+        }
+        .hero-content h1 {
+            font-size: 3.4rem;
+            line-height: 1.15;
+            font-weight: 800;
+            margin-bottom: 20px;
+        }
+        .hero-content h1 span {
+            color: var(--primary);
+            border-bottom: 4px solid var(--primary);
+        }
+        .hero-content p {
+            font-size: 1.2rem;
+            color: var(--gray-500);
+            max-width: 480px;
+            margin-bottom: 32px;
+        }
+        .hero-actions {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 40px;
+        }
+        .hero-stats {
+            display: flex;
+            gap: 48px;
+        }
+        .hero-stats div {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .hero-stats div small {
+            display: block;
+            font-weight: 400;
+            color: var(--gray-500);
+            font-size: 0.85rem;
+        }
+
+        .hero-visual {
+            display: none;
+        }
+        .hero-visual .glow {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            background: rgba(245, 158, 11, 0.15);
+            border-radius: 50%;
+            top: -60px;
+            right: -60px;
+            filter: blur(60px);
+        }
+        .hero-visual .top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            position: relative;
+            z-index: 2;
+        }
+        .hero-visual .top-row .label {
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+        .hero-visual .top-row .live {
+            background: var(--primary);
+            color: var(--navy);
+            padding: 4px 14px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 0.7rem;
+        }
+        .hero-visual .amount {
+            font-size: 3.8rem;
+            font-weight: 800;
+            color: var(--primary);
+            line-height: 1;
+            position: relative;
+            z-index: 2;
+        }
+        .hero-visual .item-name {
+            color: #e2e8f0;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 2;
+        }
+        .hero-visual .progress-track {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: rgba(255, 255, 255, 0.06);
+            padding: 14px 20px;
+            border-radius: 16px;
+            position: relative;
+            z-index: 2;
+            backdrop-filter: blur(4px);
+        }
+        .hero-visual .progress-track .bar {
+            flex: 1;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            position: relative;
+        }
+        .hero-visual .progress-track .bar::after {
+            content: '';
+            position: absolute;
+            width: 65%;
+            height: 100%;
+            background: var(--primary);
+            border-radius: 10px;
+        }
+        .hero-visual .progress-track .status-text {
+            font-size: 0.85rem;
+            color: #e2e8f0;
+            font-weight: 500;
+        }
+        .route-svg {
+            position: relative;
+            z-index: 2;
+            margin-top: 20px;
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .route-svg .dash {
+            stroke-dasharray: 6 7;
+            animation: dashmove 1.8s linear infinite;
+        }
+        @keyframes dashmove {
+            to { stroke-dashoffset: -26; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .route-svg .dash { animation: none; }
+        }
+
+        /* ===== TRUST BAR ===== */
+        .trust-bar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            background: white;
+            border-radius: 60px;
+            padding: 16px 32px;
+            margin: 8px 0 40px;
+            border: 1px solid var(--gray-200);
+            box-shadow: var(--shadow-sm);
+        }
+        .trust-bar .item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.88rem;
+            color: var(--gray-700);
+        }
+        .trust-bar .item i {
+            font-size: 1.1rem;
+        }
+        .trust-bar .item i.fa-lock { color: var(--primary); }
+        .trust-bar .item i.fa-truck { color: #0ea5e9; }
+        .trust-bar .item i.fa-check-circle { color: #16a34a; }
+        .trust-bar .item i.fa-hand-holding-usd { color: #7c3aed; }
+        .trust-bar .item strong {
+            color: var(--navy);
+        }
+
+        /* ===== TESTIMONIAL ===== */
+        #testimonial {
+            padding: 60px 0 80px 0;
+            background: white;
+        }
+        .testimonial-card {
+            background: linear-gradient(135deg, #ffffff 0%, var(--gray-50) 100%);
+            border-radius: var(--radius-2xl);
+            padding: 48px 48px;
+            border: 1px solid var(--gray-200);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 40px;
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .testimonial-card:hover {
+            box-shadow: var(--shadow-md);
+        }
+        .testimonial-card blockquote {
+            flex: 2;
+            font-size: 1.15rem;
+            font-weight: 500;
+            color: var(--navy);
+            line-height: 1.6;
+        }
+        .testimonial-card blockquote i {
+            color: var(--primary);
+            font-size: 1.5rem;
+            margin-right: 8px;
+        }
+        .testimonial-author {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .testimonial-author .avatar {
+            width: 52px;
+            height: 52px;
+            background: var(--navy);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .testimonial-author .info strong {
+            display: block;
+            font-size: 0.95rem;
+        }
+        .testimonial-author .info span {
+            color: var(--gray-500);
+            font-size: 0.82rem;
+        }
+
+        /* ===== SECTION TITLES ===== */
+        .section-title {
+            font-size: 2.6rem;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 16px;
+            letter-spacing: -0.3px;
+            line-height: 1.2;
+        }
+        .section-sub {
+            text-align: center;
+            color: var(--gray-500);
+            max-width: 650px;
+            margin: 0 auto 56px auto;
+            font-size: 1.15rem;
+            line-height: 1.6;
+        }
+
+        /* ===== HOW IT WORKS ===== */
+        #how-it-works {
+            padding: 80px 0;
+            background: white;
+        }
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 30px;
+        }
+        .step-card {
+            background: white;
+            padding: 36px 28px;
+            border-radius: var(--radius-xl);
+            text-align: center;
+            transition: var(--transition);
+            border: 1px solid var(--gray-200);
+            box-shadow: var(--shadow-sm);
+        }
+        .step-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-lg);
+        }
+        .step-card .icon {
+            background: white;
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px auto;
+            font-size: 2rem;
+            color: var(--step-color, var(--primary));
+            box-shadow: 0 8px 24px var(--step-glow, rgba(245, 158, 11, 0.15));
+        }
+        .step-card:nth-child(1) { --step-color: #f59e0b; --step-glow: rgba(245, 158, 11, 0.15); }
+        .step-card:nth-child(2) { --step-color: #0ea5e9; --step-glow: rgba(14, 165, 233, 0.15); }
+        .step-card:nth-child(3) { --step-color: #7c3aed; --step-glow: rgba(124, 58, 237, 0.15); }
+        .step-card:nth-child(4) { --step-color: #16a34a; --step-glow: rgba(22, 163, 74, 0.15); }
+        .step-card .step-num {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            color: var(--step-color, var(--primary));
+            background: color-mix(in srgb, var(--step-color, var(--primary)) 12%, white);
+            padding: 3px 10px;
+            border-radius: 40px;
+            margin-bottom: 10px;
+        }
+        .step-card h4 {
+            font-size: 1.2rem;
+            margin-bottom: 6px;
+        }
+        .step-card p {
+            color: var(--gray-500);
+            font-size: 0.95rem;
+        }
+
+        /* ===== PROCESS (Direct Delivery vs Hub Inspection) ===== */
+        #process {
+            padding: 80px 0;
+            background: white;
+        }
+        .process-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 32px;
+            align-items: stretch;
+        }
+        .process-card {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-2xl);
+            padding: 32px 30px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .process-card:hover {
+            box-shadow: var(--shadow-md);
+        }
+        .process-card.hub {
+            background: var(--navy);
+            border-color: var(--navy);
+            color: white;
+        }
+        .process-card .process-tag {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            padding: 3px 12px;
+            border-radius: 40px;
+            margin-bottom: 12px;
+            align-self: flex-start;
+        }
+        .process-card:not(.hub) .process-tag {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .process-card.hub .process-tag {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--primary);
+        }
+        .process-card h3 {
+            font-size: 1.4rem;
+            margin-bottom: 4px;
+        }
+        .process-card .process-sub {
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+        .process-card:not(.hub) .process-sub {
+            color: var(--gray-500);
+        }
+        .process-card.hub .process-sub {
+            color: #94a3b8;
+        }
+        .process-steps {
+            list-style: none;
+            counter-reset: step;
+            flex: 1;
+        }
+        .process-steps li {
+            counter-increment: step;
+            display: flex;
+            gap: 14px;
+            padding: 10px 0;
+            font-size: 0.92rem;
+        }
+        .process-card:not(.hub) .process-steps li {
+            border-bottom: 1px solid var(--gray-200);
+        }
+        .process-card.hub .process-steps li {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .process-steps li:last-child {
+            border-bottom: none;
+        }
+        .process-steps li::before {
+            content: counter(step);
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            font-weight: 800;
+        }
+        .process-card:not(.hub) .process-steps li::before {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .process-card.hub .process-steps li::before {
+            background: rgba(245, 158, 11, 0.18);
+            color: var(--primary);
+        }
+        .process-time {
+            margin-top: 18px;
+            padding-top: 16px;
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+        .process-card:not(.hub) .process-time {
+            border-top: 1px solid var(--gray-200);
+            color: var(--gray-500);
+        }
+        .process-card.hub .process-time {
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            color: #94a3b8;
+        }
+
+        /* ===== WHY MIDL (competitive table) ===== */
+        #why-midl {
+            padding: 80px 0;
+            background: var(--gray-50);
+        }
+        .compare-wrap {
+            overflow-x: auto;
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-xl);
+        }
+        table.compare {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 640px;
+        }
+        table.compare th, table.compare td {
+            padding: 16px 20px;
+            text-align: left;
+            border-bottom: 1px solid var(--gray-200);
+            font-size: 0.92rem;
+        }
+        table.compare thead th {
+            font-weight: 700;
+            color: var(--gray-500);
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        table.compare tbody tr:last-child td {
+            border-bottom: none;
+        }
+        table.compare .advantage {
+            color: #15803d;
+            font-weight: 600;
+        }
+
+        /* ===== FEATURES ===== */\n        #features {
+            padding: 80px 0;
+            background: var(--gray-50);
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 28px;
+        }
+        .feature-item {
+            background: white;
+            padding: 32px 28px;
+            border-radius: var(--radius-xl);
+            border: 1px solid var(--gray-200);
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            transition: var(--transition);
+        }
+        .feature-item:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-6px);
+            border-color: var(--primary);
+        }
+        .feature-item i {
+            font-size: 2rem;
+            color: var(--feat-color, var(--primary));
+            background: var(--feat-bg, #fef3c7);
+            padding: 12px;
+            border-radius: 16px;
+            margin-top: 2px;
+        }
+        .feature-item:nth-child(1) i { --feat-color: #b91c1c; --feat-bg: #fee2e2; }
+        .feature-item:nth-child(2) i { --feat-color: #7c3aed; --feat-bg: #ede9fe; }
+        .feature-item:nth-child(3) i { --feat-color: #0e7490; --feat-bg: #cffafe; }
+        .feature-item:nth-child(4) i { --feat-color: #15803d; --feat-bg: #dcfce7; }
+        .feature-item h4 {
+            font-size: 1.05rem;
+            margin-bottom: 4px;
+        }
+        .feature-item p {
+            color: var(--gray-500);
+            font-size: 0.9rem;
+        }
+
+        /* ===== PRICING (Redesigned Cards) ===== */
+        #pricing {
+            padding: 80px 0;
+            background: white;
+        }
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            align-items: stretch;
+        }
+        .pricing-card {
+            background: white;
+            border-radius: var(--radius-2xl);
+            padding: 32px 28px;
+            border: 1px solid var(--gray-200);
+            transition: var(--transition);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        .pricing-card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-lg);
+        }
+        .pricing-card.popular {
+            border: 2px solid var(--primary);
+            box-shadow: 0 12px 40px rgba(245, 158, 11, 0.15);
+        }
+        .pricing-card.popular .badge-popular {
+            position: absolute;
+            top: -12px;
+            right: 24px;
+            background: var(--primary);
+            color: var(--navy);
+            padding: 4px 18px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 0.75rem;
+        }
+        .pricing-card .tag-new {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 14px;
+            border-radius: 40px;
+            margin-bottom: 12px;
+            align-self: flex-start;
+        }
+        .pricing-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 4px;
+        }
+        .pricing-card .price {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin: 8px 0 4px 0;
+        }
+        .pricing-card .price small {
+            font-size: 0.95rem;
+            font-weight: 400;
+            color: var(--gray-500);
+        }
+        .pricing-card .description {
+            color: var(--gray-500);
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+        .pricing-card ul {
+            list-style: none;
+            margin: 0 0 32px 0;
+            flex: 1;
+        }
+        .pricing-card ul li {
+            padding: 10px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+        .pricing-card ul li i {
+            color: var(--primary);
+            width: 20px;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .pricing-card .btn-primary {
+            width: 100%;
+            justify-content: center;
+            margin-top: auto;
+        }
+
+        /* ===== FOOTER ===== */
+        footer {
+            background: var(--navy);
+            color: #94a3b8;
+            padding: 56px 0 40px 0;
+            margin-top: 40px;
+        }
+        footer .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 32px;
+        }
+        footer .logo {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: white;
+        }
+        footer .logo span {
+            color: var(--primary);
+        }
+        footer .links a {
+            color: #94a3b8;
+            text-decoration: none;
+            margin-left: 24px;
+            transition: var(--transition);
+        }
+        footer .links a:hover {
+            color: white;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1024px) {
+            .hero-content h1 {
+                font-size: 2.8rem;
+            }
+        }
+        @media (max-width: 768px) {
+            .topnav .nav-links {
+                display: none;
+            }
+            .hero-content h1 {
+                font-size: 2.2rem;
+            }
+            .hero-stats {
+                gap: 24px;
+                flex-wrap: wrap;
+            }
+            .pricing-grid {
+                grid-template-columns: 1fr;
+            }
+            .process-grid {
+                grid-template-columns: 1fr;
+            }
+            .hero-visual .amount {
+                font-size: 2.5rem;
+            }
+        }
+        @media (max-width: 1024px) and (min-width: 769px) {
+            .pricing-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media (max-width: 480px) {
+            .hero-actions .btn-primary,
+            .hero-actions .btn-outline {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================ -->
+    <!-- TOP NAVIGATION -->
+    <!-- ============================================================ -->
+    <header class="topnav">
+        <div class="container">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+                <div class="logo">Midl<span>.</span></div>
+                <a href="https://postnow.co.za" style="font-size:0.72rem;font-weight:700;letter-spacing:0.03em;color:var(--gray-500);text-decoration:none;border-left:1px solid var(--gray-200);padding-left:12px;">PART OF THE POSTNOW GROUP</a>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#how-it-works">How it works</a></li>
+                <li><a href="#process">The process</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#why-midl">Why Midl</a></li>
+                <li><a href="#pricing">Pricing</a></li>
+            </ul>
+            <div class="auth-group">
+                <a href="https://app.postnow.co.za/login" class="btn-sm">Log in</a>
+                <a href="https://app.postnow.co.za/login" class="btn-primary" style="padding:8px 20px; font-size:0.9rem;">Get Started</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============================================================ -->
+    <!-- HERO SECTION -->
+    <!-- ============================================================ -->
+    <section class="hero-section" id="home">
+        <div class="container hero-grid">
+            <div class="hero-content">
+                <span class="badge"><i class="fas fa-shield-alt"></i> 100% Fraud Protection</span>
+                <h1>Buy with <span>confidence</span>.<br>Sell with <span>certainty</span>.</h1>
+                <p>We hold your money, dispatch the courier, and release payment only when the parcel is confirmed delivered. You choose how much verification the deal needs.</p>
+                <div class="hero-actions">
+                    <a href="https://app.postnow.co.za/login" class="btn-primary"><i class="fas fa-rocket"></i> Start a Transaction</a>
+                    <a href="#how-it-works" class="btn-outline">Learn more</a>
+                </div>
+                <div class="hero-stats">
+                    <div>R 2.4M <small>Total protected</small></div>
+                    <div>847 <small>Escrows completed</small></div>
+                    <div>99.2% <small>Satisfaction rate</small></div>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="glow"></div>
+                <div class="top-row">
+                    <span class="label"><i class="fas fa-lock"></i> Secure Escrow</span>
+                    <span class="live">LIVE</span>
+                </div>
+                <svg class="route-svg" viewBox="0 0 400 90" fill="none" aria-hidden="true">
+                    <circle cx="30" cy="60" r="7" fill="#f59e0b"/>
+                    <circle cx="30" cy="60" r="12" stroke="#f59e0b" stroke-opacity="0.35"/>
+                    <path class="dash" d="M40 58 C 140 10, 260 100, 300 45" stroke="#475569" stroke-width="2"/>
+                    <path d="M300 45 C 320 20, 350 22, 372 34" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round"/>
+                    <g transform="translate(295,28)">
+                        <rect x="0" y="0" width="22" height="17" rx="3" fill="#f59e0b"/>
+                        <rect x="0" y="0" width="22" height="6" rx="3" fill="#d97706"/>
+                        <rect x="9" y="0" width="4" height="17" fill="#d97706"/>
+                    </g>
+                    <circle cx="380" cy="38" r="7" fill="none" stroke="#94a3b8" stroke-width="2"/>
+                    <path d="M377 38l2 2 4-4" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- TRUST BAR -->
+    <!-- ============================================================ -->
+    <div class="container">
+        <div class="trust-bar">
+            <span class="item"><i class="fas fa-lock"></i> <strong>100%</strong> Fraud protection</span>
+            <span class="item"><i class="fas fa-truck"></i> <strong>Tracked</strong> courier included</span>
+            <span class="item"><i class="fas fa-check-circle"></i> <strong>Condition reports</strong> for high-value items</span>
+            <span class="item"><i class="fas fa-hand-holding-usd"></i> Payment <strong>released</strong> on delivery</span>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- HOW IT WORKS -->
+    <!-- ============================================================ -->
+    <section id="how-it-works">
+        <div class="container">
+            <h2 class="section-title">How Midl works</h2>
+            <p class="section-sub">We handle the money, the logistics, and the verification. You just handle the shopping.</p>
+            <div class="steps-grid">
+                <div class="step-card">
+                    <span class="step-num">STEP 1</span>
+                    <div class="icon"><i class="fas fa-credit-card"></i></div>
+                    <h4>Secure Payment</h4>
+                    <p>Buyer pays Midl. We lock the funds safely in our FSCA-regulated trust account.</p>
+                </div>
+                <div class="step-card">
+                    <span class="step-num">STEP 2</span>
+                    <div class="icon"><i class="fas fa-truck"></i></div>
+                    <h4>Courier Dispatch</h4>
+                    <p>We schedule a tracked courier to collect from the seller. GPS visibility end-to-end.</p>
+                </div>
+                <div class="step-card">
+                    <span class="step-num">STEP 3</span>
+                    <div class="icon"><i class="fas fa-file-signature"></i></div>
+                    <h4>Condition Report</h4>
+                    <p>On Verified Delivery and Premium Vault, the item comes to us first — both buyer and seller get the same report before it goes further.</p>
+                </div>
+                <div class="step-card">
+                    <span class="step-num">STEP 4</span>
+                    <div class="icon"><i class="fas fa-handshake"></i></div>
+                    <h4>Release &amp; Pay</h4>
+                    <p>The courier's tracking number confirms delivery. That's what releases payment to the seller — not a manual click.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- THE PROCESS: DIRECT DELIVERY vs HUB INSPECTION -->
+    <!-- ============================================================ -->
+    <section id="process">
+        <div class="container">
+            <h2 class="section-title">Two routes, one guarantee</h2>
+            <p class="section-sub">Essentials and Standard go straight to the buyer. Verified Delivery and Premium Vault stop at our inspection hub first. Either way, payment only moves once delivery is proven.</p>
+            <div class="process-grid">
+                <div class="process-card">
+                    <span class="process-tag">ESSENTIALS · STANDARD</span>
+                    <h3>Direct Delivery</h3>
+                    <p class="process-sub">Courier collects, delivers straight to the buyer, payment releases on proof of delivery.</p>
+                    <ol class="process-steps">
+                        <li>Buyer pays into the trust account — funds locked</li>
+                        <li>Courier dispatched, seller gets a pickup window</li>
+                        <li>Courier collects — takes a condition photo at pickup</li>
+                        <li>Live tracking from pickup to the buyer's door</li>
+                        <li>Delivery photo + signature captured (proof of delivery)</li>
+                        <li>Proof of delivery releases payment to the seller automatically</li>
+                    </ol>
+                    <div class="process-time"><i class="fas fa-clock"></i> ~24h JHB↔CPT overnight · 2–6h same-city</div>
+                </div>
+                <div class="process-card hub">
+                    <span class="process-tag">VERIFIED DELIVERY · PREMIUM VAULT</span>
+                    <h3>Hub Inspection</h3>
+                    <p class="process-sub">Courier collects, item stops at our inspection hub, buyer sees proof before it moves again.</p>
+                    <ol class="process-steps">
+                        <li>Buyer pays into the trust account — funds locked</li>
+                        <li>Courier collects from the seller, condition photo taken</li>
+                        <li>Item arrives at Midl's inspection hub</li>
+                        <li>Full inspection: condition report, photos, serial numbers</li>
+                        <li>Report sent to buyer <strong>and</strong> seller — buyer has 24h to respond</li>
+                        <li><strong>Accepts:</strong> onward courier to buyer, proof of delivery releases payment</li>
+                        <li><strong>Rejects:</strong> item returned to seller, buyer refunded in full — no fees</li>
+                    </ol>
+                    <div class="process-time"><i class="fas fa-clock"></i> +4–8h added for inspection · return cover included</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- FEATURES -->
+    <!-- ============================================================ -->
+    <section id="features">
+        <div class="container">
+            <h2 class="section-title">Built for trust</h2>
+            <p class="section-sub">Every layer of our service is designed to protect both buyers and sellers.</p>
+            <div class="features-grid">
+                <div class="feature-item">
+                    <i class="fas fa-gavel"></i>
+                    <div><h4>FSCA Regulated</h4><p>Funds held in a licensed trust account. Never co-mingled with operational cash.</p></div>
+                </div>
+                <div class="feature-item">
+                    <i class="fas fa-users"></i>
+                    <div><h4>Report Sent to Both Sides</h4><p>On Verified Delivery, buyer and seller receive the identical condition report and photo evidence.</p></div>
+                </div>
+                <div class="feature-item">
+                    <i class="fas fa-barcode"></i>
+                    <div><h4>Release by Tracking Number</h4><p>Payout triggers off the courier's delivery scan, not a claim from either party.</p></div>
+                </div>
+                <div class="feature-item">
+                    <i class="fas fa-headset"></i>
+                    <div><h4>24/7 Dispute Support</h4><p>Our team mediates any issues between buyer and seller fairly.</p></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- WHY MIDL -->
+    <!-- ============================================================ -->
+    <section id="why-midl">
+        <div class="container">
+            <h2 class="section-title">Why not just use...</h2>
+            <p class="section-sub">Payment apps, marketplaces, and couriers each solve part of the problem. Midl is the only one that holds the money and only lets go of it once delivery is proven.</p>
+            <div class="compare-wrap">
+                <table class="compare">
+                    <thead>
+                        <tr><th>Alternative</th><th>What it does</th><th>What's missing</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>PayFast / payment apps</td><td>Moves money instantly</td><td class="advantage">No escrow — money's gone the moment you pay</td></tr>
+                        <tr><td>Bidorbuy / Bob Shop</td><td>Marketplace with basic escrow</td><td class="advantage">No dedicated courier or delivery-triggered release</td></tr>
+                        <tr><td>Facebook Marketplace / Gumtree</td><td>Connects buyer and seller</td><td class="advantage">No protection at all once you agree a price</td></tr>
+                        <tr><td>DHL / The Courier Guy</td><td>Moves the parcel</td><td class="advantage">No payment holding, no dispute resolution</td></tr>
+                        <tr><td>Cash Converters</td><td>Buys and resells directly</td><td class="advantage">Not peer-to-peer — you sell to them, not each other</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- PRICING -->
+    <!-- ============================================================ -->
+    <section id="pricing">
+        <div class="container">
+            <h2 class="section-title">Choose your protection level</h2>
+            <p class="section-sub">From a simple delivery-confirmation escrow to full expert authentication – pick what fits your item.</p>
+            <div class="pricing-grid">
+                <!-- Essentials -->
+                <div class="pricing-card">
+                    <span class="tag-new">Flexible</span>
+                    <h3>Essentials</h3>
+                    <div class="price">3% <small>+ courier cost</small></div>
+                    <p class="description">Pay only for what you need. Perfect for everyday items.</p>
+                    <ul>
+                        <li><i class="fas fa-check-circle"></i> Escrow payment holding</li>
+                        <li><i class="fas fa-check-circle"></i> Tracked courier dispatched by Midl</li>
+                        <li><i class="fas fa-check-circle"></i> <strong style="color:var(--primary);">Choose who pays courier</strong></li>
+                        <li><i class="fas fa-check-circle"></i> Money held until delivery confirmed</li>
+                    </ul>
+                    <a href="https://app.postnow.co.za/login" class="btn-primary" style="background:var(--navy); color:#fff; box-shadow:none;">Select Essentials</a>
+                </div>
+
+                <!-- Standard -->
+                <div class="pricing-card">
+                    <h3>Standard</h3>
+                    <div class="price">8% <small>all-inclusive</small></div>
+                    <p class="description">Everything included. No surprises. Best for most buyers.</p>
+                    <ul>
+                        <li><i class="fas fa-check-circle"></i> Everything in Essentials</li>
+                        <li><i class="fas fa-check-circle"></i> Courier cost <strong>included</strong></li>
+                        <li><i class="fas fa-check-circle"></i> 10-min buyer inspection on delivery</li>
+                        <li><i class="fas fa-check-circle"></i> Full purchase protection</li>
+                    </ul>
+                    <a href="https://app.postnow.co.za/login" class="btn-primary" style="background:var(--navy); color:#fff; box-shadow:none;">Select Standard</a>
+                </div>
+
+                <!-- Verified Delivery (NEW) -->
+                <div class="pricing-card popular">
+                    <span class="badge-popular">New</span>
+                    <h3>Verified Delivery</h3>
+                    <div class="price">10% <small>all-inclusive</small></div>
+                    <p class="description">Item comes to us first. Both sides see proof before it's sent onward.</p>
+                    <ul>
+                        <li><i class="fas fa-check-circle"></i> Everything in Standard</li>
+                        <li><i class="fas fa-check-circle"></i> Condition report + photos to <strong>buyer &amp; seller</strong></li>
+                        <li><i class="fas fa-check-circle"></i> Buyer accepts before dispatch</li>
+                        <li><i class="fas fa-check-circle"></i> Payout triggers on delivery <strong>tracking number</strong></li>
+                        <li><i class="fas fa-check-circle"></i> Up to R25,000 goods-in-transit cover</li>
+                    </ul>
+                    <a href="https://app.postnow.co.za/login" class="btn-primary">Select Verified Delivery</a>
+                </div>
+
+                <!-- Premium -->
+                <div class="pricing-card">
+                    <h3>Premium Vault</h3>
+                    <div class="price">12% <small>all-inclusive</small></div>
+                    <p class="description">White-glove service for high-value luxury items.</p>
+                    <ul>
+                        <li><i class="fas fa-check-circle"></i> Everything in Verified Delivery</li>
+                        <li><i class="fas fa-check-circle"></i> 4K unboxing &amp; authentication video</li>
+                        <li><i class="fas fa-check-circle"></i> Serial number &amp; condition report</li>
+                        <li><i class="fas fa-check-circle"></i> Up to R50,000 goods-in-transit cover</li>
+                    </ul>
+                    <a href="https://app.postnow.co.za/login" class="btn-primary" style="background:var(--navy); color:#fff; box-shadow:none;">Select Premium</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- TESTIMONIAL -->
+    <!-- ============================================================ -->
+    <section id="testimonial">
+        <div class="container">
+            <div class="testimonial-card">
+                <blockquote><i class="fas fa-quote-left"></i>I sold my iPhone 15 Pro Max in less than 24 hours. The buyer felt safe, I felt safe, and the money was in my account the moment delivery was confirmed. Unbeatable.</blockquote>
+                <div class="testimonial-author">
+                    <div class="avatar">JD</div>
+                    <div class="info">
+                        <strong>John D.</strong>
+                        <span>Verified Seller · 12 transactions</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- FOOTER -->
+    <!-- ============================================================ -->
+    <footer>
+        <div class="container">
+            <div>
+                <div class="logo">Midl<span>.</span></div>
+                <span style="font-size:0.9rem;">© 2026 · Part of the <a href="https://postnow.co.za" style="color:inherit;text-decoration:underline;">PostNow Group</a> · The Trust Layer for SA E-Commerce</span>
+            </div>
+            <div class="links">
+                <a href="#">Terms</a>
+                <a href="#">Privacy</a>
+                <a href="#">Support</a>
+                <a href="#"><i class="fab fa-instagram"></i></a>
+                <a href="#"><i class="fab fa-twitter"></i></a>
+                <a href="#"><i class="fab fa-linkedin"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ============================================================ -->
+    <!-- JAVASCRIPT -->
+    <!-- ============================================================ -->
+    <script>
+        // --- SMOOTH SCROLL FOR TOP NAV LINKS ---
+        document.querySelectorAll('.nav-links a, .hero-actions a[href^="#"]').forEach(link => {
+            link.addEventListener('click', function(e) {
+                const href = this.getAttribute('href');
+                if (href && href.startsWith('#')) {
+                    e.preventDefault();
+                    const target = document.querySelector(href);
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth' });
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

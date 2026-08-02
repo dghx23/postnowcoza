@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow" cx="85%" cy="10%" r="60%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#0a0f1e"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Mark -->
+  <rect x="90" y="90" width="120" height="120" rx="26" fill="#12192e"/>
+  <path d="M118 168V128l19 28 19-28 19 28 19-28v40" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="188" cy="168" r="7" fill="#f59e0b"/>
+
+  <!-- Wordmark -->
+  <text x="90" y="330" font-family="Inter, -apple-system, sans-serif" font-size="96" font-weight="800" fill="#ffffff">Midl<tspan fill="#f59e0b">.</tspan></text>
+
+  <!-- Tagline -->
+  <text x="90" y="400" font-family="Inter, -apple-system, sans-serif" font-size="34" font-weight="500" fill="#94a3b8">Buy with confidence. Sell with certainty.</text>
+
+  <!-- Divider -->
+  <rect x="90" y="450" width="1020" height="1" fill="#1e293b"/>
+
+  <!-- Footer -->
+  <text x="90" y="500" font-family="Inter, -apple-system, sans-serif" font-size="26" font-weight="600" fill="#f59e0b">ESCROW · COURIER · VERIFIED DELIVERY</text>
+  <text x="90" y="545" font-family="Inter, -apple-system, sans-serif" font-size="24" font-weight="400" fill="#64748b">Part of the PostNow Group</text>
+</svg>

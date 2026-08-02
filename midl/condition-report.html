@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Midl — Condition Report</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0f;
+            color: #e8e8ed;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ----- header / nav ----- */
+        .navbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #a78bfa, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo span {
+            font-weight: 400;
+            color: #8b8b9e;
+            -webkit-text-fill-color: #8b8b9e;
+            background: none;
+        }
+
+        .nav-badge {
+            font-size: 13px;
+            font-weight: 600;
+            color: #a78bfa;
+            background: rgba(167, 139, 250, 0.10);
+            padding: 6px 16px;
+            border-radius: 100px;
+            border: 1px solid rgba(167, 139, 250, 0.15);
+            letter-spacing: 0.2px;
+        }
+
+        /* ----- hero / report header ----- */
+        .report-header {
+            padding: 48px 0 32px;
+        }
+
+        .report-header .top-tag {
+            display: inline-block;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #a78bfa;
+            background: rgba(167, 139, 250, 0.08);
+            padding: 4px 16px;
+            border-radius: 100px;
+            margin-bottom: 16px;
+        }
+
+        .report-header h1 {
+            font-size: 44px;
+            font-weight: 800;
+            letter-spacing: -1.5px;
+            line-height: 1.1;
+            margin-bottom: 12px;
+        }
+
+        .report-header h1 .highlight {
+            background: linear-gradient(135deg, #a78bfa, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .report-header .sub {
+            font-size: 18px;
+            color: #9ca3af;
+            max-width: 640px;
+        }
+
+        .report-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 32px 48px;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .report-meta .meta-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .report-meta .meta-item .label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #6b7280;
+        }
+
+        .report-meta .meta-item .value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #f3f4f6;
+        }
+
+        .report-meta .meta-item .value .badge {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 12px;
+            border-radius: 100px;
+            margin-left: 8px;
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+        }
+
+        .report-meta .meta-item .value .badge.warning {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+        }
+
+        /* ----- status bar ----- */
+        .status-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 16px 32px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            padding: 16px 24px;
+            margin: 8px 0 32px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .status-bar .status-dot {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-bar .status-dot .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #34d399;
+            box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
+        }
+
+        .status-bar .status-dot .dot.pending {
+            background: #fbbf24;
+            box-shadow: 0 0 12px rgba(251, 191, 36, 0.30);
+        }
+
+        .status-bar .status-dot .label {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .status-bar .status-dot .sub-label {
+            color: #9ca3af;
+            font-size: 14px;
+        }
+
+        .status-bar .status-actions {
+            display: flex;
+            gap: 12px;
+            margin-left: auto;
+        }
+
+        .status-bar .status-actions .btn {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 8px 20px;
+            border-radius: 100px;
+            border: none;
+            cursor: default;
+            background: rgba(255, 255, 255, 0.06);
+            color: #d1d5db;
+            transition: background 0.2s;
+        }
+
+        .status-bar .status-actions .btn-primary {
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+            color: #fff;
+            box-shadow: 0 4px 16px rgba(124, 58, 237, 0.25);
+        }
+
+        /* ----- two-column layout ----- */
+        .report-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin: 32px 0 48px;
+        }
+
+        @media (max-width: 900px) {
+            .report-grid {
+                grid-template-columns: 1fr;
+                gap: 32px;
+            }
+        }
+
+        /* ----- cards ----- */
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 24px 28px;
+            transition: border-color 0.2s;
+        }
+
+        .card .card-title {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #6b7280;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card .card-title .icon {
+            font-size: 18px;
+        }
+
+        /* ----- photo grid ----- */
+        .photo-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .photo-grid .photo-placeholder {
+            aspect-ratio: 4 / 3;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            color: #6b7280;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .photo-grid .photo-placeholder .camera {
+            font-size: 28px;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .photo-grid .photo-placeholder span {
+            display: block;
+        }
+
+        .photo-grid .photo-placeholder .badge-photo {
+            font-size: 11px;
+            font-weight: 600;
+            color: #a78bfa;
+            background: rgba(167, 139, 250, 0.10);
+            padding: 2px 12px;
+            border-radius: 100px;
+            margin-top: 4px;
+        }
+
+        /* ----- condition checklist ----- */
+        .checklist {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .checklist .row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .checklist .row:last-child {
+            border-bottom: none;
+        }
+
+        .checklist .row .label {
+            font-size: 15px;
+            font-weight: 500;
+            color: #d1d5db;
+        }
+
+        .checklist .row .status {
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checklist .row .status .check {
+            color: #34d399;
+        }
+
+        .checklist .row .status .cross {
+            color: #f87171;
+        }
+
+        .checklist .row .status .warning-icon {
+            color: #fbbf24;
+        }
+
+        .checklist .row .status .note {
+            font-weight: 400;
+            color: #9ca3af;
+            font-size: 13px;
+        }
+
+        /* ----- notes ----- */
+        .notes-block {
+            margin-top: 16px;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            border-left: 3px solid #7c3aed;
+        }
+
+        .notes-block p {
+            font-size: 15px;
+            color: #d1d5db;
+            line-height: 1.6;
+        }
+
+        .notes-block .label-sm {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        /* ----- signature / footer ----- */
+        .signature-block {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 24px;
+            margin-top: 16px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .signature-block .sig-item .label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #6b7280;
+        }
+
+        .signature-block .sig-item .value {
+            font-size: 15px;
+            font-weight: 500;
+            color: #f3f4f6;
+            margin-top: 2px;
+        }
+
+        .signature-block .sig-item .value .muted {
+            color: #6b7280;
+            font-weight: 400;
+        }
+
+        /* ----- footer ----- */
+        .site-footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 32px 0 40px;
+            margin-top: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .site-footer .footer-logo {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            background: linear-gradient(135deg, #a78bfa, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .site-footer .footer-logo span {
+            font-weight: 400;
+            color: #6b7280;
+            -webkit-text-fill-color: #6b7280;
+            background: none;
+        }
+
+        .site-footer .footer-meta {
+            font-size: 14px;
+            color: #6b7280;
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .site-footer .footer-meta a {
+            color: #9ca3af;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .site-footer .footer-meta a:hover {
+            color: #e8e8ed;
+        }
+
+        /* ----- utility ----- */
+        .text-center {
+            text-align: center;
+        }
+
+        .mt-8 {
+            margin-top: 8px;
+        }
+
+        .mb-8 {
+            margin-bottom: 8px;
+        }
+
+        .gap-4 {
+            gap: 4px;
+        }
+
+        /* responsive tweaks */
+        @media (max-width: 600px) {
+            .report-header h1 {
+                font-size: 30px;
+            }
+            .report-meta {
+                gap: 16px;
+            }
+            .status-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .status-bar .status-actions {
+                margin-left: 0;
+                justify-content: flex-start;
+            }
+            .photo-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .signature-block {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .card {
+                padding: 18px 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== NAV ===== -->
+    <div class="container">
+        <nav class="navbar">
+            <div class="logo">Midl <span>· condition report</span></div>
+            <div class="nav-badge">#CR-2026-08-01</div>
+        </nav>
+    </div>
+
+    <!-- ===== MAIN ===== -->
+    <div class="container">
+
+        <!-- report header -->
+        <div class="report-header">
+            <div class="top-tag">🔍 verified delivery · hub inspection</div>
+            <h1>
+                Condition Report <br />
+                <span class="highlight">iPhone 15 Pro Max</span>
+            </h1>
+            <p class="sub">
+                Both buyer and seller receive the identical report and photo evidence
+                before the item is dispatched onward.
+            </p>
+
+            <div class="report-meta">
+                <div class="meta-item">
+                    <span class="label">Report ID</span>
+                    <span class="value">CR-2026-08-01-0042</span>
+                </div>
+                <div class="meta-item">
+                    <span class="label">Item</span>
+                    <span class="value">iPhone 15 Pro Max · 256GB · Natural Titanium</span>
+                </div>
+                <div class="meta-item">
+                    <span class="label">Serial / IMEI</span>
+                    <span class="value">XK9T7Y4R2M <span class="badge">verified</span></span>
+                </div>
+                <div class="meta-item">
+                    <span class="label">Inspection date</span>
+                    <span class="value">1 August 2026 <span class="badge warning">24h response window</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- status bar -->
+        <div class="status-bar">
+            <div class="status-dot">
+                <span class="dot"></span>
+                <span class="label">Awaiting buyer decision</span>
+                <span class="sub-label">· report sent to both parties</span>
+            </div>
+            <div class="status-actions">
+                <span class="btn">Download PDF</span>
+                <span class="btn btn-primary">Accept &amp; dispatch</span>
+            </div>
+        </div>
+
+        <!-- ===== TWO-COLUMN GRID ===== -->
+        <div class="report-grid">
+
+            <!-- LEFT COLUMN: PHOTOS + NOTES -->
+            <div>
+
+                <!-- photos -->
+                <div class="card">
+                    <div class="card-title">
+                        <span class="icon">📷</span> Inspection photos
+                        <span style="margin-left:auto;font-weight:400;text-transform:none;color:#6b7280;font-size:13px;">4 of 6 captured</span>
+                    </div>
+                    <div class="photo-grid">
+                        <div class="photo-placeholder">
+                            <span style="display:flex;flex-direction:column;align-items:center;">
+                                <span class="camera">📱</span>
+                                <span>Front · screen</span>
+                                <span class="badge-photo">no scratches</span>
+                            </span>
+                        </div>
+                        <div class="photo-placeholder">
+                            <span style="display:flex;flex-direction:column;align-items:center;">
+                                <span class="camera">📱</span>
+                                <span>Rear · camera</span>
+                                <span class="badge-photo">lens intact</span>
+                            </span>
+                        </div>
+                        <div class="photo-placeholder">
+                            <span style="display:flex;flex-direction:column;align-items:center;">
+                                <span class="camera">📱</span>
+                                <span>Left · frame</span>
+                                <span class="badge-photo">light wear</span>
+                            </span>
+                        </div>
+                        <div class="photo-placeholder">
+                            <span style="display:flex;flex-direction:column;align-items:center;">
+                                <span class="camera">📱</span>
+                                <span>Right · buttons</span>
+                                <span class="badge-photo">fully functional</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div style="margin-top:14px;font-size:14px;color:#6b7280;display:flex;gap:16px;flex-wrap:wrap;">
+                        <span>📸 4K unboxing video · <span style="color:#a78bfa;">available on request</span></span>
+                        <span>🔒 GPS-tagged · <span style="color:#34d399;">verified</span></span>
+                    </div>
+                </div>
+
+                <!-- inspector notes -->
+                <div class="card" style="margin-top:20px;">
+                    <div class="card-title">
+                        <span class="icon">📝</span> Inspector notes
+                    </div>
+                    <div class="notes-block">
+                        <div class="label-sm">Condition summary</div>
+                        <p>
+                            Device powers on. Screen is pristine — no scratches or dead pixels.
+                            Camera lenses are clean. Frame shows very light micro-abrasions
+                            consistent with careful use. All buttons and ports tested and functional.
+                            Battery health: 89% (original).
+                        </p>
+                    </div>
+                    <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:12px 24px;font-size:14px;color:#9ca3af;">
+                        <span>🔋 Battery cycles: <strong style="color:#f3f4f6;">312</strong></span>
+                        <span>📦 Original box &amp; accessories: <strong style="color:#34d399;">included</strong></span>
+                        <span>🔒 iCloud: <strong style="color:#34d399;">disabled</strong></span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT COLUMN: CONDITION CHECKLIST + SIGNATURES -->
+            <div>
+
+                <!-- condition checklist -->
+                <div class="card">
+                    <div class="card-title">
+                        <span class="icon">✅</span> Condition checklist
+                    </div>
+                    <div class="checklist">
+
+                        <div class="row">
+                            <span class="label">Screen / display</span>
+                            <span class="status"><span class="check">✔</span> No scratches</span>
+                        </div>
+
+                        <div class="row">
+                            <span class="label">Rear glass</span>
+                            <span class="status"><span class="check">✔</span> Intact</span>
+                        </div>
+
+                        <div class="row">
+                            <span class="label">Camera lenses</span>
+                            <span class="status"><span class="check">✔</span> Clean · no cracks</span>
+                        </div>
+
+                        <div class="row">
+                            <span class="label">Frame / edges</span>
+                            <span class="status"><span class="warning-icon">⏺</span> Light wear <span class="note">(micro-abrasions)</span></span>
+                        </div>
+
+                        <div class="row">
+                            <span class="label">Buttons &amp; ports</span>
+                            <span class="status"><span class="check">✔</span> Fully functional</span>
+                        </div>
+
+                        <div class="row">
+                            <span class="label">Battery health</span>
+                            <span class="status"><span class="check">✔</span> 89% · 312 cycles</span>
+                        </div>
+
+                        <div class="row">
+                            <span class="label">Water damage indicators</span>
+                            <span class="status"><span class="check">✔</span> Not triggered</span>
+                        </div>
+
+                        <div class="row">
+                            <span class="label">Face ID / biometrics</span>
+                            <span class="status"><span class="check">✔</span> Working</span>
+                        </div>
+
+                        <div class="row">
+                            <span class="label">Accessories included</span>
+                            <span class="status"><span class="check">✔</span> Box · cable · documents</span>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- signatures / verification -->
+                <div class="card" style="margin-top:20px;">
+                    <div class="card-title">
+                        <span class="icon">✍️</span> Verification &amp; sign-off
+                    </div>
+
+                    <div class="signature-block">
+                        <div class="sig-item">
+                            <div class="label">Inspected by</div>
+                            <div class="value">Midl Hub Team · <span class="muted">JHB</span></div>
+                        </div>
+                        <div class="sig-item">
+                            <div class="label">Report generated</div>
+                            <div class="value">1 Aug 2026 · 14:32 SAST</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.05);">
+                        <div style="flex:1;min-width:140px;">
+                            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:#6b7280;">Buyer decision</div>
+                            <div style="font-size:15px;font-weight:500;color:#fbbf24;margin-top:4px;">⏳ Pending · 24h window</div>
+                        </div>
+                        <div style="flex:1;min-width:140px;">
+                            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:#6b7280;">Seller acknowledgment</div>
+                            <div style="font-size:15px;font-weight:500;color:#34d399;margin-top:4px;">✔ Received</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:16px;padding:12px 16px;background:rgba(167,139,250,0.06);border-radius:12px;border:1px solid rgba(167,139,250,0.10);">
+                        <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:#c4b5fd;">
+                            <span>🔐</span>
+                            <span>Both parties received the identical report. Dispute guarantee applies.</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <!-- end right column -->
+
+        </div>
+        <!-- end grid -->
+
+        <!-- ===== FOOTER ===== -->
+        <div class="site-footer">
+            <div class="footer-logo">Midl <span>· condition report</span></div>
+            <div class="footer-meta">
+                <span>Report ID: CR-2026-08-01-0042</span>
+                <a href="#">hub.midl.co</a>
+                <a href="#">support@midl.co</a>
+                <span>FSCA regulated · trust account</span>
+            </div>
+        </div>
+
+    </div>
+    <!-- end container -->
+
+</body>
+</html>
